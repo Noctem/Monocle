@@ -23,8 +23,8 @@ except ImportError, AttributeError:
 
 class Team(enum.Enum):
     none = 0
-    valor = 1
-    mystic = 2
+    mystic = 1
+    valor = 2
     instict = 3
 
 

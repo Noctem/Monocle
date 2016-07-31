@@ -159,8 +159,8 @@ def get_pokemarkers():
 
         images = {
             0: 'Gym',
-            1: 'Valor',
-            2: 'Mystic',
+            1: 'Mystic',
+            2: 'Valor',
             3: 'Instinct',
         }
 
