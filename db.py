@@ -98,7 +98,7 @@ class Fort(Base):
     __tablename__ = 'forts'
 
     id = Column(Integer, primary_key=True)
-    external_id = Column(Integer)
+    external_id = Column(String(64))
     lat = Column(String(16))
     lon = Column(String(16))
 
