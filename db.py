@@ -98,11 +98,11 @@ class Fort(Base):
     __tablename__ = 'forts'
 
     id = Column(Integer, primary_key=True)
-    external_id = Column(Integer)  # TODO: better name
+    external_id = Column(Integer)
     lat = Column(String(16))
     lon = Column(String(16))
 
-    sightings = relationship('FortSighting', backref='fort')
+    sightings = relationship('FortSighting', backref='fort', order_by='FortSighting.last_modified')
 
 
 class FortSighting(Base):
@@ -110,10 +110,10 @@ class FortSighting(Base):
 
     id = Column(Integer, primary_key=True)
     fort_id = Column(Integer, ForeignKey('forts.id'))
-    date_seen = Column(DateTime)
+    last_modified = Column(Integer)
     team = Column(Integer)
     prestige = Column(Integer)
-    best_pokemon_id = Column(Integer)
+    guard_pokemon_id = Column(Integer)
 
 
 Session = sessionmaker(bind=get_engine())
@@ -182,15 +182,15 @@ def add_fort_sighting(session, raw_fort):
         fort=fort,
         team=raw_fort['team'],
         prestige=raw_fort['prestige'],
-        best_pokemon_id=raw_fort['best_pokemon_id'],
-        date_seen=raw_fort['date_seen'],
+        guard_pokemon_id=raw_fort['guard_pokemon_id'],
+        last_modified=raw_fort['last_modified'],
     )
     if fort.id:
         existing = session.query(FortSighting) \
             .filter(FortSighting.fort_id == obj.fort.id) \
             .filter(FortSighting.team == obj.team) \
             .filter(FortSighting.prestige == obj.prestige) \
-            .filter(FortSighting.best_pokemon_id == obj.best_pokemon_id) \
+            .filter(FortSighting.guard_pokemon_id == obj.guard_pokemon_id) \
             .first()
         if existing:
             return
@@ -213,7 +213,7 @@ def get_forts(session):
         results.append(
             (
                 fort,
-                fort.sightings.order_by(FortSighting.date_added.desc()).first()
+                fort.sightings[-1]
             )
         )
     return results

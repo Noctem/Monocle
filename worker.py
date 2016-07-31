@@ -165,7 +165,6 @@ class Slave(threading.Thread):
             )
             if response_dict is False:
                 raise CannotProcessStep
-            now = time.time()
             map_objects = response_dict['responses'].get('GET_MAP_OBJECTS', {})
             pokemons = []
             forts = []
@@ -177,8 +176,16 @@ class Slave(threading.Thread):
                         # time_till_hidden is below 15 min
                         if pokemon['time_till_hidden_ms'] < 0:
                             continue
-                        pokemons.append(self.normalize_pokemon(pokemon, now))
+                        pokemons.append(
+                            self.normalize_pokemon(
+                                pokemon, map_cell['current_timestamp_ms']
+                            )
+                        )
                     for fort in map_cell.get('forts', []):
+                        if not fort.get('enabled'):
+                            continue
+                        if fort.get('type') == 1:  # probably pokestops
+                            continue
                         forts.append(self.normalize_fort(fort))
             for raw_pokemon in pokemons:
                 db.add_sighting(session, raw_pokemon)
@@ -208,7 +215,7 @@ class Slave(threading.Thread):
             'encounter_id': raw['encounter_id'],
             'spawn_id': raw['spawn_point_id'],
             'pokemon_id': raw['pokemon_data']['pokemon_id'],
-            'expire_timestamp': now + raw['time_till_hidden_ms'] / 1000.0,
+            'expire_timestamp': (now + raw['time_till_hidden_ms']) / 1000.0,
             'lat': raw['latitude'],
             'lon': raw['longitude'],
         }
@@ -216,13 +223,13 @@ class Slave(threading.Thread):
     @staticmethod
     def normalize_fort(raw):
         return {
-            'external_id': raw[''],
+            'external_id': raw['id'],
             'lat': raw['latitude'],
             'lon': raw['longitude'],
-            'team': raw['team'],
-            'prestige': raw['prestige'],
-            'best_pokemon_id': raw['best_pokemon_id'],
-            'date_seen': datetime.now(),
+            'team': raw.get('owned_by_team', 0),
+            'prestige': raw['gym_points'],
+            'guard_pokemon_id': raw['guard_pokemon_id'],
+            'last_modified': raw['last_modified_timestamp_ms'] / 1000.0,
         }
 
     @property
