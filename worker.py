@@ -168,6 +168,7 @@ class Slave(threading.Thread):
             now = time.time()
             map_objects = response_dict['responses'].get('GET_MAP_OBJECTS', {})
             pokemons = []
+            forts = []
             if map_objects.get('status') == 1:
                 for map_cell in map_objects['map_cells']:
                     for pokemon in map_cell.get('wild_pokemons', []):
@@ -177,11 +178,19 @@ class Slave(threading.Thread):
                         if pokemon['time_till_hidden_ms'] < 0:
                             continue
                         pokemons.append(self.normalize_pokemon(pokemon, now))
+                    for fort in map_cell.get('forts', []):
+                        forts.append(self.normalize_fort(fort))
             for raw_pokemon in pokemons:
                 db.add_sighting(session, raw_pokemon)
                 self.seen_per_cycle += 1
                 self.total_seen += 1
-            logger.info('Point processed, %d Pokemons seen!', len(pokemons))
+            for raw_fort in forts:
+                db.add_fort_sighting(session, raw_fort)
+            logger.info(
+                'Point processed, %d Pokemons and %d forts seen!',
+                len(pokemons),
+                len(forts),
+            )
             session.commit()
             # Clear error code and let know that there are Pokemon
             if self.error_code and self.seen_per_cycle:
@@ -202,6 +211,18 @@ class Slave(threading.Thread):
             'expire_timestamp': now + raw['time_till_hidden_ms'] / 1000.0,
             'lat': raw['latitude'],
             'lon': raw['longitude'],
+        }
+
+    @staticmethod
+    def normalize_fort(raw):
+        return {
+            'external_id': raw[''],
+            'lat': raw['latitude'],
+            'lon': raw['longitude'],
+            'team': raw['team'],
+            'prestige': raw['prestige'],
+            'best_pokemon_id': raw['best_pokemon_id'],
+            'date_seen': datetime.now(),
         }
 
     @property

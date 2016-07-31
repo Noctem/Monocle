@@ -1,11 +1,12 @@
 from datetime import datetime
+import enum
 import json
 import time
 
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum
 from sqlalchemy.sql import not_
 
 
@@ -18,6 +19,13 @@ try:
     DB_ENGINE = config.DB_ENGINE
 except ImportError, AttributeError:
     DB_ENGINE = 'sqlite:///db.sqlite'
+
+
+class Team(enum.Enum):
+    none = 0
+    valor = 1
+    mystic = 2
+    instict = 3
 
 
 def get_engine():
@@ -71,7 +79,7 @@ class SightingCache(object):
         for key in to_remove:
             del self.store[key]
 
-CACHE = SightingCache()
+SIGHTING_CACHE = SightingCache()
 
 
 class Sighting(Base):
@@ -84,6 +92,28 @@ class Sighting(Base):
     normalized_timestamp = Column(Integer)
     lat = Column(String(16))
     lon = Column(String(16))
+
+
+class Fort(Base):
+    __tablename__ = 'forts'
+
+    id = Column(Integer, primary_key=True)
+    external_id = Column(Integer)  # TODO: better name
+    lat = Column(String(16))
+    lon = Column(String(16))
+
+    sightings = relationship('FortSighting', backref='fort')
+
+
+class FortSighting(Base):
+    __tablename__ = 'fort_sightings'
+
+    id = Column(Integer, primary_key=True)
+    fort_id = Column(Integer, ForeignKey('forts.id'))
+    date_seen = Column(DateTime)
+    team = Column(Integer)
+    prestige = Column(Integer)
+    best_pokemon_id = Column(Integer)
 
 
 Session = sessionmaker(bind=get_engine())
@@ -118,7 +148,7 @@ def add_sighting(session, pokemon):
         lon=pokemon['lon'],
     )
     # Check if there isn't the same entry already
-    if obj in CACHE:
+    if obj in SIGHTING_CACHE:
         return
     existing = session.query(Sighting) \
         .filter(Sighting.pokemon_id == obj.pokemon_id) \
@@ -131,7 +161,40 @@ def add_sighting(session, pokemon):
     if existing:
         return
     session.add(obj)
-    CACHE.add(obj)
+    SIGHTING_CACHE.add(obj)
+
+
+def add_fort_sighting(session, raw_fort):
+    # Check if fort exists
+    fort = session.query(Fort) \
+        .filter(Fort.external_id == raw_fort['external_id']) \
+        .filter(Fort.lat == raw_fort['lat']) \
+        .filter(Fort.lon == raw_fort['lon']) \
+        .first()
+    if not fort:
+        fort = Fort(
+            external_id=raw_fort['external_id'],
+            lat=raw_fort['lat'],
+            lon=raw_fort['lon'],
+        )
+        session.add(fort)
+    obj = FortSighting(
+        fort=fort,
+        team=raw_fort['team'],
+        prestige=raw_fort['prestige'],
+        best_pokemon_id=raw_fort['best_pokemon_id'],
+        date_seen=raw_fort['date_seen'],
+    )
+    if fort.id:
+        existing = session.query(FortSighting) \
+            .filter(FortSighting.fort_id == obj.fort.id) \
+            .filter(FortSighting.team == obj.team) \
+            .filter(FortSighting.prestige == obj.prestige) \
+            .filter(FortSighting.best_pokemon_id == obj.best_pokemon_id) \
+            .first()
+        if existing:
+            return
+    session.add(obj)
 
 
 def get_sightings(session):
@@ -141,6 +204,19 @@ def get_sightings(session):
     if trash_list:
         query = query.filter(not_(Sighting.pokemon_id.in_(config.TRASH_IDS)))
     return query.all()
+
+
+def get_forts(session):
+    # TODO: can it be done just in SQL? I know it can, I'm just too lazy.
+    results = []
+    for fort in session.query(Fort).all():
+        results.append(
+            (
+                fort,
+                fort.sightings.order_by(FortSighting.date_added.desc()).first()
+            )
+        )
+    return results
 
 
 def get_session_stats(session):
