@@ -319,7 +319,7 @@ def spawn_workers(workers, status_bar=True):
         now = time.time()
         # Clean cache
         if now - last_cleaned_cache > (15 * 60):  # clean cache
-            db.CACHE.clean_expired()
+            db.SIGHTING_CACHE.clean_expired()
             last_cleaned_cache = now
         # Check up on workers
         if now - last_workers_checked > (5 * 60):

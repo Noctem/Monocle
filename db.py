@@ -6,7 +6,7 @@ import time
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum
+from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.sql import not_
 
 
@@ -51,23 +51,23 @@ class SightingCache(object):
     @staticmethod
     def _make_key(sighting):
         return (
-            sighting.pokemon_id,
-            sighting.spawn_id,
-            sighting.normalized_timestamp,
-            sighting.lat,
-            sighting.lon,
+            sighting['pokemon_id'],
+            sighting['spawn_id'],
+            normalize_timestamp(sighting['expire_timestamp']),
+            sighting['lat'],
+            sighting['lon'],
         )
 
     def add(self, sighting):
-        self.store[self._make_key(sighting)] = sighting.expire_timestamp
+        self.store[self._make_key(sighting)] = sighting['expire_timestamp']
 
-    def __contains__(self, sighting):
-        expire_timestamp = self.store.get(self._make_key(sighting))
+    def __contains__(self, raw_sighting):
+        expire_timestamp = self.store.get(self._make_key(raw_sighting))
         if not expire_timestamp:
             return False
         timestamp_in_range = (
-            expire_timestamp > sighting.expire_timestamp - 5 and
-            expire_timestamp < sighting.expire_timestamp + 5
+            expire_timestamp > raw_sighting['expire_timestamp'] - 5 and
+            expire_timestamp < raw_sighting['expire_timestamp'] + 5
         )
         return timestamp_in_range
 
@@ -79,7 +79,36 @@ class SightingCache(object):
         for key in to_remove:
             del self.store[key]
 
+
+class FortCache(object):
+    """Simple cache for storing fort sightings"""
+    def __init__(self):
+        self.store = {}
+
+    @staticmethod
+    def _make_key(fort_sighting):
+        return fort_sighting['external_id']
+
+    def add(self, sighting):
+        self.store[self._make_key(sighting)] = (
+            sighting['team'],
+            sighting['prestige'],
+            sighting['guard_pokemon_id'],
+        )
+
+    def __contains__(self, sighting):
+        params = self.store.get(self._make_key(sighting))
+        if not params:
+            return False
+        is_the_same = (
+            params[0] == sighting['team'] and
+            params[1] == sighting['prestige'] and
+            params[2] == sighting['guard_pokemon_id']
+        )
+        return is_the_same
+
 SIGHTING_CACHE = SightingCache()
+FORT_CACHE = FortCache()
 
 
 class Sighting(Base):
@@ -102,7 +131,11 @@ class Fort(Base):
     lat = Column(String(16))
     lon = Column(String(16))
 
-    sightings = relationship('FortSighting', backref='fort', order_by='FortSighting.last_modified')
+    sightings = relationship(
+        'FortSighting',
+        backref='fort',
+        order_by='FortSighting.last_modified'
+    )
 
 
 class FortSighting(Base):
@@ -139,6 +172,19 @@ def get_since_query_part(where=True):
 
 
 def add_sighting(session, pokemon):
+    # Check if there isn't the same entry already
+    if pokemon in SIGHTING_CACHE:
+        return
+    existing = session.query(Sighting) \
+        .filter(Sighting.pokemon_id == pokemon['pokemon_id']) \
+        .filter(Sighting.spawn_id == pokemon['spawn_id']) \
+        .filter(Sighting.expire_timestamp > pokemon['expire_timestamp'] - 10) \
+        .filter(Sighting.expire_timestamp < pokemon['expire_timestamp'] + 10) \
+        .filter(Sighting.lat == pokemon['lat']) \
+        .filter(Sighting.lon == pokemon['lon']) \
+        .first()
+    if existing:
+        return
     obj = Sighting(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
@@ -147,24 +193,13 @@ def add_sighting(session, pokemon):
         lat=pokemon['lat'],
         lon=pokemon['lon'],
     )
-    # Check if there isn't the same entry already
-    if obj in SIGHTING_CACHE:
-        return
-    existing = session.query(Sighting) \
-        .filter(Sighting.pokemon_id == obj.pokemon_id) \
-        .filter(Sighting.spawn_id == obj.spawn_id) \
-        .filter(Sighting.expire_timestamp > obj.expire_timestamp - 10) \
-        .filter(Sighting.expire_timestamp < obj.expire_timestamp + 10) \
-        .filter(Sighting.lat == obj.lat) \
-        .filter(Sighting.lon == obj.lon) \
-        .first()
-    if existing:
-        return
     session.add(obj)
-    SIGHTING_CACHE.add(obj)
+    SIGHTING_CACHE.add(pokemon)
 
 
 def add_fort_sighting(session, raw_fort):
+    if raw_fort in FORT_CACHE:
+        return
     # Check if fort exists
     fort = session.query(Fort) \
         .filter(Fort.external_id == raw_fort['external_id']) \
@@ -178,6 +213,18 @@ def add_fort_sighting(session, raw_fort):
             lon=raw_fort['lon'],
         )
         session.add(fort)
+    if fort.id:
+        existing = session.query(FortSighting) \
+            .filter(FortSighting.fort_id == fort.id) \
+            .filter(FortSighting.team == raw_fort['team']) \
+            .filter(FortSighting.prestige == raw_fort['prestige']) \
+            .filter(FortSighting.guard_pokemon_id ==
+                    raw_fort['guard_pokemon_id']) \
+            .first()
+        if existing:
+            # Why it's not in cache? It should be there!
+            FORT_CACHE.add(raw_fort)
+            return
     obj = FortSighting(
         fort=fort,
         team=raw_fort['team'],
@@ -185,16 +232,8 @@ def add_fort_sighting(session, raw_fort):
         guard_pokemon_id=raw_fort['guard_pokemon_id'],
         last_modified=raw_fort['last_modified'],
     )
-    if fort.id:
-        existing = session.query(FortSighting) \
-            .filter(FortSighting.fort_id == obj.fort.id) \
-            .filter(FortSighting.team == obj.team) \
-            .filter(FortSighting.prestige == obj.prestige) \
-            .filter(FortSighting.guard_pokemon_id == obj.guard_pokemon_id) \
-            .first()
-        if existing:
-            return
     session.add(obj)
+    FORT_CACHE.add(raw_fort)
 
 
 def get_sightings(session):
@@ -207,16 +246,21 @@ def get_sightings(session):
 
 
 def get_forts(session):
-    # TODO: can it be done just in SQL? I know it can, I'm just too lazy.
-    results = []
-    for fort in session.query(Fort).all():
-        results.append(
-            (
-                fort,
-                fort.sightings[-1]
-            )
-        )
-    return results
+    query = session.execute('''
+        SELECT
+            fs.fort_id,
+            fs.team,
+            fs.prestige,
+            fs.guard_pokemon_id,
+            fs.last_modified,
+            f.lat,
+            f.lon
+        FROM fort_sightings fs
+        JOIN forts f ON f.id=fs.fort_id
+        GROUP BY fs.fort_id
+        ORDER BY fs.last_modified DESC
+    ''')
+    return query.fetchall()
 
 
 def get_session_stats(session):

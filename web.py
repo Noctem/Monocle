@@ -141,7 +141,7 @@ def get_pokemarkers():
             'pokemon_id': pokemon.pokemon_id,
             'infobox': label
         })
-    for fort, fort_sighting in forts:
+    for fort in forts:
 #         name = pokemon_names[str(pokemon.pokemon_id)]
 #         datestr = datetime.fromtimestamp(pokemon.expire_timestamp)
 #         dateoutput = datestr.strftime("%H:%M:%S")
@@ -151,8 +151,8 @@ def get_pokemarkers():
 <div>Guarding Pokemon: <b>{pokemon_name}</b></div>
 '''
         label = LABEL_TMPL.format(
-            prestige=fort_sighting.prestige,
-            pokemon_name=pokemon_names[str(fort_sighting.guard_pokemon_id)],
+            prestige=fort['prestige'],
+            pokemon_name=pokemon_names[str(fort['guard_pokemon_id'])],
         )
         #  NOTE: `infobox` field doesn't render multiple line string in frontend
         # label = label.replace('\n', '')
@@ -167,11 +167,12 @@ def get_pokemarkers():
         markers.append({
             'type': 'fort',
             'name': 'Gym',
-            'key': 'fort-{}'.format(fort.id),
-            'icon': 'static/forts/%s.png' % images[fort_sighting.team],
-            'lat': fort.lat,
-            'lng': fort.lon,
+            'key': 'fort-{}'.format(fort['fort_id']),
+            'icon': 'static/forts/%s.png' % images[fort['team']],
+            'lat': fort['lat'],
+            'lng': fort['lon'],
             'infobox': label,
+            'disappear_time': -1
         })
 
     return markers
