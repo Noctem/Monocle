@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from functools import partial
 import argparse
+import asyncio
 import logging
 import os
 import random
@@ -47,7 +50,7 @@ def configure_logger(filename='worker.log'):
     logging.basicConfig(
         filename=filename,
         format=(
-            '[%(asctime)s][%(threadName)10s][%(levelname)8s][L%(lineno)4d] '
+            '[%(asctime)s][%(name)10s][%(levelname)8s][L%(lineno)4d] '
             '%(message)s'
         ),
         style='%',
@@ -57,17 +60,9 @@ def configure_logger(filename='worker.log'):
 logger = logging.getLogger()
 
 
-class Slave(threading.Thread):
+class Slave:
     """Single worker walking on the map"""
-    def __init__(
-        self,
-        group=None,
-        target=None,
-        name=None,
-        worker_no=None,
-        points=None,
-    ):
-        super(Slave, self).__init__(group, target, name)
+    def __init__(self, worker_no, points):
         self.worker_no = worker_no
         local_data.worker_no = worker_no
         self.points = points
@@ -78,26 +73,31 @@ class Slave(threading.Thread):
         self.total_seen = 0
         self.error_code = None
         self.running = True
+        self.restart_me = False
         center = self.points[0]
+        self.logger = logging.getLogger('worker-{}'.format(worker_no))
         self.api = PGoApi()
         self.api.set_position(center[0], center[1], 100)  # lat, lon, alt
+        self.api.set_logger(self.logger)
 
-    def run(self):
+    async def run(self):
         """Wrapper for self.main - runs it a few times before restarting
 
         Also is capable of restarting in case an error occurs.
         """
         self.cycle = 1
         self.error_code = None
-
+        loop = asyncio.get_event_loop()
         service = config.ACCOUNTS[self.worker_no][2]
+        self.error_code = 'LOGIN'
         while True:
             try:
-                self.api.login(
+                await loop.run_in_executor(None, partial(
+                    self.api.login,
                     provider=service,
                     username=config.ACCOUNTS[self.worker_no][0],
                     password=config.ACCOUNTS[self.worker_no][1],
-                )
+                ))
             except pgoapi_exceptions.AuthException:
                 self.error_code = 'LOGIN FAIL'
                 self.restart()
@@ -124,7 +124,7 @@ class Slave(threading.Thread):
                 self.restart()
                 return
             try:
-                self.main()
+                await self.main()
             except CannotProcessStep:
                 self.error_code = 'RESTART'
                 self.restart()
@@ -146,23 +146,24 @@ class Slave(threading.Thread):
         self.error_code = 'RESTART'
         self.restart()
 
-    def main(self):
+    async def main(self):
         """Heart of the worker - goes over each point and reports sightings"""
         session = db.Session()
         self.seen_per_cycle = 0
         self.step = 0
+        loop = asyncio.get_event_loop()
         for i, point in enumerate(self.points):
             if not self.running:
                 return
             logger.info('Visiting point %d (%s %s)', i, point[0], point[1])
-            self.api.set_position(point[0], point[1], 0)
             cell_ids = pgoapi_utils.get_cell_ids(point[0], point[1])
             self.api.set_position(point[0], point[1], 100)
-            response_dict = self.api.get_map_objects(
+            response_dict = await loop.run_in_executor(None, partial(
+                self.api.get_map_objects,
                 latitude=pgoapi_utils.f2i(point[0]),
                 longitude=pgoapi_utils.f2i(point[1]),
                 cell_id=cell_ids
-            )
+            ))
             if response_dict is False:
                 raise CannotProcessStep
             now = time.time()
@@ -187,7 +188,7 @@ class Slave(threading.Thread):
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
             self.step += 1
-            time.sleep(
+            await asyncio.sleep(
                 random.uniform(config.SCAN_DELAY, config.SCAN_DELAY + 2)
             )
         session.close()
@@ -225,7 +226,7 @@ class Slave(threading.Thread):
     def restart(self, sleep_min=5, sleep_max=20):
         """Sleeps for a bit, then restarts"""
         time.sleep(random.randint(sleep_min, sleep_max))
-        start_worker(self.worker_no, self.points)
+        self.restart_me = True
 
     def kill(self):
         """Marks worker as not running
@@ -236,85 +237,95 @@ class Slave(threading.Thread):
         self.running = False
 
 
-def get_status_message(workers, count, start_time, points_stats):
-    messages = [workers[i].status.ljust(20) for i in range(count)]
-    running_for = datetime.now() - start_time
-    output = [
-        'PokeMiner\trunning for {}'.format(running_for),
-        '{len} workers, each visiting ~{avg} points per cycle '
-        '(min: {min}, max: {max})'.format(
-            len=len(workers),
-            avg=points_stats['avg'],
-            min=points_stats['min'],
-            max=points_stats['max'],
-        ),
-        '',
-        '{} threads active'.format(threading.active_count()),
-        '',
-    ]
-    previous = 0
-    for i in range(4, count + 4, 4):
-        output.append('\t'.join(messages[previous:i]))
-        previous = i
-    return '\n'.join(output)
+class Overseer:
+    def __init__(self, status_bar):
+        self.workers = {}
+        self.count = config.GRID[0] * config.GRID[1]
+        self.points = utils.get_points_per_worker()
+        self.start_date = datetime.now()
+        self.status_bar = status_bar
 
+    def start_worker(self, worker_no):
+        loop = asyncio.get_event_loop()
+        worker = Slave(worker_no, self.points[worker_no])
+        self.workers[worker_no] = worker
+        loop.create_task(worker.run())
 
-def start_worker(worker_no, points):
-    logger.info('Worker (re)starting up!')
-    worker = Slave(
-        name='worker-%d' % worker_no,
-        worker_no=worker_no,
-        points=points
-    )
-    worker.daemon = True
-    worker.start()
-    workers[worker_no] = worker
+    def get_point_stats(self):
+        lenghts = [len(p) for p in self.points]
+        return {
+            'max': max(lenghts),
+            'min': min(lenghts),
+            'avg': sum(lenghts) / float(len(lenghts)),
+        }
 
+    def start(self):
+        for worker_no in range(self.count):
+            self.start_worker(worker_no)
 
-def spawn_workers(workers, status_bar=True):
-    points = utils.get_points_per_worker()
-    start_date = datetime.now()
-    count = config.GRID[0] * config.GRID[1]
-    for worker_no in range(count):
-        start_worker(worker_no, points[worker_no])
-    lenghts = [len(p) for p in points]
-    points_stats = {
-        'max': max(lenghts),
-        'min': min(lenghts),
-        'avg': sum(lenghts) / float(len(lenghts)),
-    }
-    last_cleaned_cache = time.time()
-    last_workers_checked = time.time()
-    workers_check = [
-        (worker, worker.total_seen) for worker in workers.values()
-        if worker.running
-    ]
-    while True:
-        now = time.time()
-        # Clean cache
-        if now - last_cleaned_cache > (15 * 60):  # clean cache
-            db.CACHE.clean_expired()
-            last_cleaned_cache = now
-        # Check up on workers
-        if now - last_workers_checked > (5 * 60):
-            # Kill those not doing anything
-            for worker, total_seen in workers_check:
-                if not worker.running:
-                    continue
-                if worker.total_seen <= total_seen:
-                    worker.kill()
-            # Prepare new list
-            workers_check = [
-                (worker, worker.total_seen) for worker in workers.values()
-            ]
-            last_workers_checked = now
-        if status_bar:
-            if sys.platform == 'win32':
-                _ = os.system('cls')
-            else:
-                _ = os.system('clear')
-            print(get_status_message(workers, count, start_date, points_stats))
-        time.sleep(0.5)
+    def check(self):
+        last_cleaned_cache = time.time()
+        last_workers_checked = time.time()
+        workers_check = [
+            (worker, worker.total_seen) for worker in workers.values()
+            if worker.running
+        ]
+        while True:
+            now = time.time()
+            # Restart workers that were killed
+            for worker_no in range(self.count):
+                if self.workers[worker_no].restart_me:
+                    self.start_worker(worker_no)
+            # Clean cache
+            if now - last_cleaned_cache > (15 * 60):  # clean cache
+                db.CACHE.clean_expired()
+                last_cleaned_cache = now
+            # Check up on workers
+            if now - last_workers_checked > (5 * 60):
+                # Kill those not doing anything
+                for worker, total_seen in workers_check:
+                    if not worker.running:
+                        continue
+                    if worker.total_seen <= total_seen:
+                        worker.kill()
+                # Prepare new list
+                workers_check = [
+                    (worker, worker.total_seen) for worker in workers.values()
+                ]
+                last_workers_checked = now
+            if self.status_bar:
+                if sys.platform == 'win32':
+                    _ = os.system('cls')
+                else:
+                    _ = os.system('clear')
+                print(self.get_status_message())
+            time.sleep(0.5)
+
+    def get_status_message(self):
+        workers_count = len(self.workers)
+        points_stats = self.get_point_stats()
+        messages = [
+            self.workers[i].status.ljust(20) for i in range(workers_count)
+        ]
+        running_for = datetime.now() - self.start_date
+        output = [
+            'PokeMiner\trunning for {}'.format(running_for),
+            '{len} workers, each visiting ~{avg} points per cycle '
+            '(min: {min}, max: {max})'.format(
+                len=len(workers),
+                avg=points_stats['avg'],
+                min=points_stats['min'],
+                max=points_stats['max'],
+            ),
+            '',
+            '{} threads active'.format(threading.active_count()),
+            '',
+        ]
+        previous = 0
+        for i in range(4, workers_count + 4, 4):
+            output.append('\t'.join(messages[previous:i]))
+            previous = i
+        return '\n'.join(output)
 
 
 def parse_args():
@@ -342,4 +353,12 @@ if __name__ == '__main__':
     else:
         configure_logger(filename=None)
     logger.setLevel(args.log_level)
-    spawn_workers(workers, status_bar=args.status_bar)
+    overseer = Overseer(status_bar=args.status_bar)
+    loop = asyncio.get_event_loop()
+    loop.set_default_executor(ThreadPoolExecutor())
+    overseer.start()
+    loop.run_in_executor(None, overseer.check)
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        loop.close()
