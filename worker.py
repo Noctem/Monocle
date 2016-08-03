@@ -74,6 +74,7 @@ class Slave:
         self.error_code = None
         self.running = True
         self.restart_me = False
+        self.logged_in = False
         center = self.points[0]
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
         self.api = PGoApi()
@@ -81,10 +82,12 @@ class Slave:
         self.api.set_logger(self.logger)
 
     async def run(self):
-        """Wrapper for self.main - runs it a few times before restarting
+        if not self.logged_in:
+            await self.login()
+        await self.run_cycle()
 
-        Also is capable of restarting in case an error occurs.
-        """
+    async def login(self):
+        """Logs worker in and prepares for scanning"""
         self.cycle = 1
         self.error_code = None
         loop = asyncio.get_event_loop()
@@ -119,6 +122,14 @@ class Slave:
                 await self.restart()
                 return
             break
+        self.logged_in = True
+        self.error_code = 'READY'
+
+    async def run_cycle(self):
+        """Wrapper for self.main - runs it a few times before restarting
+
+        Also is capable of restarting in case an error occurs.
+        """
         self.error_code = None
         while self.cycle <= config.CYCLES_PER_WORKER:
             if not self.running:
@@ -260,13 +271,15 @@ class Overseer:
         for worker in self.workers.values():
             worker.kill()
 
-    def start_worker(self, worker_no):
+    def start_worker(self, worker_no, first_run=False):
         if self.killed:
             return
         loop = asyncio.get_event_loop()
         worker = Slave(worker_no, self.points[worker_no])
         self.workers[worker_no] = worker
-        loop.create_task(worker.run())
+        loop.run_until_complete(worker.login())
+        if not first_run:
+            loop.create_task(worker.run())
 
     def get_point_stats(self):
         lenghts = [len(p) for p in self.points]
@@ -278,7 +291,10 @@ class Overseer:
 
     def start(self):
         for worker_no in range(self.count):
-            self.start_worker(worker_no)
+            self.start_worker(worker_no, first_run=True)
+        # After all logged in, run them
+        for worker in self.workers.values():
+            loop.create_task(worker.run())
 
     def check(self):
         last_cleaned_cache = time.time()
@@ -290,7 +306,7 @@ class Overseer:
         while not self.killed:
             now = time.time()
             # Restart workers that were killed
-            for worker_no in range(self.count):
+            for worker_no in self.workers.keys():
                 if self.workers[worker_no].restart_me:
                     self.start_worker(worker_no)
             # Clean cache
@@ -373,8 +389,8 @@ if __name__ == '__main__':
     overseer = Overseer(status_bar=args.status_bar)
     loop = asyncio.get_event_loop()
     loop.set_default_executor(ThreadPoolExecutor())
-    overseer.start()
     loop.run_in_executor(None, overseer.check)
+    overseer.start()
     try:
         loop.run_forever()
     except KeyboardInterrupt:
