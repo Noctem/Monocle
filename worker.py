@@ -171,7 +171,9 @@ class Slave:
             self.logger.info(
                 'Visiting point %d (%s %s)', i, point[0], point[1]
             )
-            cell_ids = pgoapi_utils.get_cell_ids(point[0], point[1])
+            cell_ids = await loop.run_in_executor(
+                None, pgoapi_utils.get_cell_ids, point[0], point[1]
+            )
             self.api.set_position(point[0], point[1], 100)
             response_dict = await loop.run_in_executor(None, partial(
                 self.api.get_map_objects,
@@ -301,7 +303,7 @@ class Overseer:
         return {
             'max': max(lenghts),
             'min': min(lenghts),
-            'avg': sum(lenghts) / float(len(lenghts)),
+            'avg': int(sum(lenghts) / float(len(lenghts))),
         }
 
     def start(self):
