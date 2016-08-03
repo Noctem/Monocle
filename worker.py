@@ -50,7 +50,7 @@ def configure_logger(filename='worker.log'):
     logging.basicConfig(
         filename=filename,
         format=(
-            '[%(asctime)s][%(name)10s][%(levelname)8s][L%(lineno)4d] '
+            '[%(asctime)s][%(levelname)8s][%(name)s] '
             '%(message)s'
         ),
         style='%',
@@ -100,51 +100,52 @@ class Slave:
                 ))
             except pgoapi_exceptions.AuthException:
                 self.error_code = 'LOGIN FAIL'
-                self.restart()
+                await self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
                 self.error_code = 'BAD LOGIN'
-                self.restart()
+                await self.restart()
                 return
             except pgoapi_exceptions.ServerBusyOrOfflineException:
                 self.error_code = 'RETRYING'
-                self.restart()
+                await self.restart()
                 return
             except pgoapi_exceptions.ServerSideRequestThrottlingException:
-                time.sleep(random.uniform(1, 5))
+                await self.sleep(random.uniform(5, 10))
                 continue
             except Exception:
-                logger.exception('A wild exception appeared!')
+                self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
-                self.restart()
+                await self.restart()
                 return
             break
+        self.error_code = None
         while self.cycle <= config.CYCLES_PER_WORKER:
             if not self.running:
-                self.restart()
+                await self.restart()
                 return
             try:
                 await self.main()
             except CannotProcessStep:
                 self.error_code = 'RESTART'
-                self.restart()
+                await self.restart()
             except Exception:
-                logger.exception('A wild exception appeared!')
+                self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
-                self.restart()
+                await self.restart()
                 return
             if not self.running:
-                self.restart()
+                await self.restart()
                 return
             self.cycle += 1
             if self.cycle <= config.CYCLES_PER_WORKER:
                 self.error_code = 'SLEEP'
                 self.running = False
-                time.sleep(random.randint(30, 60))
+                await self.sleep(random.randint(30, 60))
                 self.running = True
                 self.error_code = None
         self.error_code = 'RESTART'
-        self.restart()
+        await self.restart()
 
     async def main(self):
         """Heart of the worker - goes over each point and reports sightings"""
@@ -155,7 +156,7 @@ class Slave:
         for i, point in enumerate(self.points):
             if not self.running:
                 return
-            logger.info('Visiting point %d (%s %s)', i, point[0], point[1])
+            self.logger.info('Visiting point %d (%s %s)', i, point[0], point[1])
             cell_ids = pgoapi_utils.get_cell_ids(point[0], point[1])
             self.api.set_position(point[0], point[1], 100)
             response_dict = await loop.run_in_executor(None, partial(
@@ -182,13 +183,13 @@ class Slave:
                 db.add_sighting(session, raw_pokemon)
                 self.seen_per_cycle += 1
                 self.total_seen += 1
-            logger.info('Point processed, %d Pokemons seen!', len(pokemons))
+            self.logger.info('Point processed, %d Pokemons seen!', len(pokemons))
             session.commit()
             # Clear error code and let know that there are Pokemon
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
             self.step += 1
-            await asyncio.sleep(
+            await self.sleep(
                 random.uniform(config.SCAN_DELAY, config.SCAN_DELAY + 2)
             )
         session.close()
@@ -223,9 +224,17 @@ class Slave:
             msg=msg
         )
 
-    def restart(self, sleep_min=5, sleep_max=20):
+    async def sleep(self, duration):
+        """Sleeps and interrupts if detects that worker was killed"""
+        while duration > 0:
+            if not self.running:
+                return
+            await asyncio.sleep(0.5)
+            duration -= 0.5
+
+    async def restart(self, sleep_min=5, sleep_max=20):
         """Sleeps for a bit, then restarts"""
-        time.sleep(random.randint(sleep_min, sleep_max))
+        await self.sleep(random.randint(sleep_min, sleep_max))
         self.restart_me = True
 
     def kill(self):
@@ -244,8 +253,16 @@ class Overseer:
         self.points = utils.get_points_per_worker()
         self.start_date = datetime.now()
         self.status_bar = status_bar
+        self.killed = False
+
+    def kill(self):
+        self.killed = True
+        for worker in self.workers.values():
+            worker.kill()
 
     def start_worker(self, worker_no):
+        if self.killed:
+            return
         loop = asyncio.get_event_loop()
         worker = Slave(worker_no, self.points[worker_no])
         self.workers[worker_no] = worker
@@ -270,7 +287,7 @@ class Overseer:
             (worker, worker.total_seen) for worker in workers.values()
             if worker.running
         ]
-        while True:
+        while not self.killed:
             now = time.time()
             # Restart workers that were killed
             for worker_no in range(self.count):
@@ -361,4 +378,6 @@ if __name__ == '__main__':
     try:
         loop.run_forever()
     except KeyboardInterrupt:
+        overseer.kill()
+        loop.run_until_complete(asyncio.gather(*asyncio.Task.all_tasks()))
         loop.close()
