@@ -38,10 +38,6 @@ for setting_name in REQUIRED_SETTINGS:
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
 
 
-workers = {}
-local_data = threading.local()
-
-
 class CannotProcessStep(Exception):
     """Raised when servers are too busy"""
 
@@ -64,7 +60,6 @@ class Slave:
     """Single worker walking on the map"""
     def __init__(self, worker_no, points):
         self.worker_no = worker_no
-        local_data.worker_no = worker_no
         self.points = points
         self.count_points = len(self.points)
         self.step = 0
@@ -80,6 +75,10 @@ class Slave:
         self.api = PGoApi()
         self.api.set_position(center[0], center[1], 100)  # lat, lon, alt
         self.api.set_logger(self.logger)
+
+    async def first_run(self):
+        await asyncio.sleep(self.worker_no * 2)
+        await self.login()
 
     async def run(self):
         if not self.logged_in:
@@ -167,7 +166,9 @@ class Slave:
         for i, point in enumerate(self.points):
             if not self.running:
                 return
-            self.logger.info('Visiting point %d (%s %s)', i, point[0], point[1])
+            self.logger.info(
+                'Visiting point %d (%s %s)', i, point[0], point[1]
+            )
             cell_ids = pgoapi_utils.get_cell_ids(point[0], point[1])
             self.api.set_position(point[0], point[1], 100)
             response_dict = await loop.run_in_executor(None, partial(
@@ -194,7 +195,9 @@ class Slave:
                 db.add_sighting(session, raw_pokemon)
                 self.seen_per_cycle += 1
                 self.total_seen += 1
-            self.logger.info('Point processed, %d Pokemons seen!', len(pokemons))
+            self.logger.info(
+                'Point processed, %d Pokemons seen!', len(pokemons)
+            )
             session.commit()
             # Clear error code and let know that there are Pokemon
             if self.error_code and self.seen_per_cycle:
@@ -277,9 +280,12 @@ class Overseer:
         loop = asyncio.get_event_loop()
         worker = Slave(worker_no, self.points[worker_no])
         self.workers[worker_no] = worker
-        loop.run_until_complete(worker.login())
-        if not first_run:
-            loop.create_task(worker.run())
+        future = loop.create_task(worker.first_run())
+        # For first time, we need to wait until all workers login before
+        # scanning
+        if first_run:
+            return future
+        loop.create_task(worker.run())
 
     def get_point_stats(self):
         lenghts = [len(p) for p in self.points]
@@ -290,8 +296,12 @@ class Overseer:
         }
 
     def start(self):
-        for worker_no in range(self.count):
+        futures = [
             self.start_worker(worker_no, first_run=True)
+            for worker_no in range(self.count)
+        ]
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(asyncio.wait(futures))
         # After all logged in, run them
         for worker in self.workers.values():
             loop.create_task(worker.run())
@@ -300,7 +310,8 @@ class Overseer:
         last_cleaned_cache = time.time()
         last_workers_checked = time.time()
         workers_check = [
-            (worker, worker.total_seen) for worker in workers.values()
+            (worker, worker.total_seen)
+            for worker in self.workers.values()
             if worker.running
         ]
         while not self.killed:
@@ -323,7 +334,8 @@ class Overseer:
                         worker.kill()
                 # Prepare new list
                 workers_check = [
-                    (worker, worker.total_seen) for worker in workers.values()
+                    (worker, worker.total_seen)
+                    for worker in self.workers.values()
                 ]
                 last_workers_checked = now
             if self.status_bar:
@@ -345,7 +357,7 @@ class Overseer:
             'PokeMiner\trunning for {}'.format(running_for),
             '{len} workers, each visiting ~{avg} points per cycle '
             '(min: {min}, max: {max})'.format(
-                len=len(workers),
+                len=workers_count,
                 avg=points_stats['avg'],
                 min=points_stats['min'],
                 max=points_stats['max'],
