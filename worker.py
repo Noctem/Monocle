@@ -77,8 +77,9 @@ class Slave:
         self.api.set_logger(self.logger)
 
     async def first_run(self):
-        await asyncio.sleep(self.worker_no * 2)
-        await self.login()
+        total_workers = config.GRID[0] * config.GRID[1]
+        await self.sleep(self.worker_no / total_workers * config.SCAN_DELAY)
+        await self.run()
 
     async def run(self):
         if not self.logged_in:
@@ -261,13 +262,14 @@ class Slave:
 
 
 class Overseer:
-    def __init__(self, status_bar):
+    def __init__(self, status_bar, loop):
         self.workers = {}
         self.count = config.GRID[0] * config.GRID[1]
         self.points = utils.get_points_per_worker()
         self.start_date = datetime.now()
         self.status_bar = status_bar
         self.killed = False
+        self.loop = loop
 
     def kill(self):
         self.killed = True
@@ -277,15 +279,17 @@ class Overseer:
     def start_worker(self, worker_no, first_run=False):
         if self.killed:
             return
-        loop = asyncio.get_event_loop()
         worker = Slave(worker_no, self.points[worker_no])
         self.workers[worker_no] = worker
-        future = loop.create_task(worker.first_run())
         # For first time, we need to wait until all workers login before
         # scanning
         if first_run:
-            return future
-        loop.create_task(worker.run())
+            self.loop.create_task(worker.first_run())
+            return
+        # WARNING: at this point, we're called by self.check which runs in
+        # separate thread than event loop! That's why run_coroutine_threadsafe
+        # is used here.
+        asyncio.run_coroutine_threadsafe(worker.run(), self.loop)
 
     def get_point_stats(self):
         lenghts = [len(p) for p in self.points]
@@ -296,15 +300,8 @@ class Overseer:
         }
 
     def start(self):
-        futures = [
+        for worker_no in range(self.count):
             self.start_worker(worker_no, first_run=True)
-            for worker_no in range(self.count)
-        ]
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(asyncio.wait(futures))
-        # After all logged in, run them
-        for worker in self.workers.values():
-            loop.create_task(worker.run())
 
     def check(self):
         last_cleaned_cache = time.time()
@@ -398,8 +395,9 @@ if __name__ == '__main__':
     else:
         configure_logger(filename=None)
     logger.setLevel(args.log_level)
-    overseer = Overseer(status_bar=args.status_bar)
     loop = asyncio.get_event_loop()
+    loop.set_debug(True)
+    overseer = Overseer(status_bar=args.status_bar, loop=loop)
     loop.set_default_executor(ThreadPoolExecutor())
     loop.run_in_executor(None, overseer.check)
     overseer.start()
