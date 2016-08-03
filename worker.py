@@ -50,7 +50,7 @@ def configure_logger(filename='worker.log'):
             '[%(asctime)s][%(threadName)10s][%(levelname)8s][L%(lineno)4d] '
             '%(message)s'
         ),
-        style='{',
+        style='%',
         level=logging.INFO,
     )
 
