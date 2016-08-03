@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from concurrent.futures import ThreadPoolExecutor
+from collections import deque
 from datetime import datetime
 from functools import partial
 import argparse
@@ -58,9 +59,10 @@ logger = logging.getLogger()
 
 class Slave:
     """Single worker walking on the map"""
-    def __init__(self, worker_no, points):
+    def __init__(self, worker_no, points, db_processor):
         self.worker_no = worker_no
         self.points = points
+        self.db_processor = db_processor
         self.count_points = len(self.points)
         self.step = 0
         self.cycle = 0
@@ -160,7 +162,6 @@ class Slave:
 
     async def main(self):
         """Heart of the worker - goes over each point and reports sightings"""
-        session = db.Session()
         self.seen_per_cycle = 0
         self.step = 0
         loop = asyncio.get_event_loop()
@@ -192,14 +193,13 @@ class Slave:
                         if pokemon['time_till_hidden_ms'] < 0:
                             continue
                         pokemons.append(self.normalize_pokemon(pokemon, now))
-            for raw_pokemon in pokemons:
-                db.add_sighting(session, raw_pokemon)
-                self.seen_per_cycle += 1
-                self.total_seen += 1
+            self.db_processor.add(pokemons)
+            pokemons_len = len(pokemons)
+            self.seen_per_cycle += pokemons_len
+            self.total_seen += pokemons_len
             self.logger.info(
-                'Point processed, %d Pokemons seen!', len(pokemons)
+                'Point processed, %d Pokemons seen!', pokemons_len
             )
-            session.commit()
             # Clear error code and let know that there are Pokemon
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
@@ -207,7 +207,6 @@ class Slave:
             await self.sleep(
                 random.uniform(config.SCAN_DELAY, config.SCAN_DELAY + 2)
             )
-        session.close()
         if self.seen_per_cycle == 0:
             self.error_code = 'NO POKEMON'
 
@@ -270,16 +269,22 @@ class Overseer:
         self.status_bar = status_bar
         self.killed = False
         self.loop = loop
+        self.db_processor = DatabaseProcessor()
 
     def kill(self):
         self.killed = True
         for worker in self.workers.values():
             worker.kill()
+        self.db_processor.stop()
 
     def start_worker(self, worker_no, first_run=False):
         if self.killed:
             return
-        worker = Slave(worker_no, self.points[worker_no])
+        worker = Slave(
+            worker_no=worker_no,
+            points=self.points[worker_no],
+            db_processor=self.db_processor,
+        )
         self.workers[worker_no] = worker
         # For first time, we need to wait until all workers login before
         # scanning
@@ -302,6 +307,7 @@ class Overseer:
     def start(self):
         for worker_no in range(self.count):
             self.start_worker(worker_no, first_run=True)
+        self.loop.run_in_executor(None, self.db_processor.process)
 
     def check(self):
         last_cleaned_cache = time.time()
@@ -368,6 +374,33 @@ class Overseer:
             output.append('\t'.join(messages[previous:i]))
             previous = i
         return '\n'.join(output)
+
+
+class DatabaseProcessor:
+    def __init__(self):
+        self.queue = deque()
+        self.logger = logging.getLogger('dbprocessor')
+        self.running = True
+
+    def stop(self):
+        self.running = False
+
+    def add(self, obj_list):
+        self.queue.extend(obj_list)
+
+    def process(self):
+        session = db.Session()
+        while self.running or self.queue:
+            try:
+                item = self.queue.popleft()
+            except IndexError:
+                self.logger.debug('No items - sleeping')
+                time.sleep(0.2)
+            else:
+                db.add_sighting(session, item)
+                self.logger.debug('Item saved to db')
+                session.commit()
+        session.close()
 
 
 def parse_args():
