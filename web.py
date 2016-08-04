@@ -13,6 +13,7 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import config as app_config
 import db
 import utils
+from names import POKEMON_NAMES
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -31,9 +32,6 @@ for setting_name in REQUIRED_SETTINGS:
 
 with open('credentials.json') as f:
     credentials = json.load(f)
-
-with open('locales/pokemon.en.json') as f:
-    pokemon_names = json.load(f)
 
 
 GOOGLEMAPS_KEY = credentials.get('gmaps_key', None)
@@ -110,7 +108,7 @@ def get_pokemarkers():
     session.close()
 
     for pokemon in pokemons:
-        name = pokemon_names[str(pokemon.pokemon_id)]
+        name = POKEMON_NAMES[pokemon.pokemon_id]
         datestr = datetime.fromtimestamp(pokemon.expire_timestamp)
         dateoutput = datestr.strftime("%H:%M:%S")
 
@@ -200,12 +198,12 @@ def report_main():
     js_data = {
         'charts_data': {
             'punchcard': db.get_punch_card(session),
-            'top30': [(pokemon_names[str(r[0])], r[1]) for r in top_pokemon],
+            'top30': [(POKEMON_NAMES[r[0]], r[1]) for r in top_pokemon],
             'bottom30': [
-                (pokemon_names[str(r[0])], r[1]) for r in bottom_pokemon
+                (POKEMON_NAMES[r[0]], r[1]) for r in bottom_pokemon
             ],
             'stage2': [
-                (pokemon_names[str(r[0])], r[1]) for r in stage2_pokemon
+                (POKEMON_NAMES[r[0]], r[1]) for r in stage2_pokemon
             ],
         },
         'maps_data': {
@@ -216,11 +214,11 @@ def report_main():
         'zoom': 13,
     }
     icons = {
-        'top30': [(r[0], pokemon_names[str(r[0])]) for r in top_pokemon],
-        'bottom30': [(r[0], pokemon_names[str(r[0])]) for r in bottom_pokemon],
-        'stage2': [(r[0], pokemon_names[str(r[0])]) for r in stage2_pokemon],
+        'top30': [(r[0], POKEMON_NAMES[r[0]]) for r in top_pokemon],
+        'bottom30': [(r[0], POKEMON_NAMES[r[0]]) for r in bottom_pokemon],
+        'stage2': [(r[0], POKEMON_NAMES[r[0]]) for r in stage2_pokemon],
         'nonexistent': [
-            (r, pokemon_names[str(r)])
+            (r, POKEMON_NAMES[r])
             for r in db.get_nonexistent_pokemon(session)
         ]
     }
@@ -262,7 +260,7 @@ def report_single(pokemon_id):
         area_name=app_config.AREA_NAME,
         area_size=utils.get_scan_area(),
         pokemon_id=pokemon_id,
-        pokemon_name=pokemon_names[str(pokemon_id)],
+        pokemon_name=POKEMON_NAMES[pokemon_id],
         total_spawn_count=db.get_total_spawns_count(session, pokemon_id),
         session_start=session_stats['start'],
         session_end=session_stats['end'],

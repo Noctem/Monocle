@@ -1,5 +1,4 @@
 from datetime import datetime
-import json
 import time
 
 from sqlalchemy.orm import sessionmaker
@@ -7,10 +6,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.sql import not_
-
-
-with open('locales/pokemon.en.json') as f:
-    pokemon_names = json.load(f)
 
 
 try:
