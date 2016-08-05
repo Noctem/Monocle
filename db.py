@@ -117,10 +117,10 @@ class Sighting(Base):
     id = Column(Integer, primary_key=True)
     pokemon_id = Column(Integer)
     spawn_id = Column(String(32))
-    expire_timestamp = Column(Integer)
+    expire_timestamp = Column(Integer, index=True)
     normalized_timestamp = Column(Integer)
-    lat = Column(String(16))
-    lon = Column(String(16))
+    lat = Column(String(16), index=True)
+    lon = Column(String(16), index=True)
 
 
 class Fort(Base):
@@ -128,8 +128,8 @@ class Fort(Base):
 
     id = Column(Integer, primary_key=True)
     external_id = Column(String(64))
-    lat = Column(String(16))
-    lon = Column(String(16))
+    lat = Column(String(16), index=True)
+    lon = Column(String(16), index=True)
 
     sightings = relationship(
         'FortSighting',
