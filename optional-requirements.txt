@@ -1,0 +1,2 @@
+pushbullet.py>=0.10.0
+python-twitter>=3.0

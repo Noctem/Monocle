@@ -17,6 +17,7 @@ from pgoapi import (
 import config
 import db
 import utils
+import notification
 
 
 # Check whether config has all necessary attributes
@@ -178,6 +179,11 @@ class Slave(threading.Thread):
                             continue
                         pokemons.append(self.normalize_pokemon(pokemon, now))
             for raw_pokemon in pokemons:
+                try:
+                    if raw_pokemon['pokemon_id'] in config.NOTIFY_IDS:
+                        notification.notify(raw_pokemon)
+                except NameError:
+                    pass
                 db.add_sighting(session, raw_pokemon)
                 self.seen_per_cycle += 1
                 self.total_seen += 1

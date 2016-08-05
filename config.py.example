@@ -1,6 +1,8 @@
 # coding: utf-8
 from datetime import datetime
 
+from landmark import Landmark
+
 DB_ENGINE = 'sqlite:///db.sqlite'
 AREA_NAME = u'Wrocław'
 LANGUAGE = 'English'  # English, German, French, or Chinese
@@ -21,5 +23,30 @@ ACCOUNTS = [
 
 TRASH_IDS = [13, 16, 19, 21, 41, 96]
 STAGE2 = [94, 139, 141, 149]
+NOTIFY_IDS = [141, 142, 143, 144, 145, 146, 148, 149, 150, 151]
 
 REPORT_SINCE = datetime(2016, 7, 29)
+
+HASHTAGS = {AREA_NAME, 'PokemonGO'}
+
+LANDMARKS = [
+    Landmark('Indian Hills', north=40.279321, west=-111.644326,
+             south=40.270809, east=-111.633194,
+             center=(40.272910, -111.639777), phrase='in'),
+    Landmark('the Provo Temple', north=40.264291, west=-111.642234,
+             south=40.262820, east=-111.638420,
+             center=(40.263684, -111.639896)),
+    Landmark('LaVell Edwards Stadium', north=40.258695, west=-111.655977,
+             south=40.255872, east=-111.653050,
+             center=(40.257526, -111.654546), hashtags={'GoCougs'})
+]
+
+# The following values are fake, replace them with your own keys to enable
+# PushBullet notifications and/or tweeting, otherwise leave them out of your
+# config or set them to None.
+PB_API_KEY = 'o.9187cb7d5b857c97bfcaa8d63eaa8494'
+PB_CHANNEL = 0
+TWITTER_CONSUMER_KEY = '53d997264eb7f6452b7bf101d'
+TWITTER_CONSUMER_SECRET = '64b9ebf618829a51f8c0535b56cebc808eb3e80d3d18bf9e00'
+TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
+TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'
