@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 
 from flask import Flask, render_template
@@ -16,7 +16,22 @@ with open('locales/pokemon.en.json') as f:
 app = Flask(__name__, template_folder='templates')
 
 
-def calculate_stats(forts):
+CACHE = {
+    'data': None,
+    'generated_at': None,
+}
+
+
+def get_stats():
+    cache_valid = (
+        CACHE['data'] and
+        CACHE['generated_at'] > datetime.now() - timedelta(minutes=15)
+    )
+    if cache_valid:
+        return CACHE['data']
+    session = db.Session()
+    forts = db.get_forts(session)
+    session.close()
     count = {t.value: 0 for t in db.Team}
     strongest = {t.value: None for t in db.Team}
     percentages = {}
@@ -37,22 +52,21 @@ def calculate_stats(forts):
             )
     for team in db.Team:
         percentages[team.value] = count.get(team.value) / len(forts)
-    return {
+    CACHE['generated_at'] = datetime.now()
+    CACHE['data'] = {
         'order': sorted(count, key=count.__getitem__, reverse=True),
         'count': count,
         'total_count': sum(count),
         'strongest': strongest,
         'percentages': percentages,
-        'generated_at': datetime.now()
+        'generated_at': CACHE['generated_at'],
     }
+    return CACHE['data']
 
 
 @app.route('/')
 def index():
-    session = db.Session()
-    forts = db.get_forts(session)
-    stats = calculate_stats(forts)
-    session.close()
+    stats = get_stats()
     team_names = {k.value: k.name.title() for k, v in db.Team}
     styles = {1: 'danger', 2: 'primary', 3: 'warning'}
     return render_template(
