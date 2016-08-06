@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Pokeminer - {{ area_name }}</title>
-    <link rel="stylesheet" href="https://npmcdn.com/leaflet@1.0.0-rc.3/dist/leaflet.css">
+    <link rel="stylesheet" href="../static/css/leaflet.css">
     <style>
         .map {
             position: absolute;
@@ -52,7 +52,6 @@
 
     <div class="floating-panel">
         <div><button id="myLocation">My location</button></div>
-        <div><button id="toggleWorkers">Show workers</button></div>
     </div>
 
     <script src="../static/js/jquery-3.1.0.min.js"></script>
@@ -108,7 +107,7 @@
         var markers = {};
 
         function getPopupContent (item) {
-            var diff = (item.expires_at - new Date().getTime()) / 1000;
+            var diff = (item.expires_at - new Date().getTime() / 1000);
             var minutes = parseInt(diff / 60);
             var seconds = parseInt(diff - (minutes * 60));
             var expires_at = minutes + 'm ' + seconds + 's';
@@ -116,7 +115,7 @@
         }
 
         function getOpacity (item) {
-            var diff = (item.expires_at - new Date().getTime()) / 1000;
+            var diff = (item.expires_at - new Date().getTime() / 1000);
             if (diff > 600) {
                 return 1;
             }
