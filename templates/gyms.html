@@ -21,17 +21,17 @@
         <p>Out of {{ total_count }} gyms in Wrocław, {{ team_names[order[0]] }} owns <span class="label label-{{ styles[order[0]] }}">{{ count[order[0]] }} ({{ percentages[order[0]] }}%)</span> of them.</p>
         <p>Next in line is {{ team_names[order[1]] }}, which owns <span class="label label-{{ styles[order[1]] }}">{{ count[order[1]] }} ({{ percentages[order[1]] }}%</span> Gyms right now.</p>
         <p>And the loser is {{ team_names[order[2]] }} with just <span class="label label-{{ styles[order[2]] }}">{{ count[order[2]] }} ({{ percentages[order[2]] }}%</span> Gyms in possesion.</p>
-        <p>By the way, <span class="label label-default">13 (4%)</span> Gyms are empty.</p>
+        <p>By the way, <span class="label label-default">{{ count[0] }} ({{ percentages[0] }}%)</span> Gyms are empty.</p>
 
         <hr>
 
-        <p>{{ team_names[order[0]] }}'s strongest Gym has <span class="label label-{{ styles[order[0]] }}">{{ strongest[order[0]][0] }} prestige</span> and is guarded by <span class="label label-{{ styles[order[0]] }}">{{ strongest[order[2]][0] }}</span>.</p>
-        <p>On the other hand, runner up ({{ team_names[order[1]] }}) can boast with their <span class="label label-{{ styles[order[1]] }}">{{ strongest[order[1]][0] }} prestige</span> as the strongest Gym and <span class="label label-{{ styles[order[1]] }}">{{ strongest[order[2]][1] }}</span> sitting there.</p>
+        <p>{{ team_names[order[0]] }}'s strongest Gym has <span class="label label-{{ styles[order[0]] }}">{{ strongest[order[0]][0] }} prestige</span> and is guarded by <span class="label label-{{ styles[order[0]] }}">{{ strongest[order[0]][2] }}</span>.</p>
+        <p>On the other hand, runner up ({{ team_names[order[1]] }}) can boast with their <span class="label label-{{ styles[order[1]] }}">{{ strongest[order[1]][0] }} prestige</span> as the strongest Gym and <span class="label label-{{ styles[order[1]] }}">{{ strongest[order[1]][2] }}</span> sitting there.</p>
         <p>Last but not least, <span class="label label-{{ styles[order[2]] }}">{{ strongest[order[2]][0] }} prestige</span> guarded by <span class="label label-{{ styles[order[2]] }}">{{ strongest[order[2]][2] }}</span> is the stronghold for {{ team_names[order[2]] }}.</p>
 
         <hr>
 
-        <p><small><i>Generated {{ minutes_ago }} using data gathered by <a href="https://github.com/modrzew/pokeminer">pokeminer</a></i></small></p>
+        <p><small><i>Generated {{ minutes_ago }} minutes ago using data gathered by <a href="https://github.com/modrzew/pokeminer">pokeminer</a></i></small></p>
     </div>
 </body>
 </html>

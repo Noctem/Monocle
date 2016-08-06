@@ -47,8 +47,8 @@ def get_stats():
         if should_replace:
             strongest[team] = (
                 fort['prestige'],
-                fort['pokemon_id'],
-                pokemon_names[str(fort['pokemon_id'])],
+                fort['guard_pokemon_id'],
+                pokemon_names[str(fort['guard_pokemon_id'])],
             )
     for team in db.Team:
         percentages[team.value] = count.get(team.value) / len(forts)
@@ -56,7 +56,7 @@ def get_stats():
     CACHE['data'] = {
         'order': sorted(count, key=count.__getitem__, reverse=True),
         'count': count,
-        'total_count': sum(count),
+        'total_count': len(forts),
         'strongest': strongest,
         'percentages': percentages,
         'generated_at': CACHE['generated_at'],
@@ -67,8 +67,8 @@ def get_stats():
 @app.route('/')
 def index():
     stats = get_stats()
-    team_names = {k.value: k.name.title() for k, v in db.Team}
-    styles = {1: 'danger', 2: 'primary', 3: 'warning'}
+    team_names = {k.value: k.name.title() for k in db.Team}
+    styles = {1: 'primary', 2: 'danger', 3: 'warning'}
     return render_template(
         'gyms.html',
         area_name=config.AREA_NAME,
