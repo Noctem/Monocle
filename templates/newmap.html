@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pokeminer - {{ area_name }}</title>
+    <link rel="stylesheet" href="https://npmcdn.com/leaflet@1.0.0-rc.3/dist/leaflet.css">
+    <style>
+        .map {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 100;
+        }
+        .floating-panel {
+            z-index: 1000;
+            position: absolute;
+            bottom: 30px;
+            left: 10px;
+            padding: 10px;
+            box-sizing: border-box;
+            background-color: rgba(255, 255, 255, 0.8);
+            background-image: url(/static/icons/137.png);
+            background-size: 24px 24px;
+            background-position: 4px 4px;
+            background-repeat: no-repeat;
+            text-align: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 2px;
+        }
+        .floating-panel:hover {
+            background-image: none;
+            width: auto;
+            height: auto;
+            padding-bottom: 42px;
+        }
+        .floating-panel > div {
+            margin: 5px auto;
+            display: none;
+        }
+        .floating-panel:hover > div {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pokeminer is initializing, please wait.</h1>
+
+    <div id="main-map" class="map"></div>
+
+    <div class="floating-panel">
+        <div><button id="myLocation">My location</button></div>
+        <div><button id="toggleWorkers">Show workers</button></div>
+    </div>
+
+    <script src="../static/js/jquery-3.1.0.min.js"></script>
+    <script src="../static/js/leaflet-1.0.0-rc.3.min.js"></script>
+    <script>
+        var PokemonIcon = L.Icon.extend({
+            options: {
+                iconSize: [30, 30],
+                popupAnchor: [0, -16]
+            }
+        });
+        var FortIcon = L.Icon.extend({
+            options: {
+                iconSize: [20, 20],
+                popupAnchor: [0, -10]
+            }
+        });
+
+        var first = true;
+        function getMarkers () {
+            return new Promise(function (resolve, reject) {
+                if (first) {
+                    resolve([
+                        {id: 1, type: 'pokemon', lat: 51.11, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 10000},
+                        {id: 2, type: 'pokemon', lat: 51.21, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 15000},
+                        {id: 3, type: 'pokemon', lat: 51.31, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 20000},
+                        {id: 4, type: 'pokemon', lat: 51.41, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 25000},
+                        {id: 5, type: 'pokemon', lat: 51.51, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 30000},
+                        {id: 6, type: 'pokemon', lat: 51.61, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 35000},
+                    ]);
+                    first = false;
+                } else {
+                    resolve([
+                        {id: 1, type: 'pokemon', lat: 51.11, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 90000},
+                        {id: 4, type: 'pokemon', lat: 51.41, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 90000},
+                        {id: 5, type: 'pokemon', lat: 51.51, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 90000},
+                        {id: 6, type: 'pokemon', lat: 51.61, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 90000},
+                        {id: 7, type: 'pokemon', lat: 51.11, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 90000},
+                        {id: 8, type: 'pokemon', lat: 51.21, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 180000},
+                        {id: 9, type: 'pokemon', lat: 51.31, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 270000},
+                        {id: 10, type: 'pokemon', lat: 51.41, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 360000},
+                        {id: 11, type: 'pokemon', lat: 51.51, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 450000},
+                        {id: 12, type: 'pokemon', lat: 51.61, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 540000},
+                        {id: 13, type: 'fort', lat: 51.81, lon: 17.13, team: 0, pokemon_id: null, pokemon_name: 'Empty', prestige: 12345},
+                        {id: 14, type: 'fort', lat: 51.81, lon: 17.23, team: 1, pokemon_id: 124, pokemon_name: 'Magnemite', prestige: 23456},
+                        {id: 15, type: 'fort', lat: 51.81, lon: 17.33, team: 2, pokemon_id: 125, pokemon_name: 'Vaporeon', prestige: 34567},
+                        {id: 16, type: 'fort', lat: 51.81, lon: 17.43, team: 3, pokemon_id: 126, pokemon_name: 'Igglybuff', prestige: 45678},
+                    ]);
+                }
+            });
+        }
+
+        var markers = {};
+
+        function getPopupContent (item) {
+            var diff = (item.expires_at - new Date().getTime()) / 1000;
+            var minutes = parseInt(diff / 60);
+            var seconds = parseInt(diff - (minutes * 60));
+            var expires_at = minutes + 'm ' + seconds + 's';
+            return '<b>#' + item.pokemon_id + ' ' + item.name + '</b> ' + expires_at;
+        }
+
+        function getOpacity (item) {
+            var diff = (item.expires_at - new Date().getTime()) / 1000;
+            if (diff > 600) {
+                return 1;
+            }
+            return 0.5 + diff / 600;
+        }
+
+        function PokemonMarker (raw) {
+            var icon = new PokemonIcon({iconUrl: '../static/icons/' + raw.pokemon_id + '.png'});
+            var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: 1});
+            marker.raw = raw;
+            markers[raw.id] = marker;
+            marker.on('popupopen',function popupopen (event) {
+                event.popup.setContent(getPopupContent(event.target.raw));
+                event.target.popupInterval = setInterval(function () {
+                    event.popup.setContent(getPopupContent(event.target.raw));
+                }, 1000);
+            });
+            marker.on('popupclose', function (event) {
+                clearInterval(event.target.popupInterval);
+            });
+            marker.setOpacity(getOpacity(marker.raw));
+            marker.opacityInterval = setInterval(function () {
+                var diff = marker.raw.expires_at - new Date().getTime();
+                if (diff > 0) {
+                    marker.setOpacity(getOpacity(marker.raw));
+                } else {
+                    marker.removeFrom(map);
+                    markers[marker.raw.id] = undefined;
+                    clearInterval(marker.opacityInterval);
+                }
+            }, 1000);
+            marker.bindPopup();
+            return marker;
+        }
+
+        function FortMarker (raw) {
+            var icon = new FortIcon({iconUrl: '../static/forts/' + raw.team + '.png'});
+            var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: 1});
+            marker.raw = raw;
+            markers[raw.id] = marker;
+            marker.on('popupopen',function popupopen (event) {
+                var pokemonName;
+                if (raw.team === 0) {
+                    event.popup.setContent('An empty Gym!');
+                } else {
+                    event.popup.setContent('Prestige: <b>' + raw.prestige + '</b><br>Guarding Pokemon:<br><b>' + '#' + raw.pokemon_id + ' ' + raw.pokemon_name + '</b>');
+                }
+            });
+            marker.bindPopup();
+            return marker;
+        }
+
+        function addMarkersToMap (data, map) {
+            // Pokemons
+            data.forEach(function (item) {
+                var marker;
+                if (item.type === 'pokemon') {
+                    // Already placed? No need to do anything, then
+                    if (item.id in markers) {
+                        return;
+                    }
+                    marker = PokemonMarker(item);
+                } else {
+                    // No change since last time? Then don't do anything
+                    var existing = markers[item.id];
+                    if (typeof existing !== 'undefined') {
+                        if (existing.raw.sighting_id === item.sighting_id) {
+                            return;
+                        }
+                        existing.removeFrom(map);
+                        markers[item.id] = undefined;
+                    }
+                    marker = FortMarker(item);
+                }
+                marker.addTo(map);
+            });
+        }
+
+        // var map = L.map('main-map').setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
+        var map = L.map('main-map').setView([51.1, 17.2], 13);
+        L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png').addTo(map);
+        map.whenReady(function () {
+            $('#myLocation').on('click', function () {
+                map.locate({ enableHighAccurracy: true, setView: true });
+            });
+
+            setInterval(function () {
+                getMarkers().then(function (data) {
+                    addMarkersToMap(data, map);
+                });
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

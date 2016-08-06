@@ -22,3 +22,4 @@ TRASH_IDS = [13, 16, 19, 21, 41, 96]
 STAGE2 = [94, 139, 141, 149]
 
 REPORT_SINCE = datetime(2016, 7, 29)
+GOOGLE_MAPS_KEY = 's3cr3t'
