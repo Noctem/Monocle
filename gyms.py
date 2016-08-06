@@ -35,6 +35,8 @@ def get_stats():
     session.close()
     count = {t.value: 0 for t in db.Team}
     strongest = {t.value: None for t in db.Team}
+    guardians = {t.value: {} for t in db.Team}
+    top_guardians = {t.value: None for t in db.Team}
     percentages = {}
     last_date = 0
     for fort in forts:
@@ -42,22 +44,33 @@ def get_stats():
             last_date = fort['last_modified']
         team = fort['team']
         count[team] = count[team] + 1
+        # Strongest gym
         existing = strongest[team]
         should_replace = (
             existing is not None and
             fort['prestige'] > existing[0] or
             existing is None
         )
+        pokemon_id = fort['guard_pokemon_id']
         if should_replace:
             strongest[team] = (
                 fort['prestige'],
-                fort['guard_pokemon_id'],
-                pokemon_names[str(fort['guard_pokemon_id'])],
+                pokemon_id,
+                pokemon_names[str(pokemon_id)],
             )
+        # Guardians
+        guardians[team][pokemon_id] = guardians[team].get(pokemon_id, 0) + 1
     for team in db.Team:
         percentages[team.value] = round(
             count.get(team.value) / len(forts) * 100
         )
+        if guardians[team.value]:
+            pokemon_id = sorted(
+                guardians[team.value],
+                key=guardians[team.value].__getitem__,
+                reverse=True
+            )[0]
+            top_guardians[team.value] = pokemon_names[str(pokemon_id)]
     CACHE['generated_at'] = datetime.now()
     CACHE['data'] = {
         'order': sorted(count, key=count.__getitem__, reverse=True),
@@ -66,6 +79,7 @@ def get_stats():
         'strongest': strongest,
         'percentages': percentages,
         'last_date': last_date,
+        'top_guardians': top_guardians,
         'generated_at': CACHE['generated_at'],
     }
     return CACHE['data']
