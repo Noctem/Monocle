@@ -59,9 +59,10 @@ logger = logging.getLogger()
 
 class Slave:
     """Single worker walking on the map"""
-    def __init__(self, worker_no, points, db_processor):
+    def __init__(self, worker_no, points, cell_ids, db_processor):
         self.worker_no = worker_no
         self.points = points
+        self.cell_ids = cell_ids
         self.db_processor = db_processor
         self.count_points = len(self.points)
         self.step = 0
@@ -171,9 +172,7 @@ class Slave:
             self.logger.info(
                 'Visiting point %d (%s %s)', i, point[0], point[1]
             )
-            cell_ids = await loop.run_in_executor(
-                None, pgoapi_utils.get_cell_ids, point[0], point[1]
-            )
+            cell_ids = self.cell_ids[i]
             self.api.set_position(point[0], point[1], 100)
             response_dict = await loop.run_in_executor(None, partial(
                 self.api.get_map_objects,
@@ -266,12 +265,16 @@ class Overseer:
     def __init__(self, status_bar, loop):
         self.workers = {}
         self.count = config.GRID[0] * config.GRID[1]
+        logger.info('Generating points...')
         self.points = utils.get_points_per_worker()
+        logger.info('Generating cell IDs...')
+        self.cell_ids = utils.get_cell_ids_per_worker(self.points)
         self.start_date = datetime.now()
         self.status_bar = status_bar
         self.killed = False
         self.loop = loop
         self.db_processor = DatabaseProcessor()
+        logger.info('Overseer initialized')
 
     def kill(self):
         self.killed = True
@@ -285,6 +288,7 @@ class Overseer:
         worker = Slave(
             worker_no=worker_no,
             points=self.points[worker_no],
+            cell_ids=self.cell_ids[worker_no],
             db_processor=self.db_processor,
         )
         self.workers[worker_no] = worker
