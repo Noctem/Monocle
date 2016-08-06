@@ -5,7 +5,6 @@ import json
 
 import requests
 from flask import Flask, request, render_template
-from flask_googlemaps import icons
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 import config
@@ -114,6 +113,7 @@ def get_pokemarkers():
 
 
 def get_worker_markers():
+    # TODO: rewrite this
     markers = []
     points = utils.get_points_per_worker()
     # Worker start points
