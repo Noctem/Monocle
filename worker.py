@@ -22,13 +22,14 @@ import utils
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
     'DB_ENGINE',
+    'ENCRYPT_PATH',
     'CYCLES_PER_WORKER',
     'MAP_START',
     'MAP_END',
     'GRID',
     'ACCOUNTS',
-    'LAT_GAIN',
-    'LON_GAIN',
+    'SCAN_RADIUS',
+    'SCAN_DELAY',
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
@@ -50,7 +51,7 @@ def configure_logger(filename='worker.log'):
             '[%(asctime)s][%(threadName)10s][%(levelname)8s][L%(lineno)4d] '
             '%(message)s'
         ),
-        style='{',
+        style='%',
         level=logging.INFO,
     )
 
@@ -80,6 +81,7 @@ class Slave(threading.Thread):
         self.running = True
         center = self.points[0]
         self.api = PGoApi()
+        self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(center[0], center[1], 100)  # lat, lon, alt
 
     def run(self):
@@ -100,16 +102,18 @@ class Slave(threading.Thread):
                 )
             except pgoapi_exceptions.AuthException:
                 self.error_code = 'LOGIN FAIL'
+                self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
                 self.error_code = 'BAD LOGIN'
+                self.restart()
                 return
             except pgoapi_exceptions.ServerBusyOrOfflineException:
                 self.error_code = 'RETRYING'
                 self.restart()
                 return
             except pgoapi_exceptions.ServerSideRequestThrottlingException:
-                time.sleep(random.uniform(0.2, 0.5))
+                time.sleep(random.uniform(1, 5))
                 continue
             except Exception:
                 logger.exception('A wild exception appeared!')
@@ -169,6 +173,11 @@ class Slave(threading.Thread):
             if map_objects.get('status') == 1:
                 for map_cell in map_objects['map_cells']:
                     for pokemon in map_cell.get('wild_pokemons', []):
+                        # Care only about 15 min spawns
+                        # 30 and 45 min ones will be just put after
+                        # time_till_hidden is below 15 min
+                        if pokemon['time_till_hidden_ms'] < 0:
+                            continue
                         pokemons.append(self.normalize_pokemon(pokemon, now))
             for raw_pokemon in pokemons:
                 db.add_sighting(session, raw_pokemon)
@@ -180,7 +189,9 @@ class Slave(threading.Thread):
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
             self.step += 1
-            time.sleep(random.uniform(0.2, 0.5))
+            time.sleep(
+                random.uniform(config.SCAN_DELAY, config.SCAN_DELAY + 2)
+            )
         session.close()
         if self.seen_per_cycle == 0:
             self.error_code = 'NO POKEMON'
@@ -304,7 +315,7 @@ def spawn_workers(workers, status_bar=True):
                 _ = os.system('cls')
             else:
                 _ = os.system('clear')
-            print get_status_message(workers, count, start_date, points_stats)
+            print(get_status_message(workers, count, start_date, points_stats))
         time.sleep(0.5)
 
 
