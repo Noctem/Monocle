@@ -96,7 +96,7 @@ Here's how the overall report looks like:
 
 Gyms statistics server is in a separate file, because it's intended to be shared publicly as a webpage - [just as I did for Wrocław](https://pogowroc.modriv.net).
 
-[![http://i.imgur.com/1098HkEm.png]](http://i.imgur.com/1098HkE.png)
+[![](http://i.imgur.com/1098HkEm.png)](http://i.imgur.com/1098HkE.png)
 
 ## License
 
