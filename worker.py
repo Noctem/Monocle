@@ -193,14 +193,15 @@ class Slave(threading.Thread):
                 db.add_sighting(session, raw_pokemon)
                 self.seen_per_cycle += 1
                 self.total_seen += 1
+            session.commit()
             for raw_fort in forts:
                 db.add_fort_sighting(session, raw_fort)
+            # Commit is not necessary here, it's done by add_fort_sighting
             logger.info(
                 'Point processed, %d Pokemons and %d forts seen!',
                 len(pokemons),
                 len(forts),
             )
-            session.commit()
             # Clear error code and let know that there are Pokemon
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None

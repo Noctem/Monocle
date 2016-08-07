@@ -3,11 +3,11 @@ import enum
 import json
 import time
 
-from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String, ForeignKey
-from sqlalchemy.sql import not_
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
 
 
 with open('locales/pokemon.en.json') as f:
@@ -233,7 +233,12 @@ def add_fort_sighting(session, raw_fort):
         last_modified=raw_fort['last_modified'],
     )
     session.add(obj)
-    FORT_CACHE.add(raw_fort)
+    try:
+        session.commit()
+    except IntegrityError:  # skip adding fort this time
+        session.rollback()
+    else:
+        FORT_CACHE.add(raw_fort)
 
 
 def get_sightings(session):
