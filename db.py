@@ -257,18 +257,20 @@ def get_sightings(session):
 
 def get_forts(session):
     query = session.execute('''
-        SELECT
-            DISTINCT fs.fort_id,
-            fs.id,
-            fs.team,
-            fs.prestige,
-            fs.guard_pokemon_id,
-            fs.last_modified,
-            f.lat,
-            f.lon
-        FROM fort_sightings fs
-        JOIN forts f ON f.id=fs.fort_id
-        ORDER BY fs.last_modified DESC
+        SELECT * FROM (
+            SELECT
+                fs.fort_id,
+                fs.id,
+                fs.team,
+                fs.prestige,
+                fs.guard_pokemon_id,
+                fs.last_modified,
+                f.lat,
+                f.lon
+            FROM fort_sightings fs
+            JOIN forts f ON f.id=fs.fort_id
+            ORDER BY fs.last_modified DESC
+        ) t GROUP BY fort_id
     ''')
     return query.fetchall()
 
