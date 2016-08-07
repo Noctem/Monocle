@@ -208,7 +208,7 @@
                 var points = [];
                 data.forEach(function (point) {
                     if (point.type == 'worker') {
-                        points.push(L.marker([point.lat, point.lon], {icon: L.icon({iconUrl: '/static/img/marker-icon.png'})}).bindPopup('Worker ' + point.worker_no));
+                        points.push(L.marker([point.lat, point.lon], {icon: L.icon({iconUrl: '/static/img/marker-icon.png', iconAnchor: [13, 41]})}).bindPopup('Worker ' + point.worker_no));
                     } else if (point.type == 'worker_point') {
                         points.push(L.circle([point.lat, point.lon], 70, {weight: 2}).bindPopup('Worker ' + point.worker_no + ', point '+ point.point_no));
                     }
