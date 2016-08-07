@@ -63,7 +63,10 @@ def pokemon_data():
 
 @app.route('/workers_data')
 def workers_data():
-    return json.dumps(get_worker_markers())
+    return json.dumps({
+        'points': get_worker_markers(),
+        'scan_radius': config.SCAN_RADIUS,
+    })
 
 
 @app.route('/')
@@ -115,7 +118,6 @@ def get_pokemarkers():
 
 
 def get_worker_markers():
-    # TODO: rewrite this
     markers = []
     points = utils.get_points_per_worker()
     # Worker start points
