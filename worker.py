@@ -22,6 +22,7 @@ import utils
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
     'DB_ENGINE',
+    'ENCRYPT_PATH',
     'CYCLES_PER_WORKER',
     'MAP_START',
     'MAP_END',
@@ -80,6 +81,7 @@ class Slave(threading.Thread):
         self.running = True
         center = self.points[0]
         self.api = PGoApi()
+        self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(center[0], center[1], 100)  # lat, lon, alt
 
     def run(self):
