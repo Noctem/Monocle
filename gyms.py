@@ -44,22 +44,24 @@ def get_stats():
             last_date = fort['last_modified']
         team = fort['team']
         count[team] = count[team] + 1
-        # Strongest gym
-        existing = strongest[team]
-        should_replace = (
-            existing is not None and
-            fort['prestige'] > existing[0] or
-            existing is None
-        )
-        pokemon_id = fort['guard_pokemon_id']
-        if should_replace:
-            strongest[team] = (
-                fort['prestige'],
-                pokemon_id,
-                pokemon_names[str(pokemon_id)],
+        if team != 0:
+            # Strongest gym
+            existing = strongest[team]
+            should_replace = (
+                existing is not None and
+                fort['prestige'] > existing[0] or
+                existing is None
             )
-        # Guardians
-        guardians[team][pokemon_id] = guardians[team].get(pokemon_id, 0) + 1
+            pokemon_id = fort['guard_pokemon_id']
+            if should_replace:
+                strongest[team] = (
+                    fort['prestige'],
+                    pokemon_id,
+                    pokemon_names[str(pokemon_id)],
+                )
+            # Guardians
+            guardian_value = guardians[team].get(pokemon_id, 0)
+            guardians[team][pokemon_id] = guardian_value + 1
     for team in db.Team:
         percentages[team.value] = round(
             count.get(team.value) / len(forts) * 100
