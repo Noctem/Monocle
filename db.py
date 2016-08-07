@@ -258,8 +258,8 @@ def get_sightings(session):
 def get_forts(session):
     query = session.execute('''
         SELECT
+            DISTINCT fs.fort_id,
             fs.id,
-            fs.fort_id,
             fs.team,
             fs.prestige,
             fs.guard_pokemon_id,
@@ -268,7 +268,6 @@ def get_forts(session):
             f.lon
         FROM fort_sightings fs
         JOIN forts f ON f.id=fs.fort_id
-        GROUP BY fs.fort_id
         ORDER BY fs.last_modified DESC
     ''')
     return query.fetchall()

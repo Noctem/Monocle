@@ -137,6 +137,7 @@
                     } else {
                         marker.removeFrom(overlays.Pokemons);
                     }
+                    marker.removeFrom(map);
                     markers[marker.raw.id] = undefined;
                     clearInterval(marker.opacityInterval);
                 }
