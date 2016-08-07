@@ -2,8 +2,6 @@
 
 Pokemon Go scraper capable of scanning large area for Pokemon spawns over long period of time. Suitable for gathering data for further analysis.
 
-Based on an early version of [AHAAAAAAA/PokemonGo-Map](https://github.com/AHAAAAAAA/PokemonGo-Map), currently it uses [tejado/pgoapi](https://github.com/tejado/pgoapi).
-
 ## Oh great, another map?
 
 This is not *a map*. Yeah, map is included, but main goal of this app is to *gather data* and put it in the database for further analysis. There are several other projects (including aforementioned PokemonGo-Map) that do better job at being just a map.
@@ -27,6 +25,7 @@ And here are workers together with their area of scan:
 - multithreaded, multiple accounts at the same time
 - aims at being very stable for long-term runs
 - able to map entire city (or larger area) in real time
+- gathers Pokemon and Gyms
 - data gathering for further analysis
 - visualization
 - reports for gathered data
@@ -60,17 +59,47 @@ Optionally run the live map interface and reporting system:
 python web.py --host 127.0.0.1 --port 8000
 ```
 
+### How many workers do I need?
+
+Credits go to [Aiyubi](https://github.com/Aiyubi) that did the original math in [#124](https://github.com/modrzew/pokeminer/issues/124). Thanks!
+
+**tl;dr**: about 1.2 workers per km².
+
+Longer version: there's a set delay between each scan and one spawn lasts for at least 15 minutes, so there's a max PPC (points per cycle) for one worker, otherwise you risk missed spawns. As I'm writing this scan delay is set to 10, so combining it with 15 minutes it gives max of **90 PPC**. You can check that value in worker.py's status window.
+
+And how many workers you need? Let's calculate that for hexagonal grid:
+
+```
+overlap_area = (pi - 3/2*sqrt(3) *2) * 2
+overlap_correction_factor ~ 1.17
+```
+
+Results:
+
+```
+numer_of_workers = (pi * radius²) /( pi * 70m²) * 1.17 * 10s / (15*60s) = (radius_in_km)² * 2.65
+```
+
+For example, a radius of 5.5km is around 95km² and with the formula above would be ~80 workers.
+
 ## Reports
 
-There are two reports:
+There are three reports, all available as web pages on the same server as live map:
 
 1. Overall report, available at `/report`
 2. Single species report, available at `/report/<pokemon_id>`
+3. Gym statistics page, available by running `gyms.py`
 
 Here's how the overall report looks like:
 
 [![](http://i.imgur.com/Yy4VTq0m.jpg)](http://i.imgur.com/Yy4VTq0.jpg)
 
+Gyms statistics server is in a separate file, because it's intended to be shared publicly as a webpage - [just as I did for Wrocław](https://pogowroc.modriv.net).
+
+[![http://i.imgur.com/1098HkEm.png]](http://i.imgur.com/1098HkE.png)
+
 ## License
 
 See [LICENSE](LICENSE).
+
+This project was based on an very, very early version of [AHAAAAAAA/PokemonGo-Map](https://github.com/AHAAAAAAA/PokemonGo-Map), which it doesn't share any code with now. Currently it uses [tejado/pgoapi](https://github.com/tejado/pgoapi).
