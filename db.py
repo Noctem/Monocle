@@ -4,7 +4,7 @@ import json
 import time
 
 from sqlalchemy import create_engine
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -127,7 +127,7 @@ class Fort(Base):
     __tablename__ = 'forts'
 
     id = Column(Integer, primary_key=True)
-    external_id = Column(String(64))
+    external_id = Column(String(64), unique=True)
     lat = Column(String(16), index=True)
     lon = Column(String(16), index=True)
 
@@ -147,6 +147,14 @@ class FortSighting(Base):
     team = Column(Integer)
     prestige = Column(Integer)
     guard_pokemon_id = Column(Integer)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'fort_id',
+            'last_modified',
+            name='fort_id_last_modified_unique'
+        ),
+    )
 
 
 Session = sessionmaker(bind=get_engine())
