@@ -63,9 +63,7 @@ def get_stats():
             guardian_value = guardians[team].get(pokemon_id, 0)
             guardians[team][pokemon_id] = guardian_value + 1
     for team in db.Team:
-        percentages[team.value] = round(
-            count.get(team.value) / len(forts) * 100
-        )
+        percentages[team.value] = count.get(team.value) / len(forts) * 100
         if guardians[team.value]:
             pokemon_id = sorted(
                 guardians[team.value],
