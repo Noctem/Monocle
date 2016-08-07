@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import config
 
-ENGLISH_NAMES = {
+EN_NAMES = {
     1: 'Bulbasaur', 2: 'Ivysaur', 3: 'Venusaur', 4: 'Charmander',
     5: 'Charmeleon', 6: 'Charizard', 7: 'Squirtle', 8: 'Wartortle',
     9: 'Blastoise', 10: 'Caterpie', 11: 'Metapod', 12: 'Butterfree',
@@ -39,7 +39,7 @@ ENGLISH_NAMES = {
     148: 'Dragonair', 149: 'Dragonite', 150: 'Mewtwo', 151: 'Mew'
 }
 
-GERMAN_NAMES = {
+DE_NAMES = {
     1: 'Bisasam', 2: 'Bisaknosp', 3: 'Bisaflor', 4: 'Glumanda', 5: 'Glutexo',
     6: 'Glurak', 7: 'Schiggy', 8: 'Schillok', 9: 'Turtok', 10: 'Raupy',
     11: 'Safcon', 12: 'Smettbo', 13: 'Hornliu', 14: 'Kokuna', 15: 'Bibor',
@@ -76,7 +76,7 @@ GERMAN_NAMES = {
     150: 'Mewtu', 151: 'Mew'
 }
 
-FRENCH_NAMES = {
+FR_NAMES = {
     1: 'Bulbizarre', 2: 'Herbizarre', 3: 'Florizarre', 4: 'Salamèche',
     5: 'Reptincel', 6: 'Dracaufeu', 7: 'Carapuce', 8: 'Carabaffe',
     9: 'Tortank', 10: 'Chenipan', 11: 'Chrysacier', 12: 'Papilusion',
@@ -116,7 +116,7 @@ FRENCH_NAMES = {
     149: 'Dracolosse', 150: 'Mewtwo', 151: 'Mew'
 }
 
-CHINESE_NAMES = {
+ZH_NAMES = {
     1: '妙蛙种子', 2: '妙蛙草', 3: '妙蛙花', 4: '小火龙', 5: '火恐龙',
     6: '喷火龙', 7: '杰尼龟', 8: '卡咪龟', 9: '水箭龟', 10: '绿毛虫',
     11: '铁甲蛹', 12: '巴大蝶', 13: '独角虫', 14: '铁壳蛹', 15: '大针蜂',
@@ -151,14 +151,8 @@ CHINESE_NAMES = {
     148: '哈克龙', 149: '快龙', 150: '超梦', 151: '梦幻'
 }
 
-try:
-    if config.LANGUAGE == 'German':
-        POKEMON_NAMES = GERMAN_NAMES
-    elif config.LANGUAGE == 'French':
-        POKEMON_NAMES = FRENCH_NAMES
-    elif config.LANGUAGE == 'Chinese':
-        POKEMON_NAMES = CHINESE_NAMES
-    else:
-        POKEMON_NAMES = ENGLISH_NAMES
-except NameError:
-    POKEMON_NAMES = ENGLISH_NAMES
+POKEMON_NAMES = {
+    'DE': DE_NAMES,
+    'FR': FR_NAMES,
+    'ZH': ZH_NAMES,
+}.get(config.LANGUAGE.upper(), EN_NAMES)
