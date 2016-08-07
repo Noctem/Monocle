@@ -49,6 +49,9 @@
             background: #fff;
             box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
         }
+        .leaflet-control-layers-toggle {
+            background-image: url(/static/img/layers.png);
+        }
     </style>
 </head>
 <body>
@@ -86,6 +89,11 @@
         }
 
         var markers = {};
+        var overlays = {
+            Pokemon: L.layerGroup([]),
+            Trash: L.layerGroup([]),
+            Gyms: L.layerGroup([]),
+        };
 
         function getPopupContent (item) {
             var diff = (item.expires_at - new Date().getTime() / 1000);
@@ -123,7 +131,11 @@
                 if (diff > 0) {
                     marker.setOpacity(getOpacity(marker.raw));
                 } else {
-                    marker.removeFrom(map);
+                    if (marker.raw.trash) {
+                        marker.removeFrom(overlays.Trash);
+                    } else {
+                        marker.removeFrom(overlays.Pokemons);
+                    }
                     markers[marker.raw.id] = undefined;
                     clearInterval(marker.opacityInterval);
                 }
@@ -159,6 +171,11 @@
                         return;
                     }
                     marker = PokemonMarker(item);
+                    if (item.trash) {
+                        marker.addTo(overlays.Trash);
+                    } else {
+                        marker.addTo(overlays.Pokemon);
+                    }
                 } else {
                     // No change since last time? Then don't do anything
                     var existing = markers[item.id];
@@ -166,13 +183,11 @@
                         if (existing.raw.sighting_id === item.sighting_id) {
                             return;
                         }
-                        existing.removeFrom(map);
+                        existing.removeFrom(overlays.Gyms);
                         markers[item.id] = undefined;
                     }
                     marker = FortMarker(item);
-                }
-                if (marker !== null) {
-                    marker.addTo(map);
+                    marker.addTo(overlays.Gyms);
                 }
             });
         }
@@ -184,6 +199,8 @@
         }
 
         var map = L.map('main-map').setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
+        overlays.Pokemon.addTo(map);
+        L.control.layers(null, overlays).addTo(map);
         L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {opacity: 0.5}).addTo(map);
         map.whenReady(function () {
             $('#myLocation').on('click', function () {

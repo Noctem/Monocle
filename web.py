@@ -86,6 +86,7 @@ def get_pokemarkers():
         markers.append({
             'id': 'pokemon-{}'.format(pokemon.id),
             'type': 'pokemon',
+            'trash': pokemon.pokemon_id in config.TRASH_IDS,
             'name': pokemon_names[str(pokemon.pokemon_id)],
             'pokemon_id': pokemon.pokemon_id,
             'lat': pokemon.lat,
