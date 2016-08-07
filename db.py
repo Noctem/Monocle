@@ -248,6 +248,7 @@ def get_sightings(session):
 def get_forts(session):
     query = session.execute('''
         SELECT
+            fs.id,
             fs.fort_id,
             fs.team,
             fs.prestige,

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Pokeminer - {{ area_name }}</title>
-    <link rel="stylesheet" href="../static/css/leaflet.css">
+    <link rel="stylesheet" href="/static/css/leaflet-1.0.0-rc.3.css">
     <style>
         .map {
             position: absolute;
@@ -43,6 +43,12 @@
         .floating-panel:hover > div {
             display: block;
         }
+        .fort-icon {
+            border-radius: 12px;
+            padding: 2px;
+            background: #fff;
+            box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+        }
     </style>
 </head>
 <body>
@@ -54,8 +60,8 @@
         <div><button id="myLocation">My location</button></div>
     </div>
 
-    <script src="../static/js/jquery-3.1.0.min.js"></script>
-    <script src="../static/js/leaflet-1.0.0-rc.3.min.js"></script>
+    <script src="/static/js/jquery-3.1.0.min.js"></script>
+    <script src="/static/js/leaflet-1.0.0-rc.3.min.js"></script>
     <script>
         var PokemonIcon = L.Icon.extend({
             options: {
@@ -66,41 +72,16 @@
         var FortIcon = L.Icon.extend({
             options: {
                 iconSize: [20, 20],
-                popupAnchor: [0, -10]
+                popupAnchor: [0, -10],
+                className: 'fort-icon'
             }
         });
 
-        var first = true;
         function getMarkers () {
             return new Promise(function (resolve, reject) {
-                if (first) {
-                    resolve([
-                        {id: 1, type: 'pokemon', lat: 51.11, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 10000},
-                        {id: 2, type: 'pokemon', lat: 51.21, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 15000},
-                        {id: 3, type: 'pokemon', lat: 51.31, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 20000},
-                        {id: 4, type: 'pokemon', lat: 51.41, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 25000},
-                        {id: 5, type: 'pokemon', lat: 51.51, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 30000},
-                        {id: 6, type: 'pokemon', lat: 51.61, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 35000},
-                    ]);
-                    first = false;
-                } else {
-                    resolve([
-                        {id: 1, type: 'pokemon', lat: 51.11, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 90000},
-                        {id: 4, type: 'pokemon', lat: 51.41, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 90000},
-                        {id: 5, type: 'pokemon', lat: 51.51, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 90000},
-                        {id: 6, type: 'pokemon', lat: 51.61, lon: 17.23, pokemon_id: 96, name: 'Drowzee', expires_at: new Date().getTime() + 90000},
-                        {id: 7, type: 'pokemon', lat: 51.11, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 90000},
-                        {id: 8, type: 'pokemon', lat: 51.21, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 180000},
-                        {id: 9, type: 'pokemon', lat: 51.31, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 270000},
-                        {id: 10, type: 'pokemon', lat: 51.41, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 360000},
-                        {id: 11, type: 'pokemon', lat: 51.51, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 450000},
-                        {id: 12, type: 'pokemon', lat: 51.61, lon: 17.13, pokemon_id: 25, name: 'Pikachuj', expires_at: new Date().getTime() + 540000},
-                        {id: 13, type: 'fort', lat: 51.81, lon: 17.13, team: 0, pokemon_id: null, pokemon_name: 'Empty', prestige: 12345},
-                        {id: 14, type: 'fort', lat: 51.81, lon: 17.23, team: 1, pokemon_id: 124, pokemon_name: 'Magnemite', prestige: 23456},
-                        {id: 15, type: 'fort', lat: 51.81, lon: 17.33, team: 2, pokemon_id: 125, pokemon_name: 'Vaporeon', prestige: 34567},
-                        {id: 16, type: 'fort', lat: 51.81, lon: 17.43, team: 3, pokemon_id: 126, pokemon_name: 'Igglybuff', prestige: 45678},
-                    ]);
-                }
+                $.get('/data', function (response) {
+                    resolve($.parseJSON(response));
+                });
             });
         }
 
@@ -123,7 +104,7 @@
         }
 
         function PokemonMarker (raw) {
-            var icon = new PokemonIcon({iconUrl: '../static/icons/' + raw.pokemon_id + '.png'});
+            var icon = new PokemonIcon({iconUrl: '/static/icons/' + raw.pokemon_id + '.png'});
             var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: 1});
             marker.raw = raw;
             markers[raw.id] = marker;
@@ -138,7 +119,7 @@
             });
             marker.setOpacity(getOpacity(marker.raw));
             marker.opacityInterval = setInterval(function () {
-                var diff = marker.raw.expires_at - new Date().getTime();
+                var diff = marker.raw.expires_at - new Date().getTime() / 1000;
                 if (diff > 0) {
                     marker.setOpacity(getOpacity(marker.raw));
                 } else {
@@ -152,7 +133,7 @@
         }
 
         function FortMarker (raw) {
-            var icon = new FortIcon({iconUrl: '../static/forts/' + raw.team + '.png'});
+            var icon = new FortIcon({iconUrl: '/static/forts/' + raw.team + '.png'});
             var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: 1});
             marker.raw = raw;
             markers[raw.id] = marker;
@@ -171,7 +152,7 @@
         function addMarkersToMap (data, map) {
             // Pokemons
             data.forEach(function (item) {
-                var marker;
+                var marker = null;
                 if (item.type === 'pokemon') {
                     // Already placed? No need to do anything, then
                     if (item.id in markers) {
@@ -190,23 +171,27 @@
                     }
                     marker = FortMarker(item);
                 }
-                marker.addTo(map);
+                if (marker !== null) {
+                    marker.addTo(map);
+                }
             });
         }
 
-        // var map = L.map('main-map').setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
-        var map = L.map('main-map').setView([51.1, 17.2], 13);
-        L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png').addTo(map);
+        function refresh () {
+            getMarkers().then(function (data) {
+                addMarkersToMap(data, map);
+            });
+        }
+
+        var map = L.map('main-map').setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
+        L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {opacity: 0.5}).addTo(map);
         map.whenReady(function () {
             $('#myLocation').on('click', function () {
                 map.locate({ enableHighAccurracy: true, setView: true });
             });
 
-            setInterval(function () {
-                getMarkers().then(function (data) {
-                    addMarkersToMap(data, map);
-                });
-            }, 1000);
+            setInterval(refresh, 30000);
+            refresh();
         });
     </script>
 </body>

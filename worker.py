@@ -81,7 +81,7 @@ class Slave(threading.Thread):
         self.running = True
         center = self.points[0]
         self.api = PGoApi()
-        self.api.activate_signature('./libencrypt.so')
+        self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(center[0], center[1], 100)  # lat, lon, alt
 
     def run(self):
