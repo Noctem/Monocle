@@ -231,8 +231,8 @@ class Slave(threading.Thread):
             'lat': raw['latitude'],
             'lon': raw['longitude'],
             'team': raw.get('owned_by_team', 0),
-            'prestige': raw['gym_points'],
-            'guard_pokemon_id': raw['guard_pokemon_id'],
+            'prestige': raw.get('gym_points', 0),
+            'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
             'last_modified': raw['last_modified_timestamp_ms'] / 1000.0,
         }
 
