@@ -84,6 +84,7 @@
             Pokemon: L.layerGroup([]),
             Trash: L.layerGroup([]),
             Gyms: L.layerGroup([]),
+            Workers: L.layerGroup([])
         };
 
         function getPopupContent (item) {
@@ -190,36 +191,37 @@
             });
         }
 
+        var workersLoaded = false;
         function loadWorkersLayer () {
-            $('#load-workers').html('<b>Loading...</b>');
             $.get('/workers_data', function (response) {
                 var data = $.parseJSON(response);
                 var points = [];
-                data.points.forEach(function (point) {
-                    if (point.type == 'worker') {
-                        points.push(L.marker([point.lat, point.lon], {icon: L.icon({iconUrl: '/static/img/marker-icon.png', iconAnchor: [13, 41]})}).bindPopup('Worker ' + point.worker_no));
-                    } else if (point.type == 'worker_point') {
-                        points.push(L.circle([point.lat, point.lon], data.scan_radius, {weight: 2}).bindPopup('Worker ' + point.worker_no + ', point '+ point.point_no));
+                data.points.forEach(function (raw) {
+                    var point;
+                    if (raw.type == 'worker') {
+                        point = L.marker([raw.lat, raw.lon], {icon: L.icon({iconUrl: '/static/img/marker-icon.png', iconAnchor: [13, 41]})}).bindPopup('Worker ' + raw.worker_no);
+                    } else if (raw.type == 'worker_point') {
+                        point = L.circle([raw.lat, raw.lon], data.scan_radius, {weight: 2}).bindPopup('Worker ' + raw.worker_no + ', point '+ raw.point_no);
                     }
+                    point.addTo(overlays.Workers);
                 });
-                control.addOverlay(L.layerGroup(points), 'Workers');
-                $('#load-workers').html('<b>Loaded!</b>');
-                setTimeout(function () {
-                    $('#load-workers').hide();
-                }, 1000);
+                workersLoaded = true;
             });
         }
 
         var map = L.map('main-map').setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
         overlays.Pokemon.addTo(map);
         var control = L.control.layers(null, overlays).addTo(map);
+        map.on('overlayadd', function (event) {
+            if (event.name === 'Workers' && !workersLoaded) {
+                loadWorkersLayer();
+            }
+        });
         L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {opacity: 0.5}).addTo(map);
         map.whenReady(function () {
             $('.my-location').on('click', function () {
                 map.locate({ enableHighAccurracy: true, setView: true });
             });
-
-            $('#load-workers').on('click', loadWorkersLayer);
 
             setInterval(refresh, 30000);
             refresh();
