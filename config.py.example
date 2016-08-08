@@ -4,6 +4,8 @@ from datetime import datetime
 from landmark import Landmark
 
 DB_ENGINE = 'sqlite:///db.sqlite'
+ENCRYPT_PATH = './libencrypt.so'
+
 AREA_NAME = u'Wrocław'
 LANGUAGE = 'EN'  # ISO 639-1 codes EN, DE, FR, and ZH currently supported.
 MAP_START = (12.3456, 34.5678)
@@ -11,7 +13,6 @@ MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
 CYCLES_PER_WORKER = 3
 SCAN_DELAY = 10  # seconds
-ENCRYPT = './libencrypt.so' # external encryption library
 
 SCAN_RADIUS = 70  # metres
 
@@ -27,9 +28,9 @@ STAGE2 = [94, 139, 141, 149]
 NOTIFY_IDS = [141, 142, 143, 144, 145, 146, 148, 149, 150, 151]
 
 REPORT_SINCE = datetime(2016, 7, 29)
+GOOGLE_MAPS_KEY = 's3cr3t'
 
 HASHTAGS = {AREA_NAME, 'PokemonGO'}
-
 LANDMARKS = [
     Landmark('Indian Hills', north=40.279321, west=-111.644326,
              south=40.270809, east=-111.633194,

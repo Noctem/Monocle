@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta property="og:description" content="Real time statistics about Pokemon Go gyms in {{ area_name }}">
+    <title>Pokemon Go {{ area_name }}</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+</head>
+<body>
+    <div class="container text-center">
+        <h1><span class="label label-{{ styles[order[0]] }}">Congrats, {{ team_names[order[0]] }}! <span class="glyphicon glyphicon-thumbs-up"></span></span></h1>
+        <h3>You literally own {{ area_size }} km² of {{ area_name }}.</h3>
+
+        <hr>
+
+        <div class="progress">
+            {% for team in order if team != 0%}
+                <div class="progress-bar progress-bar-{{ styles[team] }}" style="width: {{ '%0.1f' % percentages[team] }}%"></div>
+            {% endfor %}
+        </div>
+
+        <p>Out of {{ total_count }} gyms in Wrocław, {{ team_names[order[0]] }} owns <span class="label label-{{ styles[order[0]] }}">{{ count[order[0]] }} ({{ '%0.1f' % percentages[order[0]] }}%)</span> of them. They have <span class="label label-{{ styles[order[0]] }}">{{ prestige[order[0]] }} ({{ '%0.1f' % prestige_percent[order[0]] }}%) prestige</span> amassed right now.</p>
+        <p>Next in line is {{ team_names[order[1]] }}, which owns <span class="label label-{{ styles[order[1]] }}">{{ count[order[1]] }} ({{ '%0.1f' % percentages[order[1]] }}%)</span> Gyms right now. They accumulated <span class="label label-{{ styles[order[1]] }}">{{ prestige[order[1]] }} ({{ '%0.1f' % prestige_percent[order[1]] }}%) prestige</span>.</p>
+        <p>And the loser is {{ team_names[order[2]] }} with just <span class="label label-{{ styles[order[2]] }}">{{ count[order[2]] }} ({{ '%0.1f' % percentages[order[2]] }}%)</span> Gyms in possesion, with <span class="label label-{{ styles[order[2]] }}">{{ prestige[order[2]] }} ({{ '%0.1f' % prestige_percent[order[2]] }}%) prestige</span> total.</p>
+        <p>By the way, <span class="label label-default">{{ count[0] }} ({{ '%0.1f' % percentages[0] }}%)</span> Gyms are empty.</p>
+
+        <hr>
+
+        <p>{{ team_names[order[0]] }}'s strongest Gym has <span class="label label-{{ styles[order[0]] }}">{{ strongest[order[0]][0] }} prestige</span> and is guarded by <span class="label label-{{ styles[order[0]] }}">{{ strongest[order[0]][2] }}</span>.</p>
+        <p>On the other hand, runner up ({{ team_names[order[1]] }}) can boast with their <span class="label label-{{ styles[order[1]] }}">{{ strongest[order[1]][0] }} prestige</span> as the strongest Gym and <span class="label label-{{ styles[order[1]] }}">{{ strongest[order[1]][2] }}</span> sitting there.</p>
+        <p>Last but not least, <span class="label label-{{ styles[order[2]] }}">{{ strongest[order[2]][0] }} prestige</span> guarded by <span class="label label-{{ styles[order[2]] }}">{{ strongest[order[2]][2] }}</span> is the stronghold for {{ team_names[order[2]] }}.</p>
+
+        <hr>
+
+        <p>The most common guardians (strongest Pokemon residing in Gym) are <span class="label label-{{ styles[order[0]] }}">{{ top_guardians[order[0]] }}</span>, <span class="label label-{{ styles[order[1]] }}">{{ top_guardians[order[1]] }}</span> and <span class="label label-{{ styles[order[2]] }}">{{ top_guardians[order[2]] }}</span>.</p>
+
+        <hr>
+
+        <p><small><i>Generated {{ minutes_ago }} minutes ago using data from {{ last_date_minutes_ago }} minutes ago gathered by <a href="https://github.com/modrzew/pokeminer">pokeminer</a></i></small></p>
+    </div>
+
+    {% include 'footer.html' ignore missing %}
+</body>
+</html>

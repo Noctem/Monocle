@@ -125,7 +125,7 @@
 
         <div class="text-center">
             {% for icon in icons.top30 %}
-                <img src="../static/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}">
+                <a href="/report/{{ icon[0] }}"><img src="../static/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
                 {% if loop.index > 0 and loop.index % 10 == 0 %}
                     <br>
                 {% endif %}
@@ -138,7 +138,7 @@
 
         <div class="text-center">
             {% for icon in icons.bottom30 %}
-                <img src="../static/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}">
+                <a href="/report/{{ icon[0] }}"><img src="../static/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
                 {% if loop.index > 0 and loop.index % 10 == 0 %}
                     <br>
                 {% endif %}
@@ -155,7 +155,7 @@
 
         <div class="text-center">
             {% for icon in icons.stage2 %}
-                <img src="../static/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}">
+                <a href="/report/{{ icon[0] }}"><img src="../static/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
                 {% if loop.index > 0 and loop.index % 10 == 0 %}
                     <br>
                 {% endif %}
@@ -172,7 +172,7 @@
 
         <div class="text-center">
             {% for icon in icons.nonexistent %}
-                <img src="../static/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}">
+                <a href="/report/{{ icon[0] }}"><img src="../static/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
                 {% if loop.index > 0 and loop.index % 10 == 0 %}
                     <br>
                 {% endif %}
@@ -188,7 +188,7 @@
         <p>This report is available under Creative Commons CC-BY-4.0 license: <a href="https://creativecommons.org/licenses/by/4.0/">https://creativecommons.org/licenses/by/4.0/</a>.</p>
     </div>
     <script async defer
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAy8rKI_g-dgYf9f7tMOafbNypeaJJvVeA&amp;libraries=visualization&amp;callback=initMaps">
+        src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_key }}&amp;libraries=visualization&amp;callback=initMaps">
     </script>
 </body>
 </html>

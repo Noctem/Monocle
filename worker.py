@@ -23,6 +23,7 @@ import notification
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
     'DB_ENGINE',
+    'ENCRYPT_PATH',
     'CYCLES_PER_WORKER',
     'MAP_START',
     'MAP_END',
@@ -81,6 +82,7 @@ class Slave(threading.Thread):
         self.running = True
         center = self.points[0]
         self.api = PGoApi()
+        self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(center[0], center[1], 100)  # lat, lon, alt
         self.api.activate_signature(config.ENCRYPT)
 
@@ -95,11 +97,15 @@ class Slave(threading.Thread):
         service = config.ACCOUNTS[self.worker_no][2]
         while True:
             try:
-                self.api.login(
+                loginsuccess = self.api.login(
                     provider=service,
                     username=config.ACCOUNTS[self.worker_no][0],
                     password=config.ACCOUNTS[self.worker_no][1],
                 )
+                if not loginsuccess:
+                    self.error_code = 'LOGIN FAIL'
+                    self.restart()
+                    return
             except pgoapi_exceptions.AuthException:
                 self.error_code = 'LOGIN FAIL'
                 self.restart()
@@ -167,9 +173,9 @@ class Slave(threading.Thread):
             )
             if response_dict is False:
                 raise CannotProcessStep
-            now = time.time()
             map_objects = response_dict['responses'].get('GET_MAP_OBJECTS', {})
             pokemons = []
+            forts = []
             if map_objects.get('status') == 1:
                 for map_cell in map_objects['map_cells']:
                     for pokemon in map_cell.get('wild_pokemons', []):
@@ -178,7 +184,17 @@ class Slave(threading.Thread):
                         # time_till_hidden is below 15 min
                         if pokemon['time_till_hidden_ms'] < 0:
                             continue
-                        pokemons.append(self.normalize_pokemon(pokemon, now))
+                        pokemons.append(
+                            self.normalize_pokemon(
+                                pokemon, map_cell['current_timestamp_ms']
+                            )
+                        )
+                    for fort in map_cell.get('forts', []):
+                        if not fort.get('enabled'):
+                            continue
+                        if fort.get('type') == 1:  # probably pokestops
+                            continue
+                        forts.append(self.normalize_fort(fort))
             for raw_pokemon in pokemons:
                 try:
                     if raw_pokemon['pokemon_id'] in config.NOTIFY_IDS:
@@ -188,8 +204,15 @@ class Slave(threading.Thread):
                 db.add_sighting(session, raw_pokemon)
                 self.seen_per_cycle += 1
                 self.total_seen += 1
-            logger.info('Point processed, %d Pokemons seen!', len(pokemons))
             session.commit()
+            for raw_fort in forts:
+                db.add_fort_sighting(session, raw_fort)
+            # Commit is not necessary here, it's done by add_fort_sighting
+            logger.info(
+                'Point processed, %d Pokemons and %d forts seen!',
+                len(pokemons),
+                len(forts),
+            )
             # Clear error code and let know that there are Pokemon
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
@@ -208,9 +231,21 @@ class Slave(threading.Thread):
             'encounter_id': raw['encounter_id'],
             'spawn_id': raw['spawn_point_id'],
             'pokemon_id': raw['pokemon_data']['pokemon_id'],
-            'expire_timestamp': now + raw['time_till_hidden_ms'] / 1000.0,
+            'expire_timestamp': (now + raw['time_till_hidden_ms']) / 1000.0,
             'lat': raw['latitude'],
             'lon': raw['longitude'],
+        }
+
+    @staticmethod
+    def normalize_fort(raw):
+        return {
+            'external_id': raw['id'],
+            'lat': raw['latitude'],
+            'lon': raw['longitude'],
+            'team': raw.get('owned_by_team', 0),
+            'prestige': raw.get('gym_points', 0),
+            'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
+            'last_modified': raw['last_modified_timestamp_ms'] / 1000.0,
         }
 
     @property
@@ -300,7 +335,7 @@ def spawn_workers(workers, status_bar=True):
         now = time.time()
         # Clean cache
         if now - last_cleaned_cache > (15 * 60):  # clean cache
-            db.CACHE.clean_expired()
+            db.SIGHTING_CACHE.clean_expired()
             last_cleaned_cache = now
         # Check up on workers
         if now - last_workers_checked > (5 * 60):
