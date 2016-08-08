@@ -101,7 +101,9 @@ class Slave(threading.Thread):
                     password=config.ACCOUNTS[self.worker_no][1],
                 )
                 if not loginsuccess:
-                    raise pgoapi_exceptions.AuthException
+                    self.error_code = 'LOGIN FAIL'
+                    self.restart()
+                    return
             except pgoapi_exceptions.AuthException:
                 self.error_code = 'LOGIN FAIL'
                 self.restart()
