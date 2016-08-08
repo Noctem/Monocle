@@ -95,11 +95,15 @@ class Slave(threading.Thread):
         service = config.ACCOUNTS[self.worker_no][2]
         while True:
             try:
-                self.api.login(
+                loginsuccess = self.api.login(
                     provider=service,
                     username=config.ACCOUNTS[self.worker_no][0],
                     password=config.ACCOUNTS[self.worker_no][1],
                 )
+                if not loginsuccess:
+                    self.error_code = 'LOGIN FAIL'
+                    self.restart()
+                    return
             except pgoapi_exceptions.AuthException:
                 self.error_code = 'LOGIN FAIL'
                 self.restart()
