@@ -1,6 +1,5 @@
 from datetime import datetime
 import enum
-import json
 import time
 
 from sqlalchemy import create_engine
@@ -8,10 +7,6 @@ from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-
-
-with open('locales/pokemon.en.json') as f:
-    pokemon_names = json.load(f)
 
 
 try:

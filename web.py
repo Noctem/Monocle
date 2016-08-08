@@ -10,6 +10,7 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import config
 import db
 import utils
+from names import POKEMON_NAMES
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -26,9 +27,6 @@ for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
 
-
-with open('locales/pokemon.en.json') as f:
-    pokemon_names = json.load(f)
 
 
 def get_args():
@@ -91,7 +89,7 @@ def get_pokemarkers():
             'id': 'pokemon-{}'.format(pokemon.id),
             'type': 'pokemon',
             'trash': pokemon.pokemon_id in config.TRASH_IDS,
-            'name': pokemon_names[str(pokemon.pokemon_id)],
+            'name': POKEMON_NAMES[pokemon.pokemon_id],
             'pokemon_id': pokemon.pokemon_id,
             'lat': pokemon.lat,
             'lon': pokemon.lon,
@@ -99,7 +97,7 @@ def get_pokemarkers():
         })
     for fort in forts:
         if fort['guard_pokemon_id']:
-            pokemon_name = pokemon_names[str(fort['guard_pokemon_id'])]
+            pokemon_name = POKEMON_NAMES[fort['guard_pokemon_id']]
         else:
             pokemon_name = 'Empty'
         markers.append({
@@ -156,12 +154,12 @@ def report_main():
     js_data = {
         'charts_data': {
             'punchcard': db.get_punch_card(session),
-            'top30': [(pokemon_names[str(r[0])], r[1]) for r in top_pokemon],
+            'top30': [(POKEMON_NAMES[r[0]], r[1]) for r in top_pokemon],
             'bottom30': [
-                (pokemon_names[str(r[0])], r[1]) for r in bottom_pokemon
+                (POKEMON_NAMES[r[0]], r[1]) for r in bottom_pokemon
             ],
             'stage2': [
-                (pokemon_names[str(r[0])], r[1]) for r in stage2_pokemon
+                (POKEMON_NAMES[r[0]], r[1]) for r in stage2_pokemon
             ],
         },
         'maps_data': {
@@ -172,11 +170,11 @@ def report_main():
         'zoom': 13,
     }
     icons = {
-        'top30': [(r[0], pokemon_names[str(r[0])]) for r in top_pokemon],
-        'bottom30': [(r[0], pokemon_names[str(r[0])]) for r in bottom_pokemon],
-        'stage2': [(r[0], pokemon_names[str(r[0])]) for r in stage2_pokemon],
+        'top30': [(r[0], POKEMON_NAMES[r[0]]) for r in top_pokemon],
+        'bottom30': [(r[0], POKEMON_NAMES[r[0]]) for r in bottom_pokemon],
+        'stage2': [(r[0], POKEMON_NAMES[r[0]]) for r in stage2_pokemon],
         'nonexistent': [
-            (r, pokemon_names[str(r)])
+            (r, POKEMON_NAMES[r])
             for r in db.get_nonexistent_pokemon(session)
         ]
     }
@@ -219,7 +217,7 @@ def report_single(pokemon_id):
         area_name=config.AREA_NAME,
         area_size=utils.get_scan_area(),
         pokemon_id=pokemon_id,
-        pokemon_name=pokemon_names[str(pokemon_id)],
+        pokemon_name=POKEMON_NAMES[pokemon_id],
         total_spawn_count=db.get_total_spawns_count(session, pokemon_id),
         session_start=session_stats['start'],
         session_end=session_stats['end'],
