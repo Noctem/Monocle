@@ -5,6 +5,7 @@ DB_ENGINE = 'sqlite:///db.sqlite'
 ENCRYPT_PATH = './libencrypt.so'
 
 AREA_NAME = u'Wrocław'
+LANGUAGE = 'EN'  # ISO 639-1 codes EN, DE, FR, and ZH currently supported.
 MAP_START = (12.3456, 34.5678)
 MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
