@@ -1,17 +1,13 @@
 from datetime import datetime, timedelta
-import json
 import time
 
 from flask import Flask, render_template
 
+from names import POKEMON_NAMES
 from web import get_args  # pretty handy function, actually
 import config
 import db
 import utils
-
-
-with open('locales/pokemon.en.json') as f:
-    pokemon_names = json.load(f)
 
 
 app = Flask(__name__, template_folder='templates')
@@ -60,7 +56,7 @@ def get_stats():
                 strongest[team] = (
                     fort['prestige'],
                     pokemon_id,
-                    pokemon_names[str(pokemon_id)],
+                    POKEMON_NAMES[pokemon_id],
                 )
             # Guardians
             guardian_value = guardians[team].get(pokemon_id, 0)
@@ -79,7 +75,7 @@ def get_stats():
                 key=guardians[team.value].__getitem__,
                 reverse=True
             )[0]
-            top_guardians[team.value] = pokemon_names[str(pokemon_id)]
+            top_guardians[team.value] = POKEMON_NAMES[pokemon_id]
     CACHE['generated_at'] = datetime.now()
     CACHE['data'] = {
         'order': sorted(count, key=count.__getitem__, reverse=True),
