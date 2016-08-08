@@ -37,7 +37,10 @@ def get_stats():
     strongest = {t.value: None for t in db.Team}
     guardians = {t.value: {} for t in db.Team}
     top_guardians = {t.value: None for t in db.Team}
+    prestige = {t.value: 0 for t in db.Team}
     percentages = {}
+    prestige_percent = {}
+    total_prestige = 0
     last_date = 0
     for fort in forts:
         if fort['last_modified'] > last_date:
@@ -62,8 +65,14 @@ def get_stats():
             # Guardians
             guardian_value = guardians[team].get(pokemon_id, 0)
             guardians[team][pokemon_id] = guardian_value + 1
+            # Prestige
+            prestige[team] += fort['prestige']
+    total_prestige = sum(prestige.values())
     for team in db.Team:
         percentages[team.value] = count.get(team.value) / len(forts) * 100
+        prestige_percent[team.value] = (
+            prestige.get(team.value) / total_prestige * 100
+        )
         if guardians[team.value]:
             pokemon_id = sorted(
                 guardians[team.value],
@@ -77,6 +86,8 @@ def get_stats():
         'count': count,
         'total_count': len(forts),
         'strongest': strongest,
+        'prestige': prestige,
+        'prestige_percent': prestige_percent,
         'percentages': percentages,
         'last_date': last_date,
         'top_guardians': top_guardians,
