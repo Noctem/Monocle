@@ -81,6 +81,7 @@ class Sighting(Base):
     pokemon_id = Column(Integer)
     spawn_id = Column(String(32))
     expire_timestamp = Column(Integer)
+    encounter_id = Column(String(32))
     normalized_timestamp = Column(Integer)
     lat = Column(String(16))
     lon = Column(String(16))
@@ -112,6 +113,7 @@ def add_sighting(session, pokemon):
     obj = Sighting(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
+        encounter_id=str(pokemon['encounter_id']),
         expire_timestamp=pokemon['expire_timestamp'],
         normalized_timestamp=normalize_timestamp(pokemon['expire_timestamp']),
         lat=pokemon['lat'],
