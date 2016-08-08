@@ -13,6 +13,7 @@ MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
 CYCLES_PER_WORKER = 3
 SCAN_DELAY = 10  # seconds
+ALTITUDE = False  # Calculate correct altitude for each library
 
 SCAN_RADIUS = 70  # metres
 

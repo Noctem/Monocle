@@ -1,8 +1,13 @@
 import math
+import geocoder
+import numpy
+import random
 from geopy import distance, Point
+from collections import deque
 
 import config
 
+recent_altitudes = deque(maxlen=3)
 
 def get_map_center():
     """Returns center of the map"""
@@ -72,6 +77,10 @@ def get_gains():
 def get_points_per_worker():
     """Returns all points that should be visited for whole grid"""
     total_workers = config.GRID[0] * config.GRID[1]
+    counter = 0
+
+    global recent_altitudes
+    global recent_altitudes2
 
     lat_gain, lon_gain = get_gains()
 
@@ -98,7 +107,25 @@ def get_points_per_worker():
             if map_col >= total_columns:  # should happen only once per 2 rows
                 grid_col -= 1
             worker_no = grid_row * config.GRID[1] + grid_col
-            points[worker_no].append((lat, lon))
+            if (counter % 100) < 3:
+                alt = geocoder.google([lat, lon], method='elevation', key=config.GOOGLE_MAPS_KEY).meters
+                if alt:
+                    recent_altitudes.append(alt)
+                    counter += 1
+                    print('ALT:', alt)
+                elif len(recent_altitudes) > 1:
+                    average = numpy.mean(recent_altitudes)
+                    alt = random.uniform(average, average+15.0)
+                    print('ALt:', alt)
+                else:
+                    alt = random.uniform(1380.0, 1420.0)
+                    print('Alt:', alt)
+            else:
+                average = numpy.mean(recent_altitudes)
+                alt = random.uniform(average, average+15.0)
+                print('alt:', alt)
+                counter += 1
+            points[worker_no].append((lat, lon, alt))
     points = [
         sort_points_for_worker(p, i)
         for i, p in enumerate(points)

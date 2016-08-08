@@ -83,7 +83,7 @@ class Slave(threading.Thread):
         center = self.points[0]
         self.api = PGoApi()
         self.api.activate_signature(config.ENCRYPT_PATH)
-        self.api.set_position(center[0], center[1], 100)  # lat, lon, alt
+        self.api.set_position(center[0], center[1], center[2])  # lat, lon, alt
 
     def run(self):
         """Wrapper for self.main - runs it a few times before restarting
@@ -162,9 +162,8 @@ class Slave(threading.Thread):
             if not self.running:
                 return
             logger.info('Visiting point %d (%s %s)', i, point[0], point[1])
-            self.api.set_position(point[0], point[1], 0)
+            self.api.set_position(point[0], point[1], point[2])
             cell_ids = pgoapi_utils.get_cell_ids(point[0], point[1])
-            self.api.set_position(point[0], point[1], 100)
             response_dict = self.api.get_map_objects(
                 latitude=pgoapi_utils.f2i(point[0]),
                 longitude=pgoapi_utils.f2i(point[1]),
