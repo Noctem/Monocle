@@ -124,9 +124,11 @@ def pbpush(pokename, seconds_remaining, expire_time, map_link, place_string,
     time_remaining = str(minutes) + 'm' + str(seconds) + 's'
 
     try:
-        title = 'A wild ' + pokename + ' appeared ' + conf['AREA_NAME'] + '!'
+        title = ('A wild ' + pokename +
+                 ' appeared in ' + conf['AREA_NAME'] + '!')
     except KeyError:
         title = 'A wild ' + pokename + ' appeared!'
+
     body = ('It will be ' + place_string + ' until ' + expire_time + ' (' +
             time_remaining + ')')
 

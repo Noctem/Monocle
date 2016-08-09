@@ -33,6 +33,8 @@ NOTIFY_IDS = [141, 142, 143, 144, 145, 146, 148, 149, 150, 151]
 REPORT_SINCE = datetime(2016, 7, 29)
 GOOGLE_MAPS_KEY = 's3cr3t'
 
+# As many as can fit will be included as hashtags in your tweets, these will
+# be combined with landmark-specific hashtags (if applicable).
 HASHTAGS = {AREA_NAME, 'PokemonGO'}
 LANDMARKS = [
     Landmark('Indian Hills', north=40.279321, west=-111.644326,
@@ -50,7 +52,7 @@ LANDMARKS = [
 # PushBullet notifications and/or tweeting, otherwise leave them out of your
 # config or set them to None.
 PB_API_KEY = 'o.9187cb7d5b857c97bfcaa8d63eaa8494'
-PB_CHANNEL = 0
+PB_CHANNEL = 0  # set to the integer of your channel, or to None to push privately
 TWITTER_CONSUMER_KEY = '53d997264eb7f6452b7bf101d'
 TWITTER_CONSUMER_SECRET = '64b9ebf618829a51f8c0535b56cebc808eb3e80d3d18bf9e00'
 TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
