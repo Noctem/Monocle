@@ -26,6 +26,7 @@ import utils
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
     'DB_ENGINE',
+    'ENCRYPT_PATH',
     'CYCLES_PER_WORKER',
     'MAP_START',
     'MAP_END',
@@ -76,6 +77,7 @@ class Slave:
         center = self.points[0]
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
         self.api = PGoApi()
+        self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(center[0], center[1], 100)  # lat, lon, alt
         self.api.set_logger(self.logger)
 
@@ -98,12 +100,16 @@ class Slave:
         self.error_code = 'LOGIN'
         while True:
             try:
-                await loop.run_in_executor(None, partial(
+                loginsuccess = await loop.run_in_executor(None, partial(
                     self.api.login,
                     provider=service,
                     username=config.ACCOUNTS[self.worker_no][0],
                     password=config.ACCOUNTS[self.worker_no][1],
                 ))
+                if not loginsuccess:
+                    self.error_code = 'LOGIN FAIL'
+                    self.restart()
+                    return
             except pgoapi_exceptions.AuthException:
                 self.error_code = 'LOGIN FAIL'
                 await self.restart()
@@ -182,9 +188,9 @@ class Slave:
             ))
             if response_dict is False:
                 raise CannotProcessStep
-            now = time.time()
             map_objects = response_dict['responses'].get('GET_MAP_OBJECTS', {})
             pokemons = []
+            forts = []
             if map_objects.get('status') == 1:
                 for map_cell in map_objects['map_cells']:
                     for pokemon in map_cell.get('wild_pokemons', []):
@@ -193,13 +199,23 @@ class Slave:
                         # time_till_hidden is below 15 min
                         if pokemon['time_till_hidden_ms'] < 0:
                             continue
-                        pokemons.append(self.normalize_pokemon(pokemon, now))
+                        pokemons.append(
+                            self.normalize_pokemon(
+                                pokemon, map_cell['current_timestamp_ms']
+                            )
+                        )
+                    for fort in map_cell.get('forts', []):
+                        if not fort.get('enabled'):
+                            continue
+                        if fort.get('type') == 1:  # probably pokestops
+                            continue
+                        forts.append(self.normalize_fort(fort))
             self.db_processor.add(pokemons)
-            pokemons_len = len(pokemons)
-            self.seen_per_cycle += pokemons_len
-            self.total_seen += pokemons_len
-            self.logger.info(
-                'Point processed, %d Pokemons seen!', pokemons_len
+            self.db_processor.add(forts)
+            logger.info(
+                'Point processed, %d Pokemons and %d forts seen!',
+                len(pokemons),
+                len(forts),
             )
             # Clear error code and let know that there are Pokemon
             if self.error_code and self.seen_per_cycle:
@@ -218,9 +234,21 @@ class Slave:
             'encounter_id': raw['encounter_id'],
             'spawn_id': raw['spawn_point_id'],
             'pokemon_id': raw['pokemon_data']['pokemon_id'],
-            'expire_timestamp': now + raw['time_till_hidden_ms'] / 1000.0,
+            'expire_timestamp': (now + raw['time_till_hidden_ms']) / 1000.0,
             'lat': raw['latitude'],
             'lon': raw['longitude'],
+        }
+
+    @staticmethod
+    def normalize_fort(raw):
+        return {
+            'external_id': raw['id'],
+            'lat': raw['latitude'],
+            'lon': raw['longitude'],
+            'team': raw.get('owned_by_team', 0),
+            'prestige': raw.get('gym_points', 0),
+            'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
+            'last_modified': raw['last_modified_timestamp_ms'] / 1000.0,
         }
 
     @property
@@ -331,7 +359,7 @@ class Overseer:
                     self.start_worker(worker_no)
             # Clean cache
             if now - last_cleaned_cache > (15 * 60):  # clean cache
-                db.CACHE.clean_expired()
+                db.SIGHTING_CACHE.clean_expired()
                 last_cleaned_cache = now
             # Check up on workers
             if now - last_workers_checked > (5 * 60):
