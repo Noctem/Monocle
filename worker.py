@@ -81,8 +81,14 @@ class Slave:
         self.api.set_logger(self.logger)
 
     async def first_run(self):
+        loop = asyncio.get_event_loop()
         total_workers = config.GRID[0] * config.GRID[1]
         await self.sleep(self.worker_no / total_workers * config.SCAN_DELAY)
+        self.logger.info('Generating cell IDs...')
+        self.error_code = 'CELLIDS'
+        self.cell_ids = await loop.run_in_executor(
+            None, partial(utils.get_cell_ids_for_points, self.points)
+        )
         await self.run()
 
     async def run(self):
@@ -303,8 +309,7 @@ class Overseer:
         self.count = config.GRID[0] * config.GRID[1]
         self.logger.info('Generating points...')
         self.points = utils.get_points_per_worker()
-        self.logger.info('Generating cell IDs...')
-        self.cell_ids = utils.get_cell_ids_per_worker(self.points, self.logger)
+        self.cell_ids = [{} for _ in range(self.count)]
         self.logger.info('Done')
         self.start_date = datetime.now()
         self.status_bar = status_bar

@@ -117,13 +117,8 @@ def get_distance(p1, p2):
     return math.sqrt(pow(p1[0] - p2[0], 2) + pow(p1[1] - p2[1], 2))
 
 
-def get_cell_ids_per_worker(all_points, logger=None):
-    all_cell_ids = []
-    for i, points in enumerate(all_points):
-        if logger:
-            logger.info('Points for worker %s done', i)
-        cell_ids = []
-        for point in points:
-            cell_ids.append(pgoapi_utils.get_cell_ids(point[0], point[1]))
-        all_cell_ids.append(cell_ids)
-    return all_cell_ids
+def get_cell_ids_for_points(points):
+    cell_ids = []
+    for point in points:
+        cell_ids.append(pgoapi_utils.get_cell_ids(point[0], point[1]))
+    return cell_ids
