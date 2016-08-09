@@ -65,12 +65,20 @@ def configure_logger(filename='worker.log'):
 
 class Slave:
     """Single worker walking on the map"""
-    def __init__(self, worker_no, points, cell_ids, db_processor):
+    def __init__(
+        self,
+        worker_no,
+        points,
+        cell_ids,
+        db_processor,
+        start_step=0
+    ):
         self.worker_no = worker_no
         self.points = points
         self.cell_ids = cell_ids
         self.db_processor = db_processor
         self.count_points = len(self.points)
+        self.start_step = start_step
         self.step = 0
         self.cycle = 0
         self.seen_per_cycle = 0
@@ -149,12 +157,16 @@ class Slave:
         Also is capable of restarting in case an error occurs.
         """
         self.error_code = None
+        if self.cycle == 1:
+            start_step = self.start_step
+        else:
+            start_step = 0
         while self.cycle <= config.CYCLES_PER_WORKER:
             if not self.running and not self.killed:
                 await self.restart()
                 return
             try:
-                await self.main()
+                await self.main(start_step=start_step)
             except CannotProcessStep:
                 self.error_code = 'RESTART'
                 await self.restart()
@@ -170,16 +182,16 @@ class Slave:
             if self.cycle <= config.CYCLES_PER_WORKER:
                 self.error_code = 'SLEEP'
                 self.running = False
-                await self.sleep(random.randint(30, 60))
+                await self.sleep(random.randint(10, 20))
                 self.running = True
                 self.error_code = None
         self.error_code = 'RESTART'
         await self.restart()
 
-    async def main(self):
+    async def main(self, start_step=0):
         """Heart of the worker - goes over each point and reports sightings"""
         self.seen_per_cycle = 0
-        self.step = 0
+        self.step = start_step or 0
         loop = asyncio.get_event_loop()
         for i, point in enumerate(self.points):
             if not self.running:
@@ -333,11 +345,22 @@ class Overseer:
     def start_worker(self, worker_no, first_run=False):
         if self.killed:
             return
+        stopped_abruptly = (
+            not first_run and
+            self.workers[worker_no].step < len(self.points[worker_no]) - 1
+        )
+        if stopped_abruptly:
+            # Restart from NEXT step, because current one may have caused it
+            # to restart
+            start_step = self.workers[worker_no].step + 1
+        else:
+            start_step = 0
         worker = Slave(
             worker_no=worker_no,
             points=self.points[worker_no],
             cell_ids=self.cell_ids[worker_no],
             db_processor=self.db_processor,
+            start_step=start_step,
         )
         self.workers[worker_no] = worker
         # For first time, we need to wait until all workers login before
