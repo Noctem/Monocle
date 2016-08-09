@@ -216,7 +216,7 @@ class Slave(threading.Thread):
                 self.error_code = None
             self.step += 1
             time.sleep(
-                random.uniform(config.SCAN_DELAY, config.SCAN_DELAY + 2)
+                random.uniform(config.SCAN_DELAY, config.SCAN_DELAY_HIGH)
             )
         session.close()
         if self.seen_per_cycle == 0:
