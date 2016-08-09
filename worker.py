@@ -171,6 +171,7 @@ class Slave(threading.Thread):
                 longitude=pgoapi_utils.f2i(point[1]),
                 cell_id=cell_ids
             )
+            logger.debug('Response: %s', response_dict)
             if response_dict is False:
                 raise CannotProcessStep
             map_objects = response_dict['responses'].get('GET_MAP_OBJECTS', {})
