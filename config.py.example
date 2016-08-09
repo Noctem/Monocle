@@ -16,6 +16,8 @@ SCAN_DELAY = 10  # seconds
 SCAN_DELAY_HIGH = 12  # will vary between SCAN_DELAY and SCAN_DELAY_HIGH
 ALTITUDE = False  # Calculate correct altitude for each library
 PROXIES = None  # Dictionary with 'http' and 'https' keys
+ALTITUDE = False  # Generate accurate altitudes where possible
+ALT_RANGE = (1450, 1550)  # Generate random altitudes between these points
 
 SCAN_RADIUS = 70  # metres
 

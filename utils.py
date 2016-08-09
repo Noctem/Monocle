@@ -1,13 +1,17 @@
 import math
-import geocoder
-import numpy
 import random
 from geopy import distance, Point
-from collections import deque
 
 import config
 
-recent_altitudes = deque(maxlen=3)
+if config.ALTITUDE:
+    from geocoder import google
+    from collections import deque
+    from statistics import mean
+
+    recent_altitudes = deque(maxlen=5)
+    alt_counter = 0
+
 
 def get_map_center():
     """Returns center of the map"""
@@ -74,13 +78,9 @@ def get_gains():
     return abs(start.latitude - lat_gain), abs(start.longitude - lon_gain)
 
 
-def get_points_per_worker():
+def get_points_per_worker(altitude=False):
     """Returns all points that should be visited for whole grid"""
     total_workers = config.GRID[0] * config.GRID[1]
-    counter = 0
-
-    global recent_altitudes
-    global recent_altitudes2
 
     lat_gain, lon_gain = get_gains()
 
@@ -91,6 +91,8 @@ def get_points_per_worker():
     total_columns = math.ceil(
         abs(config.MAP_START[1] - config.MAP_END[1]) / lon_gain
     )
+    if altitude:
+        print('Generating altitude values, please wait...')
     for map_row, lat in enumerate(
         float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)
     ):
@@ -107,30 +109,38 @@ def get_points_per_worker():
             if map_col >= total_columns:  # should happen only once per 2 rows
                 grid_col -= 1
             worker_no = grid_row * config.GRID[1] + grid_col
-            if (counter % 100) < 3:
-                alt = geocoder.google([lat, lon], method='elevation', key=config.GOOGLE_MAPS_KEY).meters
-                if alt:
-                    recent_altitudes.append(alt)
-                    counter += 1
-                    print('ALT:', alt)
-                elif len(recent_altitudes) > 1:
-                    average = numpy.mean(recent_altitudes)
-                    alt = random.uniform(average, average+15.0)
-                    print('ALt:', alt)
-                else:
-                    alt = random.uniform(1380.0, 1420.0)
-                    print('Alt:', alt)
+            if altitude:
+                alt = get_altitude(lat, lon)
             else:
-                average = numpy.mean(recent_altitudes)
-                alt = random.uniform(average, average+15.0)
-                print('alt:', alt)
-                counter += 1
+                alt = random.randint(config.ALT_RANGE[0], config.ALT_RANGE[1])
             points[worker_no].append((lat, lon, alt))
     points = [
         sort_points_for_worker(p, i)
         for i, p in enumerate(points)
     ]
     return points
+
+
+def get_altitude(lat, lon):
+    """Determine altitudes from coordinates and rolling averages."""
+    global alt_counter
+
+    if (alt_counter % 25) == 0:
+        alt = google([lat, lon], method='elevation',
+                     key=config.GOOGLE_MAPS_KEY).meters
+        if alt:
+            recent_altitudes.append(alt)
+            alt_counter += 1
+            # generate digits since Google only provides one decimal place
+            return random.uniform(alt - .01, alt + 0.01)
+    try:
+        average = mean(recent_altitudes)
+        alt_counter += 1
+        # generate variance
+        return random.uniform(average - 2, average + 2)
+    except statistics.StatisticsError:
+        # fall back to range if average doesn't compute
+        return random.uniform(config.ALT_RANGE[0], config.ALT_RANGE[1])
 
 
 def sort_points_for_worker(points, worker_no):

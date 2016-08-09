@@ -31,6 +31,8 @@ REQUIRED_SETTINGS = (
     'ACCOUNTS',
     'SCAN_RADIUS',
     'SCAN_DELAY',
+    'ALTITUDE',
+    'ALT_RANGE'
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
@@ -61,6 +63,7 @@ logger = logging.getLogger()
 
 class Slave(threading.Thread):
     """Single worker walking on the map"""
+
     def __init__(
         self,
         group=None,
@@ -163,7 +166,8 @@ class Slave(threading.Thread):
         for i, point in enumerate(self.points):
             if not self.running:
                 return
-            logger.info('Visiting point %d (%s %s)', i, point[0], point[1])
+            logger.info('Visiting point %d (%s,%s %sm)', i, round(point[0], 5),
+                        round(point[1], 5), round(point[2]))
             self.api.set_position(point[0], point[1], point[2])
             cell_ids = pgoapi_utils.get_cell_ids(point[0], point[1])
             response_dict = self.api.get_map_objects(
@@ -314,7 +318,7 @@ def start_worker(worker_no, points):
 
 
 def spawn_workers(workers, status_bar=True):
-    points = utils.get_points_per_worker()
+    points = utils.get_points_per_worker(altitude=config.ALTITUDE)
     start_date = datetime.now()
     count = config.GRID[0] * config.GRID[1]
     for worker_no in range(count):
