@@ -407,8 +407,10 @@ def get_spawns_per_hour(session, pokemon_id):
 def get_spawns_per_minute(session, pokemon_id=None):
     # -90000 is 15 min, so the spawn time
     if get_engine_name(session) == 'sqlite':
+        ts_hour = 'STRFTIME("%H", expire_timestamp)'
         ts_minute= 'STRFTIME("%M", expire_timestamp-90000)'
     else:
+        ts_hour = 'HOUR(FROM_UNIXTIME(expire_timestamp-90000))'
         ts_minute = 'MINUTE(FROM_UNIXTIME(expire_timestamp-90000))'
 
     if pokemon_id:
@@ -420,6 +422,7 @@ def get_spawns_per_minute(session, pokemon_id=None):
         SELECT
             lat,
             lon,
+            {ts_hour} AS ts_hour,
             {ts_minute} AS ts_minute,
             COUNT(*) AS how_many
         FROM sightings
@@ -427,20 +430,25 @@ def get_spawns_per_minute(session, pokemon_id=None):
         GROUP BY
             lat,
             lon,
+            ts_hour,
             ts_minute
         ORDER BY
             lat,
             lon,
+            ts_hour,
             ts_minute
     '''.format(
         filter_for_pokemon=filter_for_pokemon,
+        ts_hour=ts_hour,
         ts_minute=ts_minute,
         report_since=get_since_query_part(where=False)
     ))
-    results = [[] for x in range(0,60)]
+    results = [[] for x in range(0,60*24)]
     for elem in query.fetchall():
-        if elem['ts_minute']:
-            results[elem['ts_minute']].append({
+        if elem['ts_hour'] and elem['ts_minute']:
+            hour = elem['ts_hour']
+            minute = elem['ts_minute']
+            results[hour*60+minute].append({
                 'lat': float(elem['lat']),
                 'lng': float(elem['lon']),
                 'weight': int(elem['how_many'])

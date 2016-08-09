@@ -74,16 +74,20 @@
 
 
         var timeHeatmapData;
-        function updateHeatmapData (minute) {
+        function updateHeatmapData (value) {
             var heatmapPoints = [];
-            var foo = 0;
+            var minute_of_day = 0;
             for(var i = 0; i < 15; i++){
-                foo = (60+minute - i) % 60;
-                heatmapPoints.push(timeHeatmapData[foo]);
+                minute_of_day = (1440+value - i) % 1440;
+                heatmapPoints.push(timeHeatmapData[minute_of_day]);
             }
+
             heatmapPoints = [].concat.apply([], heatmapPoints);
             heatmapLayer.setData(heatmapPoints);
-            $('#time_slider_value').val(minute);
+
+            var hour = Math.floor(value / 60);
+            var minute = value % 60;
+            $('#time_slider_value').val(hour.toString()+":"+minute.toString());
         }
 
         function loadTimeHeatmapData() {
@@ -144,9 +148,9 @@
 
         <div id="heatmap_time_slider" style="display:none;">
             <p for="time_slider">
-                Aggregated pokemon activity for {{ pokemon_name }} at minute: <b><output for="time_slider" id="time_slider_value">always</output></b>
+                Aggregated pokemon activity for {{ pokemon_name }} at: <b><output for="time_slider" id="time_slider_value">always</output></b>
             </p>
-            <p><input type="range" min="0" max="59" value="0" id="time_slider" step="1" oninput="updateHeatmapData(value)"> 
+            <p><input type="range" min="0" max="1439" value="0" id="time_slider" step="10" oninput="updateHeatmapData(value)"> 
         </div>
 
         <h3>Spawning hours</h3>
