@@ -192,13 +192,12 @@ class Slave:
             self.logger.info(
                 'Visiting point %d (%s %s)', i, point[0], point[1]
             )
-            cell_ids = self.cell_ids[i]
             self.api.set_position(point[0], point[1], 100)
             response_dict = await loop.run_in_executor(None, partial(
                 self.api.get_map_objects,
                 latitude=pgoapi_utils.f2i(point[0]),
                 longitude=pgoapi_utils.f2i(point[1]),
-                cell_id=cell_ids
+                cell_id=self.cell_ids[i]
             ))
             if response_dict is False:
                 raise CannotProcessStep
