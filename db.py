@@ -267,7 +267,7 @@ def get_forts(session):
             FROM fort_sightings fs
             JOIN forts f ON f.id=fs.fort_id
             ORDER BY fs.last_modified DESC
-        ) t GROUP BY fort_id
+        ) t GROUP BY fort_id, id
     ''')
     return query.fetchall()
 
