@@ -304,7 +304,8 @@ class Overseer:
         self.logger.info('Generating points...')
         self.points = utils.get_points_per_worker()
         self.logger.info('Generating cell IDs...')
-        self.cell_ids = utils.get_cell_ids_per_worker(self.points)
+        self.cell_ids = utils.get_cell_ids_per_worker(self.points, self.logger)
+        self.logger.info('Done')
         self.start_date = datetime.now()
         self.status_bar = status_bar
         self.killed = False
