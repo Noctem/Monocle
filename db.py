@@ -406,9 +406,10 @@ def get_spawns_per_hour(session, pokemon_id):
 
 def get_spawns_per_minute(session, pokemon_id=None):
     # -90000 is 15 min, so the spawn time
-    spawn_time = 'expire_timestamp-90000'
-    ts_minute = '''MINUTE(FROM_UNIXTIME( {spawn_time} ))'''.format(
-        spawn_time=spawn_time)
+    if get_engine_name(session) == 'sqlite':
+        ts_minute= 'STRFTIME("%M", expire_timestamp-90000)'
+    else:
+        ts_minute = 'MINUTE(FROM_UNIXTIME(expire_timestamp-90000))'
 
     if pokemon_id:
         filter_for_pokemon = 'WHERE pokemon_id = ' + pokemon_id
