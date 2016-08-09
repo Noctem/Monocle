@@ -221,9 +221,12 @@ class Slave(threading.Thread):
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
             self.step += 1
-            time.sleep(
-                random.uniform(config.SCAN_DELAY, config.SCAN_DELAY_HIGH)
-            )
+            if isinstance(config.SCAN_DELAY, tuple):
+                time.sleep(random.uniform(*config.SCAN_DELAY))
+            else:
+                time.sleep(
+                    random.uniform(config.SCAN_DELAY, config.SCAN_DELAY + 2)
+                )
         session.close()
         if self.seen_per_cycle == 0:
             self.error_code = 'NO POKEMON'
