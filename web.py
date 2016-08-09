@@ -148,9 +148,12 @@ def report_main():
         session, [r[0] for r in bottom_pokemon]
     )
     stage2_pokemon = db.get_stage2_pokemon(session)
-    stage2_sightings = db.get_all_sightings(
-        session, [r[0] for r in stage2_pokemon]
-    )
+    if stage2_pokemon:
+        stage2_sightings = db.get_all_sightings(
+            session, [r[0] for r in stage2_pokemon]
+        )
+    else:
+        stage2_sightings = []
     js_data = {
         'charts_data': {
             'punchcard': db.get_punch_card(session),
