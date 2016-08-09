@@ -96,6 +96,7 @@ class Slave:
         self.cell_ids = await loop.run_in_executor(
             None, partial(utils.get_cell_ids_for_points, self.points)
         )
+        self.logger.info('Done!')
         await self.run()
 
     async def run(self):
@@ -433,7 +434,7 @@ class Overseer:
             '',
         ]
         previous = 0
-        for i in range(4, workers_count + 4, 4):
+        for i in range(4, len(messages) + 4, 4):
             output.append('\t'.join(messages[previous:i]))
             previous = i
         return '\n'.join(output)
@@ -501,7 +502,6 @@ if __name__ == '__main__':
         configure_logger(filename=None)
     logger.setLevel(args.log_level)
     loop = asyncio.get_event_loop()
-    loop.set_debug(True)
     overseer = Overseer(status_bar=args.status_bar, loop=loop)
     loop.set_default_executor(ThreadPoolExecutor())
     loop.run_in_executor(None, overseer.check)
