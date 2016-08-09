@@ -84,6 +84,8 @@ class Slave(threading.Thread):
         self.api = PGoApi()
         self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(center[0], center[1], center[2])  # lat, lon, alt
+        if config.PROXY:
+            self.api.set_proxy(config.PROXY)
 
     def run(self):
         """Wrapper for self.main - runs it a few times before restarting

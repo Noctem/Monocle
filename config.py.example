@@ -15,6 +15,7 @@ CYCLES_PER_WORKER = 3
 SCAN_DELAY = 10  # seconds
 SCAN_DELAY_HIGH = 12  # will vary between SCAN_DELAY and SCAN_DELAY_HIGH
 ALTITUDE = False  # Calculate correct altitude for each library
+PROXIES = None  # Dictionary with 'http' and 'https' keys
 
 SCAN_RADIUS = 70  # metres
 
