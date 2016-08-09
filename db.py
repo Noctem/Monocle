@@ -404,6 +404,48 @@ def get_spawns_per_hour(session, pokemon_id):
         ))
     return results
 
+def get_spawns_per_minute(session, pokemon_id=None):
+    # -90000 is 15 min, so the spawn time
+    spawn_time = 'expire_timestamp-90000'
+    ts_minute = '''MINUTE(FROM_UNIXTIME( {spawn_time} ))'''.format(
+        spawn_time=spawn_time)
+
+    if pokemon_id:
+        filter_for_pokemon = 'WHERE pokemon_id = ' + pokemon_id
+    else:
+        filter_for_pokemon = ''
+
+    query = session.execute('''
+        SELECT
+            lat,
+            lon,
+            {ts_minute} AS ts_minute,
+            COUNT(*) AS how_many
+        FROM sightings
+        {filter_for_pokemon}
+        GROUP BY
+            lat,
+            lon,
+            ts_minute
+        ORDER BY
+            lat,
+            lon,
+            ts_minute
+    '''.format(
+        filter_for_pokemon=filter_for_pokemon,
+        ts_minute=ts_minute,
+        report_since=get_since_query_part(where=False)
+    ))
+    results = [[] for x in range(0,60)]
+    for elem in query.fetchall():
+        if elem['ts_minute']:
+            results[elem['ts_minute']].append({
+                'lat': float(elem['lat']),
+                'lng': float(elem['lon']),
+                'weight': int(elem['how_many'])
+            })
+    return results
+
 
 def get_total_spawns_count(session, pokemon_id):
     query = session.execute('''
