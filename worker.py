@@ -55,8 +55,6 @@ def configure_logger(filename='worker.log'):
         level=logging.INFO,
     )
 
-logger = logging.getLogger()
-
 
 class Slave:
     """Single worker walking on the map"""
@@ -70,8 +68,9 @@ class Slave:
         self.cycle = 0
         self.seen_per_cycle = 0
         self.total_seen = 0
-        self.error_code = None
+        self.error_code = 'INIT'
         self.running = True
+        self.killed = False
         self.restart_me = False
         self.logged_in = False
         center = self.points[0]
@@ -96,19 +95,19 @@ class Slave:
         self.cycle = 1
         self.error_code = None
         loop = asyncio.get_event_loop()
-        service = config.ACCOUNTS[self.worker_no][2]
         self.error_code = 'LOGIN'
         while True:
+            self.logger.info('Trying to log in')
             try:
                 loginsuccess = await loop.run_in_executor(None, partial(
                     self.api.login,
-                    provider=service,
                     username=config.ACCOUNTS[self.worker_no][0],
                     password=config.ACCOUNTS[self.worker_no][1],
+                    provider=config.ACCOUNTS[self.worker_no][2],
                 ))
                 if not loginsuccess:
                     self.error_code = 'LOGIN FAIL'
-                    self.restart()
+                    await self.restart()
                     return
             except pgoapi_exceptions.AuthException:
                 self.error_code = 'LOGIN FAIL'
@@ -123,6 +122,7 @@ class Slave:
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerSideRequestThrottlingException:
+                self.error_code = 'THROTTLE'
                 await self.sleep(random.uniform(5, 10))
                 continue
             except Exception:
@@ -133,6 +133,7 @@ class Slave:
             break
         self.logged_in = True
         self.error_code = 'READY'
+        await asyncio.sleep(3)
 
     async def run_cycle(self):
         """Wrapper for self.main - runs it a few times before restarting
@@ -141,7 +142,7 @@ class Slave:
         """
         self.error_code = None
         while self.cycle <= config.CYCLES_PER_WORKER:
-            if not self.running:
+            if not self.running and not self.killed:
                 await self.restart()
                 return
             try:
@@ -212,7 +213,9 @@ class Slave:
                         forts.append(self.normalize_fort(fort))
             self.db_processor.add(pokemons)
             self.db_processor.add(forts)
-            logger.info(
+            self.seen_per_cycle += len(pokemons)
+            self.total_seen += len(pokemons)
+            self.logger.info(
                 'Point processed, %d Pokemons and %d forts seen!',
                 len(pokemons),
                 len(forts),
@@ -231,6 +234,7 @@ class Slave:
     def normalize_pokemon(raw, now):
         """Normalizes data coming from API into something acceptable by db"""
         return {
+            'type': 'pokemon',
             'encounter_id': raw['encounter_id'],
             'spawn_id': raw['spawn_point_id'],
             'pokemon_id': raw['pokemon_data']['pokemon_id'],
@@ -242,6 +246,7 @@ class Slave:
     @staticmethod
     def normalize_fort(raw):
         return {
+            'type': 'fort',
             'external_id': raw['id'],
             'lat': raw['latitude'],
             'lon': raw['longitude'],
@@ -277,6 +282,7 @@ class Slave:
 
     async def restart(self, sleep_min=5, sleep_max=20):
         """Sleeps for a bit, then restarts"""
+        self.logger.info('Restarting')
         await self.sleep(random.randint(sleep_min, sleep_max))
         self.restart_me = True
 
@@ -287,28 +293,30 @@ class Slave:
         """
         self.error_code = 'KILLED'
         self.running = False
+        self.killed = True
 
 
 class Overseer:
     def __init__(self, status_bar, loop):
+        self.logger = logging.getLogger('overseer')
         self.workers = {}
         self.count = config.GRID[0] * config.GRID[1]
-        logger.info('Generating points...')
+        self.logger.info('Generating points...')
         self.points = utils.get_points_per_worker()
-        logger.info('Generating cell IDs...')
+        self.logger.info('Generating cell IDs...')
         self.cell_ids = utils.get_cell_ids_per_worker(self.points)
         self.start_date = datetime.now()
         self.status_bar = status_bar
         self.killed = False
         self.loop = loop
         self.db_processor = DatabaseProcessor()
-        logger.info('Overseer initialized')
+        self.logger.info('Overseer initialized')
 
     def kill(self):
         self.killed = True
+        self.db_processor.stop()
         for worker in self.workers.values():
             worker.kill()
-        self.db_processor.stop()
 
     def start_worker(self, worker_no, first_run=False):
         if self.killed:
@@ -431,9 +439,17 @@ class DatabaseProcessor:
                 self.logger.debug('No items - sleeping')
                 time.sleep(0.2)
             else:
-                db.add_sighting(session, item)
-                self.logger.debug('Item saved to db')
-                session.commit()
+                try:
+                    if item['type'] == 'pokemon':
+                        db.add_sighting(session, item)
+                        session.commit()
+                    elif item['type'] == 'fort':
+                        db.add_fort_sighting(session, item)
+                        # No need to commit here - db takes care of it
+                    self.logger.debug('Item saved to db')
+                except Exception:
+                    self.logger.exception('A wild exception appeared!')
+                    self.logger.info('Skipping the item.')
         session.close()
 
 
@@ -455,6 +471,7 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
+    logger = logging.getLogger()
     if args.status_bar:
         configure_logger(filename='worker.log')
         logger.info('-' * 30)
@@ -471,6 +488,7 @@ if __name__ == '__main__':
     try:
         loop.run_forever()
     except KeyboardInterrupt:
+        print('Exiting...')
         overseer.kill()
         loop.run_until_complete(asyncio.gather(*asyncio.Task.all_tasks()))
         loop.close()

@@ -7,5 +7,5 @@ gpsoauth==0.3.0
 coveralls==1.1
 werkzeug==0.11.10
 sqlalchemy==1.0.14
--e git+https://github.com/keyphact/pgoapi.git@06eaef1e0353d17f775f2d1765d6281a05be7654#egg=pgoapi
+-e git+https://github.com/keyphact/pgoapi.git@ef58322d919d6bee019242c536c04e702e60a7e8#egg=pgoapi
 enum34==1.1.6
