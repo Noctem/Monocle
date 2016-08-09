@@ -91,12 +91,6 @@ class Slave:
         loop = asyncio.get_event_loop()
         total_workers = config.GRID[0] * config.GRID[1]
         await self.sleep(self.worker_no / total_workers * config.SCAN_DELAY)
-        self.logger.info('Generating cell IDs...')
-        self.error_code = 'CELLIDS'
-        self.cell_ids = await loop.run_in_executor(
-            None, partial(utils.get_cell_ids_for_points, self.points)
-        )
-        self.logger.info('Done!')
         await self.run()
 
     async def run(self):
@@ -194,11 +188,16 @@ class Slave:
                 'Visiting point %d (%s %s)', i, point[0], point[1]
             )
             self.api.set_position(point[0], point[1], 100)
+            if i not in self.cell_ids:
+                self.cell_ids[i] = await loop.run_in_executor(None, partial(
+                    pgoapi_utils.get_cell_ids, point[0], point[1]
+                ))
+            cell_ids = self.cell_ids[i]
             response_dict = await loop.run_in_executor(None, partial(
                 self.api.get_map_objects,
                 latitude=pgoapi_utils.f2i(point[0]),
                 longitude=pgoapi_utils.f2i(point[1]),
-                cell_id=self.cell_ids[i]
+                cell_id=cell_ids
             ))
             if response_dict is False:
                 raise CannotProcessStep
