@@ -40,6 +40,13 @@ for setting_name in REQUIRED_SETTINGS:
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
 
 
+BAD_STATUSES = (
+    'LOGIN FAIL',
+    'EXCEPTION',
+    'BAD LOGIN',
+)
+
+
 class CannotProcessStep(Exception):
     """Raised when servers are too busy"""
 
@@ -395,15 +402,22 @@ class Overseer:
                 else:
                     _ = os.system('clear')
                 print(self.get_status_message())
-            time.sleep(0.5)
+            time.sleep(1)
 
     def get_status_message(self):
         workers_count = len(self.workers)
         points_stats = self.get_point_stats()
-        messages = [
-            self.workers[i].status.ljust(20) for i in range(workers_count)
-        ]
         running_for = datetime.now() - self.start_date
+        dots = []
+        messages = []
+        for worker in self.workers.values():
+            if worker.error_code in BAD_STATUSES:
+                dots.append('X')
+                messages.append(worker.status.ljust(20))
+            elif worker.error_code:
+                dots.append(worker.error_code[0])
+            else:
+                dots.append('.' if worker.step % 2 == 0 else ':')
         output = [
             'PokeMiner\trunning for {}'.format(running_for),
             '{len} workers, each visiting ~{avg} points per cycle '
@@ -415,6 +429,8 @@ class Overseer:
             ),
             '',
             '{} threads active'.format(threading.active_count()),
+            '',
+            ''.join(dots),
             '',
         ]
         previous = 0
