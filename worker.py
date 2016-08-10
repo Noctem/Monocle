@@ -88,6 +88,8 @@ class Slave:
         self.killed = False
         self.restart_me = False
         self.logged_in = False
+        self.last_step_run_time = 0
+        self.last_api_latency = 0
         center = self.points[0]
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
         self.api = PGoApi()
@@ -106,6 +108,18 @@ class Slave:
             await self.login()
         await self.run_cycle()
 
+    def call_api(self, method, *args, **kwargs):
+        """Returns decorated function that measures execution time
+
+        This works exactly like functools.partial does.
+        """
+        def inner():
+            start = time.time()
+            result = method(*args, **kwargs)
+            self.last_api_latency = time.time() - start
+            return result
+        return inner
+
     async def login(self):
         """Logs worker in and prepares for scanning"""
         self.cycle = 1
@@ -115,7 +129,7 @@ class Slave:
         while True:
             self.logger.info('Trying to log in')
             try:
-                loginsuccess = await loop.run_in_executor(None, partial(
+                loginsuccess = await loop.run_in_executor(None, self.call_api(
                     self.api.login,
                     username=config.ACCOUNTS[self.worker_no][0],
                     password=config.ACCOUNTS[self.worker_no][1],
@@ -199,13 +213,14 @@ class Slave:
             self.logger.info(
                 'Visiting point %d (%s %s)', i, point[0], point[1]
             )
+            start = time.time()
             self.api.set_position(point[0], point[1], 100)
             if i not in self.cell_ids:
                 self.cell_ids[i] = await loop.run_in_executor(None, partial(
                     pgoapi_utils.get_cell_ids, point[0], point[1]
                 ))
             cell_ids = self.cell_ids[i]
-            response_dict = await loop.run_in_executor(None, partial(
+            response_dict = await loop.run_in_executor(None, self.call_api(
                 self.api.get_map_objects,
                 latitude=pgoapi_utils.f2i(point[0]),
                 longitude=pgoapi_utils.f2i(point[1]),
@@ -248,6 +263,7 @@ class Slave:
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
             self.step += 1
+            self.last_step_run_time = time.time() - start
             await self.sleep(
                 random.uniform(config.SCAN_DELAY, config.SCAN_DELAY + 2)
             )
@@ -437,9 +453,26 @@ class Overseer:
             time.sleep(0.5)
         print()
 
+    def get_time_stats(self):
+        steps = [w.last_step_run_time for w in self.workers.values()]
+        api_calls = [w.last_api_latency for w in self.workers.values()]
+        return {
+            'api_calls': {
+                'max': max(api_calls),
+                'min': min(api_calls),
+                'avg': sum(api_calls) / len(api_calls),
+            },
+            'steps': {
+                'max': max(steps),
+                'min': min(steps),
+                'avg': sum(steps) / len(steps),
+            }
+        }
+
     def get_status_message(self):
         workers_count = len(self.workers)
         points_stats = self.get_point_stats()
+        time_stats = self.get_time_stats()
         running_for = datetime.now() - self.start_date
         dots = []
         messages = []
@@ -464,6 +497,12 @@ class Overseer:
             '{} threads and {} coroutines active'.format(
                 threading.active_count(),
                 len(asyncio.Task.all_tasks(self.loop)),
+            ),
+            'API latency: min {min:.3f}, max {max:.3f}, avg {avg:.3f}'.format(
+                **time_stats['api_calls']
+            ),
+            'step time: min {min:.3f}, max {max:.3f}, avg {avg:.3f}'.format(
+                **time_stats['steps']
             ),
             '',
             ''.join(dots),
