@@ -24,7 +24,7 @@ class Team(enum.Enum):
 
 
 def get_engine():
-    return create_engine(DB_ENGINE,pool_size=config.GRID[0]*config.GRID[1]+5)
+    return create_engine(DB_ENGINE)
 
 
 def get_engine_name(session):
@@ -267,7 +267,7 @@ def get_forts(session):
             FROM fort_sightings fs
             JOIN forts f ON f.id=fs.fort_id
             ORDER BY fs.last_modified DESC
-        ) t GROUP BY fort_id, id
+        ) t GROUP BY fort_id
     ''')
     return query.fetchall()
 
