@@ -71,12 +71,16 @@ class Slave:
         points,
         cell_ids,
         db_processor,
-        start_step=0
+        cell_ids_executor,
+        network_executor,
+        start_step=0,
     ):
         self.worker_no = worker_no
         self.points = points
         self.cell_ids = cell_ids
         self.db_processor = db_processor
+        self.cell_ids_executor = cell_ids_executor
+        self.network_executor = network_executor
         self.count_points = len(self.points)
         self.start_step = start_step
         self.step = 0
@@ -129,12 +133,15 @@ class Slave:
         while True:
             self.logger.info('Trying to log in')
             try:
-                loginsuccess = await loop.run_in_executor(None, self.call_api(
-                    self.api.login,
-                    username=config.ACCOUNTS[self.worker_no][0],
-                    password=config.ACCOUNTS[self.worker_no][1],
-                    provider=config.ACCOUNTS[self.worker_no][2],
-                ))
+                loginsuccess = await loop.run_in_executor(
+                    self.network_executor,
+                    self.call_api(
+                        self.api.login,
+                        username=config.ACCOUNTS[self.worker_no][0],
+                        password=config.ACCOUNTS[self.worker_no][1],
+                        provider=config.ACCOUNTS[self.worker_no][2],
+                    )
+                )
                 if not loginsuccess:
                     self.error_code = 'LOGIN FAIL'
                     await self.restart()
@@ -216,16 +223,22 @@ class Slave:
             start = time.time()
             self.api.set_position(point[0], point[1], 100)
             if i not in self.cell_ids:
-                self.cell_ids[i] = await loop.run_in_executor(None, partial(
-                    pgoapi_utils.get_cell_ids, point[0], point[1]
-                ))
+                self.cell_ids[i] = await loop.run_in_executor(
+                    self.cell_ids_executor,
+                    partial(
+                        pgoapi_utils.get_cell_ids, point[0], point[1]
+                    )
+                )
             cell_ids = self.cell_ids[i]
-            response_dict = await loop.run_in_executor(None, self.call_api(
-                self.api.get_map_objects,
-                latitude=pgoapi_utils.f2i(point[0]),
-                longitude=pgoapi_utils.f2i(point[1]),
-                cell_id=cell_ids
-            ))
+            response_dict = await loop.run_in_executor(
+                self.network_executor,
+                self.call_api(
+                    self.api.get_map_objects,
+                    latitude=pgoapi_utils.f2i(point[0]),
+                    longitude=pgoapi_utils.f2i(point[1]),
+                    cell_id=cell_ids
+                )
+            )
             if response_dict is False:
                 raise CannotProcessStep
             map_objects = response_dict['responses'].get('GET_MAP_OBJECTS', {})
@@ -263,7 +276,7 @@ class Slave:
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
             self.step += 1
-            self.last_step_run_time = time.time() - start
+            self.last_step_run_time = time.time() - start - self.last_api_latency
             await self.sleep(
                 random.uniform(config.SCAN_DELAY, config.SCAN_DELAY + 2)
             )
@@ -350,6 +363,8 @@ class Overseer:
         self.killed = False
         self.loop = loop
         self.db_processor = DatabaseProcessor()
+        self.cell_ids_executor = ThreadPoolExecutor(10)
+        self.network_executor = ThreadPoolExecutor(10)
         self.logger.info('Overseer initialized')
 
     def kill(self):
@@ -376,13 +391,15 @@ class Overseer:
             points=self.points[worker_no],
             cell_ids=self.cell_ids[worker_no],
             db_processor=self.db_processor,
+            cell_ids_executor=self.cell_ids_executor,
+            network_executor=self.network_executor,
             start_step=start_step,
         )
         self.workers[worker_no] = worker
         # For first time, we need to wait until all workers login before
         # scanning
         if first_run:
-            self.loop.create_task(worker.first_run())
+            asyncio.ensure_future(worker.first_run())
             return
         # WARNING: at this point, we're called by self.check which runs in
         # separate thread than event loop! That's why run_coroutine_threadsafe
