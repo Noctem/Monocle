@@ -424,7 +424,18 @@ class Overseer:
                 else:
                     _ = os.system('clear')
                 print(self.get_status_message())
-            time.sleep(1)
+            time.sleep(0.5)
+        # OK, now we're killed
+        while True:
+            tasks = sum([not t.done() for t in asyncio.Task.all_tasks(loop)])
+            print(
+                '{} coroutines active'.format(tasks),
+                end='\r'
+            )
+            if tasks == 0:
+                break
+            time.sleep(0.5)
+        print()
 
     def get_status_message(self):
         workers_count = len(self.workers)
@@ -450,7 +461,10 @@ class Overseer:
                 max=points_stats['max'],
             ),
             '',
-            '{} threads active'.format(threading.active_count()),
+            '{} threads and {} coroutines active'.format(
+                threading.active_count(),
+                len(asyncio.Task.all_tasks(self.loop)),
+            ),
             '',
             ''.join(dots),
             '',
@@ -513,6 +527,12 @@ def parse_args():
     return parser.parse_args()
 
 
+def exception_handler(loop, context):
+    logger = logging.getLogger('eventloop')
+    logger.exception('A wild exception appeared!')
+    logger.error(context)
+
+
 if __name__ == '__main__':
     args = parse_args()
     logger = logging.getLogger()
@@ -526,12 +546,13 @@ if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     overseer = Overseer(status_bar=args.status_bar, loop=loop)
     loop.set_default_executor(ThreadPoolExecutor())
+    loop.set_exception_handler(exception_handler)
     loop.run_in_executor(None, overseer.check)
     overseer.start()
     try:
         loop.run_forever()
     except KeyboardInterrupt:
-        print('Exiting...')
+        print('Exiting, please wait until all tasks finish')
         overseer.kill()
         loop.run_until_complete(asyncio.gather(*asyncio.Task.all_tasks()))
         loop.close()
