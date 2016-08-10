@@ -248,13 +248,9 @@ class Slave:
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
             self.step += 1
-            next_scan_at = time.time() + random.uniform(
-                config.SCAN_DELAY, config.SCAN_DELAY + 2
+            await self.sleep(
+                random.uniform(config.SCAN_DELAY, config.SCAN_DELAY + 2)
             )
-            while True:
-                if time.time() >= next_scan_at:
-                    break
-                await self.sleep(1)
         if self.seen_per_cycle == 0:
             self.error_code = 'NO POKEMON'
 
