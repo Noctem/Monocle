@@ -98,9 +98,10 @@
             heatmapPoints = [].concat.apply([], heatmapPoints);
             heatmapLayer.setData(heatmapPoints);
 
-            var hour = Math.floor(value / 60);
-            var minute = value % 60;
-            $('#time_slider_value').val(hour.toString()+":"+minute.toString());
+            var hour = Math.floor(value / 60).toLocaleString('en-US', {minimumIntegerDigits:2});
+            var minute = (value % 60).toLocaleString('en-US', {minimumIntegerDigits:2});
+            
+            $('#time_slider_value').val(hour + ":" + minute);
         }
 
         function loadTimeHeatmapData() {
@@ -163,7 +164,7 @@
             <p for="time_slider">
                 Aggregated pokemon activity at: <b><output for="time_slider" id="time_slider_value">always</output></b>
             </p>
-            <p><input type="range" min="0" max="1439" value="0" id="time_slider" step="10" oninput="updateHeatmapData(value)"> 
+            <p><input type="range" min="0" max="1439" value="0" id="time_slider" step="5" oninput="updateHeatmapData(value)"> 
         </div>
 
         <h3>Most &amp; least frequently spawning species</h2>
