@@ -65,9 +65,12 @@ def get_stats():
             prestige[team] += fort['prestige']
     total_prestige = sum(prestige.values())
     for team in db.Team:
-        percentages[team.value] = count.get(team.value) / len(forts) * 100
+        # TODO: remove float(...) as soon as we move to Python 3
+        percentages[team.value] = (
+            count.get(team.value) / float(len(forts)) * 100
+        )
         prestige_percent[team.value] = (
-            prestige.get(team.value) / total_prestige * 100
+            prestige.get(team.value) / float(total_prestige) * 100
         )
         if guardians[team.value]:
             pokemon_id = sorted(
