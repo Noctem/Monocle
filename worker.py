@@ -435,7 +435,7 @@ class Overseer:
                     self.start_worker(worker_no)
             # Clean cache
             if now - last_cleaned_cache > (15 * 60):  # clean cache
-                db.SIGHTING_CACHE.clean_expired()
+                self.db_processor.clean_cache()
                 last_cleaned_cache = now
             # Check up on workers
             if now - last_workers_checked > (5 * 60):
@@ -537,6 +537,7 @@ class DatabaseProcessor:
         self.queue = deque()
         self.logger = logging.getLogger('dbprocessor')
         self.running = True
+        self.clean_cache = False
 
     def stop(self):
         self.running = False
@@ -547,6 +548,9 @@ class DatabaseProcessor:
     def process(self):
         session = db.Session()
         while self.running or self.queue:
+            if self.clean_cache:
+                db.SIGHTING_CACHE.clean_expired()
+                self.clean_cache = False
             try:
                 item = self.queue.popleft()
             except IndexError:
@@ -565,6 +569,9 @@ class DatabaseProcessor:
                     self.logger.exception('A wild exception appeared!')
                     self.logger.info('Skipping the item.')
         session.close()
+
+    def clean_cache(self):
+        self.clean_cache = True
 
 
 def parse_args():
