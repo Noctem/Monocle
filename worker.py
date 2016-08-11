@@ -540,7 +540,7 @@ class DatabaseProcessor(threading.Thread):
         self.queue = deque()
         self.logger = logging.getLogger('dbprocessor')
         self.running = True
-        self.clean_cache = False
+        self._clean_cache = False
 
     def stop(self):
         self.running = False
@@ -551,9 +551,9 @@ class DatabaseProcessor(threading.Thread):
     def run(self):
         session = db.Session()
         while self.running or self.queue:
-            if self.clean_cache:
+            if self._clean_cache:
                 db.SIGHTING_CACHE.clean_expired()
-                self.clean_cache = False
+                self._clean_cache = False
             try:
                 item = self.queue.popleft()
             except IndexError:
@@ -574,7 +574,7 @@ class DatabaseProcessor(threading.Thread):
         session.close()
 
     def clean_cache(self):
-        self.clean_cache = True
+        self._clean_cache = True
 
 
 def parse_args():
