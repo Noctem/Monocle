@@ -34,6 +34,8 @@ REQUIRED_SETTINGS = (
     'ACCOUNTS',
     'SCAN_RADIUS',
     'SCAN_DELAY',
+    'COMPUTE_THREADS',
+    'NETWORK_THREADS',
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
@@ -363,8 +365,8 @@ class Overseer:
         self.killed = False
         self.loop = loop
         self.db_processor = DatabaseProcessor()
-        self.cell_ids_executor = ThreadPoolExecutor(10)
-        self.network_executor = ThreadPoolExecutor(10)
+        self.cell_ids_executor = ThreadPoolExecutor(config.COMPUTE_THREADS)
+        self.network_executor = ThreadPoolExecutor(config.NETWORK_THREADS)
         self.logger.info('Overseer initialized')
 
     def kill(self):
