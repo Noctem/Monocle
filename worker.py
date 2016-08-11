@@ -419,7 +419,7 @@ class Overseer:
     def start(self):
         for worker_no in range(self.count):
             self.start_worker(worker_no, first_run=True)
-        self.loop.run_in_executor(None, self.db_processor.process)
+        self.db_processor.start()
 
     def check(self):
         last_cleaned_cache = time.time()
@@ -534,8 +534,9 @@ class Overseer:
         return '\n'.join(output)
 
 
-class DatabaseProcessor:
+class DatabaseProcessor(threading.Thread):
     def __init__(self):
+        super().__init__()
         self.queue = deque()
         self.logger = logging.getLogger('dbprocessor')
         self.running = True
@@ -547,7 +548,7 @@ class DatabaseProcessor:
     def add(self, obj_list):
         self.queue.extend(obj_list)
 
-    def process(self):
+    def run(self):
         session = db.Session()
         while self.running or self.queue:
             if self.clean_cache:
@@ -612,8 +613,9 @@ if __name__ == '__main__':
     overseer = Overseer(status_bar=args.status_bar, loop=loop)
     loop.set_default_executor(ThreadPoolExecutor())
     loop.set_exception_handler(exception_handler)
-    loop.run_in_executor(None, overseer.check)
     overseer.start()
+    overseer_thread = threading.Thread(target=overseer.check)
+    overseer_thread.start()
     try:
         loop.run_forever()
     except KeyboardInterrupt:
