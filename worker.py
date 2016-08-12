@@ -102,6 +102,8 @@ class Slave:
         self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(center[0], center[1], 100)  # lat, lon, alt
         self.api.set_logger(self.logger)
+        if hasattr(config, 'PROXIES') and config.PROXIES:
+            self.api.set_proxy(config.PROXIES)
 
     async def first_run(self):
         loop = asyncio.get_event_loop()
