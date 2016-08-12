@@ -464,7 +464,11 @@ class Overseer:
             time.sleep(0.5)
         # OK, now we're killed
         while True:
-            tasks = sum([not t.done() for t in asyncio.Task.all_tasks(loop)])
+            try:
+                tasks = sum(not t.done() for t in asyncio.Task.all_tasks(loop))
+            except RuntimeError:
+                # Set changed size during iteration
+                tasks = '?'
             print(
                 '{} coroutines active'.format(tasks),
                 end='\r'
@@ -505,6 +509,11 @@ class Overseer:
                 dots.append(worker.error_code[0])
             else:
                 dots.append('.' if worker.step % 2 == 0 else ':')
+        try:
+            coroutines_count = len(asyncio.Task.all_tasks(self.loop))
+        except RuntimeError:
+            # Set changed size during iteration
+            coroutines_count = '?'
         output = [
             'PokeMiner\trunning for {}'.format(running_for),
             '{len} workers, each visiting ~{avg} points per cycle '
@@ -517,7 +526,7 @@ class Overseer:
             '',
             '{} threads and {} coroutines active'.format(
                 threading.active_count(),
-                len(asyncio.Task.all_tasks(self.loop)),
+                coroutines_count,
             ),
             'API latency: min {min:.3f}, max {max:.3f}, avg {avg:.3f}'.format(
                 **time_stats['api_calls']
