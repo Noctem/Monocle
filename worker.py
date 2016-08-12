@@ -569,6 +569,7 @@ class DatabaseProcessor(threading.Thread):
                         # No need to commit here - db takes care of it
                     self.logger.debug('Item saved to db')
                 except Exception:
+                    self.session.rollback()
                     self.logger.exception('A wild exception appeared!')
                     self.logger.info('Skipping the item.')
         session.close()
