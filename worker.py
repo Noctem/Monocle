@@ -183,7 +183,7 @@ class Slave(threading.Thread):
                         # Care only about 15 min spawns
                         # 30 and 45 min ones will be just put after
                         # time_till_hidden is below 15 min
-                        if pokemon['time_till_hidden_ms'] < 0:
+                        if pokemon['time_till_hidden_ms'] < 0 or pokemon['time_till_hidden_ms'] > 900000:
                             continue
                         pokemons.append(
                             self.normalize_pokemon(
