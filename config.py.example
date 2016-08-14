@@ -13,8 +13,8 @@ MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
 CYCLES_PER_WORKER = 3
 SCAN_DELAY = (10, 12)  # will vary between these values (in seconds)
-ALTITUDE = False  # Calculate correct altitude for each library
 PROXIES = None  # Insert dictionary with 'http' and 'https' keys to enable
+ALTITUDE = False  # Calculate correct altitude for each library
 ALTITUDE = False  # Generate accurate altitudes where possible
 ALT_RANGE = (1450, 1550)  # Generate random altitudes between these points
 

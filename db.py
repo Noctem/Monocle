@@ -115,8 +115,8 @@ class Sighting(Base):
     expire_timestamp = Column(Integer, index=True)
     encounter_id = Column(String(32))
     normalized_timestamp = Column(Integer)
-    lat = Column(String(16), index=True)
-    lon = Column(String(16), index=True)
+    lat = Column(String(20), index=True)
+    lon = Column(String(20), index=True)
 
 
 class Fort(Base):
@@ -124,8 +124,8 @@ class Fort(Base):
 
     id = Column(Integer, primary_key=True)
     external_id = Column(String(64), unique=True)
-    lat = Column(String(16), index=True)
-    lon = Column(String(16), index=True)
+    lat = Column(String(20), index=True)
+    lon = Column(String(20), index=True)
 
     sightings = relationship(
         'FortSighting',

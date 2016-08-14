@@ -175,6 +175,7 @@ class Slave(threading.Thread):
                 longitude=pgoapi_utils.f2i(point[1]),
                 cell_id=cell_ids
             )
+            logger.debug('Response: %s', response_dict)
             if response_dict is False:
                 raise CannotProcessStep
             map_objects = response_dict['responses'].get('GET_MAP_OBJECTS', {})
@@ -184,9 +185,15 @@ class Slave(threading.Thread):
                 for map_cell in map_objects['map_cells']:
                     for pokemon in map_cell.get('wild_pokemons', []):
                         # Care only about 15 min spawns
-                        # 30 and 45 min ones will be just put after
+                        # 30 and 45 min ones (negative) will be just put after
                         # time_till_hidden is below 15 min
-                        if pokemon['time_till_hidden_ms'] < 0:
+                        # As of 2016.08.14 we don't know what values over
+                        # 60 minutes are, so ignore them too
+                        invalid_time = (
+                            pokemon['time_till_hidden_ms'] < 0 or
+                            pokemon['time_till_hidden_ms'] > 900000
+                        )
+                        if invalid_time:
                             continue
                         pokemons.append(
                             self.normalize_pokemon(
