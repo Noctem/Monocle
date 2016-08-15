@@ -464,8 +464,8 @@ class Overseer:
                 ]
                 last_workers_checked = now
             # Record things found count
-            if now - last_things_found_updated > 10:
-                self.things_count = self.things_count[-10:]
+            if now - last_things_found_updated > 9:
+                self.things_count = self.things_count[-9:]
                 self.things_count.append(str(self.db_processor.count))
                 last_things_found_updated = now
             if self.status_bar:
@@ -563,6 +563,7 @@ class Overseer:
             'step time: min {min:.3f}, max {max:.3f}, avg {avg:.3f}'.format(
                 **time_stats['steps']
             ),
+            '',
             'Pokemon found count (10s interval):',
             ' '.join(self.things_count),
             '',
