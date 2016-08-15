@@ -28,5 +28,6 @@ STAGE2 = [94, 139, 141, 149]
 REPORT_SINCE = datetime(2016, 7, 29)
 GOOGLE_MAPS_KEY = 's3cr3t'
 
-COMPUTE_THREADS = 10
-NETWORK_THREADS = 10
+_workers_count = GRID[0] * GRID[1]
+COMPUTE_THREADS = int(_workers_count / 10) + 1
+NETWORK_THREADS = int(_workers_count / 2) + 1
