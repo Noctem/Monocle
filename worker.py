@@ -507,9 +507,16 @@ class Overseer:
             }
         }
 
-    def get_dots(self):
-        """Returns status dots for workers"""
+    def get_dots_and_messages(self):
+        """Returns status dots and status messages for workers
+
+        Status dots will be either . or : if everything is OK, or a letter
+        if something weird happened (but not dangerous).
+        If anything dangerous happened, worker will be displayed as X and
+        more detailed message should be displayed below.
+        """
         dots = []
+        messages = []
         row = []
         for i, worker in enumerate(self.workers.values()):
             if i > 0 and i % config.GRID[1] == 0:
@@ -524,14 +531,13 @@ class Overseer:
                 row.append('.' if worker.step % 2 == 0 else ':')
         if row:
             dots.append(row)
-        return dots
+        return dots, messages
 
     def get_status_message(self):
         workers_count = len(self.workers)
         points_stats = self.get_point_stats()
         time_stats = self.get_time_stats()
         running_for = datetime.now() - self.start_date
-        messages = []
         try:
             coroutines_count = len(asyncio.Task.all_tasks(self.loop))
         except RuntimeError:
@@ -561,7 +567,8 @@ class Overseer:
             ' '.join(self.things_count),
             '',
         ]
-        output += [' '.join(row) for row in self.get_dots()]
+        dots, messages = self.get_dots_and_messages()
+        output += [' '.join(row) for row in dots]
         previous = 0
         for i in range(4, len(messages) + 4, 4):
             output.append('\t'.join(messages[previous:i]))
