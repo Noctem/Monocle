@@ -482,8 +482,10 @@ class Overseer:
             except RuntimeError:
                 # Set changed size during iteration
                 tasks = '?'
+            # Spaces at the end are important, as they clear previously printed
+            # output - \r doesn't clean whole line
             print(
-                '{} coroutines active'.format(tasks),
+                '{} coroutines active   '.format(tasks),
                 end='\r'
             )
             if tasks == 0:
