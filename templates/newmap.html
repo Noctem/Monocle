@@ -217,7 +217,10 @@
                 loadWorkersLayer();
             }
         });
-        L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {opacity: 0.5}).addTo(map);
+        L.tileLayer('{{ map_provider_url }}', {
+            opacity: 0.5,
+            attribution: '{{ map_provider_attribution|safe }}'
+        }).addTo(map);
         map.whenReady(function () {
             $('.my-location').on('click', function () {
                 map.locate({ enableHighAccurracy: true, setView: true });
