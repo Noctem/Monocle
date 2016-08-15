@@ -14,7 +14,6 @@ GRID = (2, 2)  # row, column
 CYCLES_PER_WORKER = 3
 SCAN_DELAY = (10, 12)  # will vary between these values (in seconds)
 PROXIES = None  # Insert dictionary with 'http' and 'https' keys to enable
-ALTITUDE = False  # Calculate correct altitude for each library
 ALTITUDE = False  # Generate accurate altitudes where possible
 ALT_RANGE = (1450, 1550)  # Generate random altitudes between these points
 
@@ -33,6 +32,9 @@ NOTIFY_IDS = [141, 142, 143, 144, 145, 146, 148, 149, 150, 151]
 
 REPORT_SINCE = datetime(2016, 7, 29)
 GOOGLE_MAPS_KEY = 's3cr3t'
+
+COMPUTE_THREADS = 10
+NETWORK_THREADS = 10
 
 MAP_PROVIDER_URL = '//{s}.tile.osm.org/{z}/{x}/{y}.png'
 MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
