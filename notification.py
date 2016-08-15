@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from collections import deque
 from geopy.distance import distance, Point
 
@@ -23,7 +23,7 @@ def notify(pokemon):
     for variable_name in ['PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
                           'TWITTER_CONSUMER_SECRET', 'TWITTER_ACCESS_KEY',
                           'TWITTER_ACCESS_SECRET', 'LANDMARKS', 'AREA_NAME',
-                          'HASHTAGS']:
+                          'HASHTAGS', 'TZ_OFFSET']:
         try:
             variable = getattr(config, variable_name)
             if variable is not None:
@@ -48,8 +48,13 @@ def notify(pokemon):
             # do not notify if it expires in less than 3 minutes
             if seconds_remaining < 180:
                 return
-            expire_time = datetime.fromtimestamp(
-                expire_timestamp).strftime('%I:%M %p')
+            if 'TZ_OFFSET' in conf:
+                expire_time = datetime.fromtimestamp(
+                    expire_timestamp, timezone(
+                    timedelta(hours=conf['TZ_OFFSET']))).strftime('%I:%M %p')
+            else:
+                expire_time = datetime.fromtimestamp(
+                    expire_timestamp).strftime('%I:%M %p')
 
             map_link = ('https://maps.google.com/maps?q=' +
                         str(coordinates.latitude) + ',' +
