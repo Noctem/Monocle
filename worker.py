@@ -393,6 +393,7 @@ class Overseer:
         self.logger.info('Done')
         self.start_date = datetime.now()
         self.status_bar = status_bar
+        self.things_count = []
         self.killed = False
         self.loop = loop
         self.db_processor = DatabaseProcessor()
@@ -455,6 +456,7 @@ class Overseer:
     def check(self):
         last_cleaned_cache = time.time()
         last_workers_checked = time.time()
+        last_things_found_updated = time.time()
         workers_check = [
             (worker, worker.total_seen)
             for worker in self.workers.values()
@@ -484,6 +486,11 @@ class Overseer:
                     for worker in self.workers.values()
                 ]
                 last_workers_checked = now
+            # Record things found count
+            if now - last_things_found_updated > 9:
+                self.things_count = self.things_count[-9:]
+                self.things_count.append(str(self.db_processor.count))
+                last_things_found_updated = now
             if self.status_bar:
                 if sys.platform == 'win32':
                     _ = os.system('cls')
@@ -498,8 +505,10 @@ class Overseer:
             except RuntimeError:
                 # Set changed size during iteration
                 tasks = '?'
+            # Spaces at the end are important, as they clear previously printed
+            # output - \r doesn't clean whole line
             print(
-                '{} coroutines active'.format(tasks),
+                '{} coroutines active   '.format(tasks),
                 end='\r'
             )
             if tasks == 0:
@@ -523,21 +532,37 @@ class Overseer:
             }
         }
 
+    def get_dots_and_messages(self):
+        """Returns status dots and status messages for workers
+
+        Status dots will be either . or : if everything is OK, or a letter
+        if something weird happened (but not dangerous).
+        If anything dangerous happened, worker will be displayed as X and
+        more detailed message should be displayed below.
+        """
+        dots = []
+        messages = []
+        row = []
+        for i, worker in enumerate(self.workers.values()):
+            if i > 0 and i % config.GRID[1] == 0:
+                dots.append(row)
+                row = []
+            if worker.error_code in BAD_STATUSES:
+                row.append('X')
+                messages.append(worker.status.ljust(20))
+            elif worker.error_code:
+                row.append(worker.error_code[0])
+            else:
+                row.append('.' if worker.step % 2 == 0 else ':')
+        if row:
+            dots.append(row)
+        return dots, messages
+
     def get_status_message(self):
         workers_count = len(self.workers)
         points_stats = self.get_point_stats()
         time_stats = self.get_time_stats()
         running_for = datetime.now() - self.start_date
-        dots = []
-        messages = []
-        for worker in self.workers.values():
-            if worker.error_code in BAD_STATUSES:
-                dots.append('X')
-                messages.append(worker.status.ljust(20))
-            elif worker.error_code:
-                dots.append(worker.error_code[0])
-            else:
-                dots.append('.' if worker.step % 2 == 0 else ':')
         try:
             coroutines_count = len(asyncio.Task.all_tasks(self.loop))
         except RuntimeError:
@@ -564,9 +589,12 @@ class Overseer:
                 **time_stats['steps']
             ),
             '',
-            ''.join(dots),
+            'Pokemon found count (10s interval):',
+            ' '.join(self.things_count),
             '',
         ]
+        dots, messages = self.get_dots_and_messages()
+        output += [' '.join(row) for row in dots]
         previous = 0
         for i in range(4, len(messages) + 4, 4):
             output.append('\t'.join(messages[previous:i]))
@@ -581,6 +609,7 @@ class DatabaseProcessor(threading.Thread):
         self.logger = logging.getLogger('dbprocessor')
         self.running = True
         self._clean_cache = False
+        self.count = 0
 
     def stop(self):
         self.running = False
@@ -604,6 +633,7 @@ class DatabaseProcessor(threading.Thread):
                     if item['type'] == 'pokemon':
                         db.add_sighting(session, item)
                         session.commit()
+                        self.count += 1
                     elif item['type'] == 'fort':
                         db.add_fort_sighting(session, item)
                         # No need to commit here - db takes care of it

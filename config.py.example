@@ -33,8 +33,9 @@ NOTIFY_IDS = [141, 142, 143, 144, 145, 146, 148, 149, 150, 151]
 REPORT_SINCE = datetime(2016, 7, 29)
 GOOGLE_MAPS_KEY = 's3cr3t'
 
-COMPUTE_THREADS = 10
-NETWORK_THREADS = 10
+_workers_count = GRID[0] * GRID[1]
+COMPUTE_THREADS = int(_workers_count / 10) + 1
+NETWORK_THREADS = int(_workers_count / 2) + 1
 
 MAP_PROVIDER_URL = '//{s}.tile.osm.org/{z}/{x}/{y}.png'
 MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
