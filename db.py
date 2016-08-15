@@ -254,21 +254,20 @@ def get_sightings(session):
 
 def get_forts(session):
     query = session.execute('''
-        SELECT
-            fs.fort_id,
-            fs.id,
-            fs.team,
-            fs.prestige,
-            fs.guard_pokemon_id,
-            fs.last_modified,
-            f.lat,
-            f.lon
-        FROM fort_sightings fs
-        JOIN forts f ON f.id=fs.fort_id
-        LEFT JOIN fort_sightings fs2
-            ON fs.fort_id=fs2.fort_id
-            AND fs.last_modified < fs2.last_modified
-        WHERE fs2.last_modified IS NULL
+        SELECT * FROM (
+            SELECT
+                fs.fort_id,
+                fs.id,
+                fs.team,
+                fs.prestige,
+                fs.guard_pokemon_id,
+                fs.last_modified,
+                f.lat,
+                f.lon
+            FROM fort_sightings fs
+            JOIN forts f ON f.id=fs.fort_id
+            ORDER BY fs.last_modified DESC
+        ) t GROUP BY fort_id
     ''')
     return query.fetchall()
 
@@ -279,7 +278,7 @@ def get_session_stats(session):
             MIN(expire_timestamp) ts_min,
             MAX(expire_timestamp) ts_max,
             COUNT(*)
-        FROM `sightings`
+        FROM sightings
         {report_since}
     '''
     min_max_query = session.execute(query.format(
@@ -300,7 +299,7 @@ def get_session_stats(session):
 
 
 def get_punch_card(session):
-    if get_engine_name(session) == 'sqlite':
+    if get_engine_name(session) in ('sqlite', 'postgresql'):
         bigint = 'BIGINT'
     else:
         bigint = 'UNSIGNED'
@@ -308,7 +307,7 @@ def get_punch_card(session):
         SELECT
             CAST((expire_timestamp / 300) AS {bigint}) ts_date,
             COUNT(*) how_many
-        FROM `sightings`
+        FROM sightings
         {report_since}
         GROUP BY ts_date
         ORDER BY ts_date
@@ -376,6 +375,8 @@ def get_all_sightings(session, pokemon_ids):
 def get_spawns_per_hour(session, pokemon_id):
     if get_engine_name(session) == 'sqlite':
         ts_hour = 'STRFTIME("%H", expire_timestamp)'
+    elif get_engine_name(session) == 'postgresql':
+        ts_hour = "TO_CHAR(TO_TIMESTAMP(expire_timestamp), 'HH24')"
     else:
         ts_hour = 'HOUR(FROM_UNIXTIME(expire_timestamp))'
     query = session.execute('''
