@@ -234,7 +234,7 @@ class Slave:
                 return
             self.logger.info(
                 'Visiting point %d (%s,%s %sm)', i, round(point[0], 5),
-                round(point[1], 5), round(point[2]))
+                round(point[1], 5), round(point[2])
             )
             start = time.time()
             self.api.set_position(point[0], point[1], point[2])
