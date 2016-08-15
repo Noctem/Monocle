@@ -22,11 +22,12 @@ REQUIRED_SETTINGS = (
     'AREA_NAME',
     'REPORT_SINCE',
     'SCAN_RADIUS',
+    'MAP_PROVIDER_URL',
+    'MAP_PROVIDER_ATTRIBUTION',
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
-
 
 
 def get_args():
@@ -74,6 +75,8 @@ def fullmap():
         'newmap.html',
         area_name=config.AREA_NAME,
         map_center=map_center,
+        map_provider_url=config.MAP_PROVIDER_URL,
+        map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION,
     )
 
 
