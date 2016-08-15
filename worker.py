@@ -466,7 +466,7 @@ class Overseer:
             # Record things found count
             if now - last_things_found_updated > 10:
                 self.things_count = self.things_count[-10:]
-                self.things_count.push(str(self.db_processor.count))
+                self.things_count.append(str(self.db_processor.count))
                 last_things_found_updated = now
             if self.status_bar:
                 if sys.platform == 'win32':
