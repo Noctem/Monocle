@@ -49,8 +49,8 @@ BAD_STATUSES = (
 )
 
 
-class CannotProcessStep(Exception):
-    """Raised when servers are too busy"""
+class MalformedResponse(Exception):
+    """Raised when server response is malformed"""
 
 
 def configure_logger(filename='worker.log'):
@@ -151,18 +151,22 @@ class Slave:
                     await self.restart()
                     return
             except pgoapi_exceptions.AuthException:
+                logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
                 await self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
+                logger.error('Invalid credentials')
                 self.error_code = 'BAD LOGIN'
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerBusyOrOfflineException:
+                logger.info('Server too busy - restarting')
                 self.error_code = 'RETRYING'
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerSideRequestThrottlingException:
+                logger.info('Server throttling - sleeping for a bit')
                 self.error_code = 'THROTTLE'
                 await self.sleep(random.uniform(5, 10))
                 continue
@@ -192,7 +196,8 @@ class Slave:
                 return
             try:
                 await self.main(start_step=start_step)
-            except CannotProcessStep:
+            except MalformedResponse:
+                logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
                 await self.restart()
             except Exception:
@@ -205,9 +210,11 @@ class Slave:
                 return
             self.cycle += 1
             if self.cycle <= config.CYCLES_PER_WORKER:
+                logger.info('Going to sleep for a bit')
                 self.error_code = 'SLEEP'
                 self.running = False
                 await self.sleep(random.randint(10, 20))
+                logger.info('AWAKEN MY MASTERS')
                 self.running = True
                 self.error_code = None
         self.error_code = 'RESTART'
@@ -243,8 +250,13 @@ class Slave:
                     cell_id=cell_ids
                 )
             )
-            if response_dict is False:
-                raise CannotProcessStep
+            if not isinstance(response_dict, dict):
+                logger.warning('Response: %s', response_dict)
+                raise MalformedResponse
+            responses = response_dict.get('responses')
+            if not responses:
+                logger.warning('Response: %s', response_dict)
+                raise MalformedResponse
             map_objects = response_dict['responses'].get('GET_MAP_OBJECTS', {})
             pokemons = []
             forts = []
