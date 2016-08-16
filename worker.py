@@ -30,6 +30,7 @@ REQUIRED_SETTINGS = (
     'ACCOUNTS',
     'SCAN_RADIUS',
     'SCAN_DELAY',
+    'DISABLE_WORKERS',
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
@@ -326,7 +327,7 @@ def start_worker(worker_no, points):
         worker_no=worker_no,
         points=points
     )
-    if (worker_no not in config.DISABLE_MARKERS):
+    if (worker_no not in config.DISABLE_WORKERS):
         worker.daemon = True
         worker.start()
     else:
