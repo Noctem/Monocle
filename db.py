@@ -253,23 +253,37 @@ def get_sightings(session):
 
 
 def get_forts(session):
+    if get_engine_name(session) == 'sqlite':
+        # SQLite version is slooooooooooooow when compared to MySQL
+        where = '''
+            WHERE fs.fort_id || '-' || fs.last_modified IN (
+                SELECT fort_id || '-' || MAX(last_modified)
+                FROM fort_sightings
+                GROUP BY fort_id
+            )
+        '''
+    else:
+        where = '''
+            WHERE (fs.fort_id, fs.last_modified) IN (
+                SELECT fort_id, MAX(last_modified)
+                FROM fort_sightings
+                GROUP BY fort_id
+            )
+        '''
     query = session.execute('''
-        SELECT * FROM (
-            SELECT
-                fs.fort_id,
-                fs.id,
-                fs.team,
-                fs.prestige,
-                fs.guard_pokemon_id,
-                fs.last_modified,
-                f.lat,
-                f.lon
-            FROM fort_sightings fs
-            JOIN forts f ON f.id=fs.fort_id
-            ORDER BY fs.last_modified DESC
-        ) t GROUP BY fort_id, id, team, prestige, guard_pokemon_id,
-                     last_modified, lat, lon
-    ''')
+        SELECT
+            fs.fort_id,
+            fs.id,
+            fs.team,
+            fs.prestige,
+            fs.guard_pokemon_id,
+            fs.last_modified,
+            f.lat,
+            f.lon
+        FROM fort_sightings fs
+        JOIN forts f ON f.id=fs.fort_id
+        {where}
+    '''.format(where=where))
     return query.fetchall()
 
 

@@ -155,22 +155,22 @@ class Slave:
                     await self.restart()
                     return
             except pgoapi_exceptions.AuthException:
-                self.logger.warning('Login failed!')
+                logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
                 await self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
-                self.logger.error('Invalid credentials')
+                logger.error('Invalid credentials')
                 self.error_code = 'BAD LOGIN'
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerBusyOrOfflineException:
-                self.logger.info('Server too busy - restarting')
+                logger.info('Server too busy - restarting')
                 self.error_code = 'RETRYING'
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerSideRequestThrottlingException:
-                self.logger.info('Server throttling - sleeping for a bit')
+                logger.info('Server throttling - sleeping for a bit')
                 self.error_code = 'THROTTLE'
                 await self.sleep(random.uniform(5, 10))
                 continue
@@ -201,7 +201,7 @@ class Slave:
             try:
                 await self.main(start_step=start_step)
             except MalformedResponse:
-                self.logger.warning('Malformed response received!')
+                logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
                 await self.restart()
             except Exception:
@@ -214,11 +214,11 @@ class Slave:
                 return
             self.cycle += 1
             if self.cycle <= config.CYCLES_PER_WORKER:
-                self.logger.info('Going to sleep for a bit')
+                logger.info('Going to sleep for a bit')
                 self.error_code = 'SLEEP'
                 self.running = False
-                self.logger.info('AWAKEN MY MASTERS')
                 await self.sleep(random.randint(10, 20))
+                logger.info('AWAKEN MY MASTERS')
                 self.running = True
                 self.error_code = None
         self.error_code = 'RESTART'
