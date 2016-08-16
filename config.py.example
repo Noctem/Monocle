@@ -9,6 +9,7 @@ LANGUAGE = 'EN'  # ISO 639-1 codes EN, DE, FR, and ZH currently supported.
 MAP_START = (12.3456, 34.5678)
 MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
+# DISABLE_MARKERS = [0, 1, 2]
 CYCLES_PER_WORKER = 3
 SCAN_DELAY = 10  # seconds
 PROXIES = None  # Insert dictionary with 'http' and 'https' keys to enable
