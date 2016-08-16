@@ -53,6 +53,8 @@ BAD_STATUSES = (
 class MalformedResponse(Exception):
     """Raised when server response is malformed"""
 
+class BannedAccount(Exception):
+    """Raised when account is banned"""
 
 def configure_logger(filename='worker.log'):
     logging.basicConfig(
@@ -211,6 +213,10 @@ class Slave:
                 self.logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
                 await self.restart()
+            except BannedAccount:
+                self.error_code = 'BANNED'
+                self.running = False
+                time.sleep(999999999999)
             except Exception:
                 self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
@@ -266,6 +272,9 @@ class Slave:
             if not isinstance(response_dict, dict):
                 self.logger.warning('Response: %s', response_dict)
                 raise MalformedResponse
+            if response_dict['status_code'] == 3:
+                logger.warning('Account banned')
+                raise BannedAccount
             responses = response_dict.get('responses')
             if not responses:
                 self.logger.warning('Response: %s', response_dict)
