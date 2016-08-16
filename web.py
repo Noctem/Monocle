@@ -24,6 +24,7 @@ REQUIRED_SETTINGS = (
     'SCAN_RADIUS',
     'MAP_PROVIDER_URL',
     'MAP_PROVIDER_ATTRIBUTION',
+    'DISABLE_WORKERS',
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
@@ -124,7 +125,7 @@ def get_worker_markers():
     # Worker start points
     for worker_no, worker_points in enumerate(points):
         coords = utils.get_start_coords(worker_no)
-        if (worker_no not in config.DISABLE_MARKERS):
+        if (worker_no not in config.DISABLE_WORKERS):
             markers.append({
                 'lat': coords[0],
                 'lon': coords[1],
