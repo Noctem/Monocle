@@ -217,8 +217,8 @@ class Slave:
                 logger.info('Going to sleep for a bit')
                 self.error_code = 'SLEEP'
                 self.running = False
-                logger.info('AWAKEN MY MASTERS')
                 await self.sleep(random.randint(10, 20))
+                logger.info('AWAKEN MY MASTERS')
                 self.running = True
                 self.error_code = None
         self.error_code = 'RESTART'
