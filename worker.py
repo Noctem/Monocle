@@ -289,6 +289,11 @@ class Slave(threading.Thread):
         """
         self.error_code = 'KILLED'
         self.running = False
+        
+    def disable(self):
+        """Marks worker as disabled"""
+        self.error_code = 'DISABLED'
+        self.running = False
 
 
 def get_status_message(workers, count, start_time, points_stats):
@@ -321,8 +326,11 @@ def start_worker(worker_no, points):
         worker_no=worker_no,
         points=points
     )
-    worker.daemon = True
-    worker.start()
+    if (worker_no not in config.DISABLE_MARKERS):
+        worker.daemon = True
+        worker.start()
+    else:
+        worker.disable()
     workers[worker_no] = worker
 
 
