@@ -7,7 +7,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-
+from sqlalchemy.sql.expression import func   
 
 try:
     import config
@@ -435,9 +435,10 @@ def get_total_spawns_count(session, pokemon_id):
 
 
 def get_all_spawn_coords(session, pokemon_id=None):
-    points = session.query(Sighting.lat, Sighting.lon)
+    points = session.query(Sighting.lat, Sighting.lon, func.count())
     if pokemon_id:
         points = points.filter(Sighting.pokemon_id == int(pokemon_id))
     if config.REPORT_SINCE:
         points = points.filter(Sighting.expire_timestamp > get_since())
+    points = points.group_by(Sighting.lat, Sighting.lon)
     return points.all()

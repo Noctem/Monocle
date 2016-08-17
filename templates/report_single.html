@@ -70,7 +70,7 @@
             var heatmapPoints;
             $.get('/report/heatmap?id={{ pokemon_id }}').done(function (result) {
                 heatmapPoints = JSON.parse(result).map(function (elem) {
-                    return new google.maps.LatLng(elem[0], elem[1]);
+                    return {location: new google.maps.LatLng(elem[0], elem[1]), weight: elem[2]};
                 });
             });
             $('#displayHeatmap').on('click', function () {
