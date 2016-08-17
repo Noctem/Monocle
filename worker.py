@@ -145,8 +145,7 @@ class Slave(threading.Thread):
                 self.restart()
             except BannedAccount:
                 self.error_code = 'BANNED?'
-                time.sleep(60)
-                self.restart()
+                self.restart(30, 90)
             except Exception:
                 logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
