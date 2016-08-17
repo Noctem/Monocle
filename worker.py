@@ -154,6 +154,15 @@ class Slave:
                     self.error_code = 'LOGIN FAIL'
                     await self.restart()
                     return
+            except pgoapi_exceptions.ServerSideAccessForbiddenException:
+                import requests
+                ip_address = requests.get('https://icanhazip.com/', proxies=config.PROXIES).text
+                logger.error('Banned IP: ' + ip_address)
+                self.error_code = 'IP BANNED'
+                with open('banned_ips.txt', 'at') as f:
+                    f.write(ip_address)
+                await self.restart(sleep_min=60, sleep_max=120)
+                return
             except pgoapi_exceptions.AuthException:
                 logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
