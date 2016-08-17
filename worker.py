@@ -97,13 +97,14 @@ class Slave(threading.Thread):
         self.cycle = 1
         self.error_code = None
 
+        username, password, service = utils.get_worker_account(self.worker_no)
         service = config.ACCOUNTS[self.worker_no][2]
         while True:
             try:
                 loginsuccess = self.api.login(
+                    username=username,
+                    password=password,
                     provider=service,
-                    username=config.ACCOUNTS[self.worker_no][0],
-                    password=config.ACCOUNTS[self.worker_no][1],
                 )
                 if not loginsuccess:
                     self.error_code = 'LOGIN FAIL'

@@ -113,3 +113,21 @@ def sort_points_for_worker(points, worker_no):
 
 def get_distance(p1, p2):
     return math.sqrt(pow(p1[0] - p2[0], 2) + pow(p1[1] - p2[1], 2))
+
+
+def get_worker_account(worker_no):
+    """Returns appropriate ACCOUNT entry for worker
+
+    Omits disabled workers.
+    """
+    # This should never happen, but better be safe!
+    if worker_no in config.DISABLE_WORKERS:
+        return None, None, None
+    account_no = 0
+    for i in range(worker_no + 1):
+        if i in config.DISABLE_WORKERS:
+            continue
+        if i == worker_no:
+            return config.ACCOUNTS[account_no]
+        account_no += 1
+    raise ValueError('Workers incompatible with accounts')
