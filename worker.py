@@ -214,9 +214,9 @@ class Slave:
                 self.error_code = 'RESTART'
                 await self.restart()
             except BannedAccount:
-                self.error_code = 'BANNED'
-                self.running = False
-                return
+                self.error_code = 'BANNED?'
+                time.sleep(60)
+                self.restart()
             except Exception:
                 self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
