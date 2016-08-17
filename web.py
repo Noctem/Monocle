@@ -218,6 +218,7 @@ def report_single(pokemon_id):
         'map_center': utils.get_map_center(),
         'zoom': 13,
     }
+
     session.close()
     return render_template(
         'report_single.html',
@@ -250,6 +251,16 @@ def report_heatmap():
     points = db.get_all_spawn_coords(session, pokemon_id=pokemon_id)
     session.close()
     return json.dumps(points)
+
+@app.route('/report/heatmap/time_based')
+def report_time_based_heatmap():
+    session = db.Session()
+    pokemon_id = request.args.get('id')
+    time_data = db.get_spawns_per_minute(session, pokemon_id)
+    
+    session.close()
+
+    return json.dumps(time_data)
 
 
 if __name__ == '__main__':
