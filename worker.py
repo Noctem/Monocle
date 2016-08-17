@@ -112,7 +112,7 @@ class Slave:
     async def first_run(self):
         loop = asyncio.get_event_loop()
         total_workers = config.GRID[0] * config.GRID[1]
-        await self.sleep(self.worker_no / total_workers * config.SCAN_DELAY[0])
+        await self.sleep(self.worker_no / total_workers * config.SCAN_DELAY)
         await self.run()
 
     async def run(self):
@@ -154,23 +154,32 @@ class Slave:
                     self.error_code = 'LOGIN FAIL'
                     await self.restart()
                     return
+            except pgoapi_exceptions.ServerSideAccessForbiddenException:
+                import requests
+                ip_address = requests.get('https://icanhazip.com/', proxies=config.PROXIES).text
+                self.logger.error('Banned IP: ' + ip_address)
+                self.error_code = 'IP BANNED'
+                with open('banned_ips.txt', 'at') as f:
+                    f.write(ip_address)
+                await self.restart(sleep_min=60, sleep_max=120)
+                return
             except pgoapi_exceptions.AuthException:
-                logger.warning('Login failed!')
+                self.logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
                 await self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
-                logger.error('Invalid credentials')
+                self.logger.error('Invalid credentials')
                 self.error_code = 'BAD LOGIN'
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerBusyOrOfflineException:
-                logger.info('Server too busy - restarting')
+                self.logger.info('Server too busy - restarting')
                 self.error_code = 'RETRYING'
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerSideRequestThrottlingException:
-                logger.info('Server throttling - sleeping for a bit')
+                self.logger.info('Server throttling - sleeping for a bit')
                 self.error_code = 'THROTTLE'
                 await self.sleep(random.uniform(5, 10))
                 continue
@@ -201,7 +210,7 @@ class Slave:
             try:
                 await self.main(start_step=start_step)
             except MalformedResponse:
-                logger.warning('Malformed response received!')
+                self.logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
                 await self.restart()
             except Exception:
@@ -214,11 +223,11 @@ class Slave:
                 return
             self.cycle += 1
             if self.cycle <= config.CYCLES_PER_WORKER:
-                logger.info('Going to sleep for a bit')
+                self.logger.info('Going to sleep for a bit')
                 self.error_code = 'SLEEP'
                 self.running = False
                 await self.sleep(random.randint(10, 20))
-                logger.info('AWAKEN MY MASTERS')
+                self.logger.info('AWAKEN MY MASTERS')
                 self.running = True
                 self.error_code = None
         self.error_code = 'RESTART'
@@ -255,6 +264,7 @@ class Slave:
                     cell_id=cell_ids
                 )
             )
+            processing_start = time.time()
             if not isinstance(response_dict, dict):
                 self.logger.warning('Response: %s', response_dict)
                 raise MalformedResponse
@@ -309,9 +319,13 @@ class Slave:
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
             self.step += 1
-            self.last_step_run_time = time.time() - start - self.last_api_latency
+            self.last_step_run_time = (
+                time.time() - start - self.last_api_latency
+            )
+            processing_time = time.time() - processing_start
+            sleep_for = config.SCAN_DELAY - processing_time
             await self.sleep(
-                random.uniform(*config.SCAN_DELAY)
+                random.uniform(sleep_for, sleep_for + 2)
             )
         if self.seen_per_cycle == 0:
             self.error_code = 'NO POKEMON'
@@ -360,11 +374,7 @@ class Slave:
 
     async def sleep(self, duration):
         """Sleeps and interrupts if detects that worker was killed"""
-        while duration > 0:
-            if not self.running:
-                return
-            await asyncio.sleep(0.5)
-            duration -= 0.5
+        await asyncio.sleep(duration)
 
     async def restart(self, sleep_min=5, sleep_max=20):
         """Sleeps for a bit, then restarts"""
