@@ -404,6 +404,7 @@ def get_spawns_per_hour(session, pokemon_id):
         ))
     return results
 
+
 def get_spawns_per_minute(session, pokemon_id=None):
     # -90000 is 15 min, so the spawn time
     if get_engine_name(session) == 'sqlite':

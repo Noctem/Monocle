@@ -247,7 +247,7 @@ def report_heatmap():
     session.close()
     return json.dumps(points)
 
-@app.route('/report/HeatmapTimeBased')
+@app.route('/report/heatmap/time_based')
 def report_time_based_heatmap():
     session = db.Session()
     pokemon_id = request.args.get('id')
