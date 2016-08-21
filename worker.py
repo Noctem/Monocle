@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, CancelledError
 from collections import deque
 from datetime import datetime
 from functools import partial
@@ -79,6 +79,7 @@ class Slave:
         start_step=0,
     ):
         self.worker_no = worker_no
+        self.future = None
         self.points = points
         self.cell_ids = cell_ids
         self.db_processor = db_processor
@@ -107,15 +108,22 @@ class Slave:
             self.api.set_proxy(config.PROXIES)
 
     async def first_run(self):
-        loop = asyncio.get_event_loop()
         total_workers = config.GRID[0] * config.GRID[1]
-        await self.sleep(self.worker_no / total_workers * config.SCAN_DELAY)
-        await self.run()
+        try:
+            await self.sleep(
+                self.worker_no / total_workers * config.SCAN_DELAY
+            )
+            await self.run()
+        except CancelledError:
+            self.kill()
 
     async def run(self):
-        if not self.logged_in:
-            await self.login()
-        await self.run_cycle()
+        try:
+            if not self.logged_in:
+                await self.login()
+            await self.run_cycle()
+        except CancelledError:
+            self.kill()
 
     def call_api(self, method, *args, **kwargs):
         """Returns decorated function that measures execution time
@@ -402,6 +410,8 @@ class Overseer:
         self.db_processor.stop()
         for worker in self.workers.values():
             worker.kill()
+            if worker.future is not None:
+                worker.future.cancel()
 
     def start_worker(self, worker_no, first_run=False):
         if self.killed:
@@ -429,12 +439,14 @@ class Overseer:
         # For first time, we need to wait until all workers login before
         # scanning
         if first_run:
-            asyncio.ensure_future(worker.first_run())
+            worker.future = asyncio.ensure_future(worker.first_run())
             return
         # WARNING: at this point, we're called by self.check which runs in
         # separate thread than event loop! That's why run_coroutine_threadsafe
         # is used here.
-        asyncio.run_coroutine_threadsafe(worker.run(), self.loop)
+        worker.future = asyncio.run_coroutine_threadsafe(
+            worker.run(), self.loop
+        )
 
     def get_point_stats(self):
         lenghts = [len(p) for p in self.points]
@@ -688,6 +700,7 @@ if __name__ == '__main__':
         loop.run_forever()
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
-        overseer.kill()
-        loop.run_until_complete(asyncio.gather(*asyncio.Task.all_tasks()))
+        overseer.kill()  # also cancels all workers' futures
+        all_futures = [w.future for w in overseer.workers.values()]
+        loop.run_until_complete(asyncio.gather(*all_futures))
         loop.close()
