@@ -185,6 +185,9 @@ class Slave:
                 self.error_code = 'THROTTLE'
                 await self.sleep(random.uniform(5, 10))
                 continue
+            except CancelledError:
+                self.kill()
+                return
             except Exception:
                 self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
@@ -215,6 +218,9 @@ class Slave:
                 self.logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
                 await self.restart()
+            except CancelledError:
+                self.kill()
+                return
             except Exception:
                 self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
@@ -273,7 +279,7 @@ class Slave:
             if not responses:
                 self.logger.warning('Response: %s', response_dict)
                 raise MalformedResponse
-            map_objects = response_dict['responses'].get('GET_MAP_OBJECTS', {})
+            map_objects = responses.get('GET_MAP_OBJECTS', {})
             pokemons = []
             forts = []
             if map_objects.get('status') == 1:
@@ -369,12 +375,10 @@ class Slave:
 
     async def sleep(self, duration):
         """Sleeps and interrupts if detects that worker was killed"""
-        while duration > 0:
-            if not self.running:
-                return
-            sleep_for = min(1, duration)
-            await asyncio.sleep(sleep_for)
-            duration -= sleep_for
+        try:
+            await asyncio.sleep(duration)
+        except CancelledError:
+            self.kill()
 
     async def restart(self, sleep_min=5, sleep_max=20):
         """Sleeps for a bit, then restarts"""
@@ -706,6 +710,9 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
         overseer.kill()  # also cancels all workers' futures
-        all_futures = [w.future for w in overseer.workers.values()]
+        all_futures = [
+            w.future for w in overseer.workers.values()
+            if w.future is not None
+        ]
         loop.run_until_complete(asyncio.gather(*all_futures))
         loop.close()
