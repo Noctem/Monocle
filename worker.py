@@ -79,25 +79,32 @@ class Slave:
         start_step=0,
     ):
         self.worker_no = worker_no
-        self.future = None
+        # Set of all points that worker needs to visit
         self.points = points
+        self.count_points = len(self.points)
+        # Cache for cell_ids for all points
         self.cell_ids = cell_ids
+        # asyncio/thread references
+        self.future = None  # worker's own future
         self.db_processor = db_processor
         self.cell_ids_executor = cell_ids_executor
         self.network_executor = network_executor
-        self.count_points = len(self.points)
-        self.start_step = start_step
+        # Some handy counters
+        self.start_step = start_step  # allow worker to pick up where it left
         self.step = 0
         self.cycle = 0
         self.seen_per_cycle = 0
         self.total_seen = 0
-        self.error_code = 'INIT'
-        self.running = True
-        self.killed = False
-        self.restart_me = False
+        # State variables
+        self.running = True  # not running worker should be restarted
+        self.killed = False  # killed worker will stay killed
+        self.restart_me = False  # ask overseer for restarting
         self.logged_in = False
+        # Other variables
         self.last_step_run_time = 0
         self.last_api_latency = 0
+        self.error_code = 'INIT'
+        # And now, configure logger and PGoApi
         center = self.points[0]
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
         self.api = PGoApi()
