@@ -382,6 +382,8 @@ class Slave:
 
     async def restart(self, sleep_min=5, sleep_max=20):
         """Sleeps for a bit, then restarts"""
+        if self.killed:
+            return
         self.logger.info('Restarting')
         await self.sleep(random.randint(sleep_min, sleep_max))
         self.restart_me = True
