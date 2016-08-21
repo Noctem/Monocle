@@ -17,6 +17,7 @@ from pgoapi import (
     PGoApi,
     utilities as pgoapi_utils,
 )
+import uvloop
 
 import config
 import db
@@ -354,7 +355,12 @@ class Slave:
 
     async def sleep(self, duration):
         """Sleeps and interrupts if detects that worker was killed"""
-        await asyncio.sleep(duration)
+        while duration > 0:
+            if not self.running:
+                return
+            sleep_for = min(1, duration)
+            await asyncio.sleep(sleep_for)
+            duration -= sleep_for
 
     async def restart(self, sleep_min=5, sleep_max=20):
         """Sleeps for a bit, then restarts"""
@@ -670,7 +676,8 @@ if __name__ == '__main__':
     else:
         configure_logger(filename=None)
     logger.setLevel(args.log_level)
-    loop = asyncio.get_event_loop()
+    loop = uvloop.new_event_loop()
+    asyncio.set_event_loop(loop)
     overseer = Overseer(status_bar=args.status_bar, loop=loop)
     loop.set_default_executor(ThreadPoolExecutor())
     loop.set_exception_handler(exception_handler)
