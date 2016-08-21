@@ -387,11 +387,20 @@ class Slave:
         self.logger.info('Restarting')
         await self.sleep(random.randint(sleep_min, sleep_max))
         self.restart_me = True
+        self.running = False
+
+    def slap(self):
+        """Slaps worker in face, telling it to improve itself
+
+        It's weaker form of killing - it will be restarted soon.
+        """
+        self.error_code = 'KILLED'
+        self.running = False
 
     def kill(self):
-        """Marks worker as not running
+        """Marks worker as killed
 
-        It should stop any operation as soon as possible and restart itself.
+        Killed worker won't be restarted.
         """
         self.error_code = 'KILLED'
         self.running = False
@@ -499,7 +508,7 @@ class Overseer:
                     if not worker.running:
                         continue
                     if worker.total_seen <= total_seen:
-                        worker.kill()
+                        worker.slap()
                 # Prepare new list
                 workers_check = [
                     (worker, worker.total_seen)
