@@ -85,7 +85,8 @@ class Slave:
         cell_ids_executor,
         network_executor,
         start_step=0,
-        device_info=config.DEVICE_INFO
+        device_info=config.DEVICE_INFO,
+        proxies=None
     ):
         self.worker_no = worker_no
         # Set of all points that worker needs to visit
@@ -121,8 +122,11 @@ class Slave:
         self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(center[0], center[1], center[2])  # lat, lon, alt
         self.api.set_logger(self.logger)
-        if hasattr(config, 'PROXIES') and config.PROXIES:
-            self.api.set_proxy(config.PROXIES)
+        if proxies:
+            self.proxies = proxies
+        elif hasattr(config, 'PROXIES') and config.PROXIES:
+            self.proxies = config.PROXIES
+        self.api.set_proxy(self.proxies)
 
     async def first_run(self):
         total_workers = config.GRID[0] * config.GRID[1]
@@ -178,12 +182,12 @@ class Slave:
                     return
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 import requests
-                ip_address = requests.get('https://icanhazip.com/', proxies=config.PROXIES).text
+                ip_address = requests.get('https://icanhazip.com/', proxies=self.proxies).text
                 self.logger.error('Banned IP: ' + ip_address)
                 self.error_code = 'IP BANNED'
                 with open('banned_ips.txt', 'at') as f:
-                    f.write(ip_address)
-                await self.restart(sleep_min=60, sleep_max=120)
+                    print(ip_address, file=f)
+                await self.restart(sleep_min=90, sleep_max=150)
                 return
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed!')
@@ -480,6 +484,18 @@ class Overseer:
             start_step = self.workers[worker_no].step + 1
         else:
             start_step = 0
+        proxies = None
+        if isinstance(config.PROXIES, list):
+            if len(config.PROXIES) > 3:
+                position = worker_no / self.count
+                if position > (.75):
+                    proxies = config.PROXIES[3]
+                elif position > (.5):
+                    proxies = config.PROXIES[2]
+                elif position > (.25):
+                    proxies = config.PROXIES[1]
+                else:
+                    proxies = config.PROXIES[0]
         device_info = config.DEVICE_INFO.copy()
         device_info['device_id'] = uuid.uuid4().hex
         worker = Slave(
@@ -490,7 +506,8 @@ class Overseer:
             cell_ids_executor=self.cell_ids_executor,
             network_executor=self.network_executor,
             start_step=start_step,
-            device_info=device_info
+            device_info=device_info,
+            proxies=proxies
         )
         self.workers[worker_no] = worker
         # For first time, we need to wait until all workers login before
