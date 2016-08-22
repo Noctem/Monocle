@@ -46,6 +46,9 @@ BAD_STATUSES = (
     'LOGIN FAIL',
     'EXCEPTION',
     'BAD LOGIN',
+    'RETRYING',
+    'THROTTLE',
+    'NO POKEMON',
 )
 
 
@@ -621,6 +624,8 @@ class Overseer:
             'Pokemon found count (10s interval):',
             ' '.join(self.things_count),
             '',
+            'Workers without sightings so far:',
+            ', '.join(w for w in self.workers.values() if w.total_seen == 0),
         ]
         dots, messages = self.get_dots_and_messages()
         output += [' '.join(row) for row in dots]
