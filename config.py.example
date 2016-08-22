@@ -26,6 +26,15 @@ ACCOUNTS = [
     ('whatever', 'mammoth', 'google'),
 ]
 
+DEVICE_INFO = { 'device_brand': 'Apple',
+                'device_model': 'iPhone',
+                'device_model_boot': 'iPhone8,1',
+                'hardware_manufacturer': 'Apple',
+                'hardware_model': 'N71AP',
+                'firmware_brand': 'iPhone OS',
+                'firmware_type': '9.3.4'
+              }
+
 TRASH_IDS = [13, 16, 19, 21, 41, 96]
 STAGE2 = [94, 139, 141, 149]
 NOTIFY_IDS = [141, 142, 143, 144, 145, 146, 148, 149, 150, 151]

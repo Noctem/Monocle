@@ -11,6 +11,7 @@ import random
 import sys
 import threading
 import time
+import uuid
 
 from pgoapi import (
     exceptions as pgoapi_exceptions,
@@ -37,6 +38,7 @@ REQUIRED_SETTINGS = (
     'SCAN_DELAY',
     'COMPUTE_THREADS',
     'NETWORK_THREADS',
+    'DEVICE_INFO',
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
@@ -83,6 +85,7 @@ class Slave:
         cell_ids_executor,
         network_executor,
         start_step=0,
+        device_info=config.DEVICE_INFO
     ):
         self.worker_no = worker_no
         # Set of all points that worker needs to visit
@@ -113,7 +116,8 @@ class Slave:
         # And now, configure logger and PGoApi
         center = self.points[0]
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
-        self.api = PGoApi()
+        self.device_info = device_info
+        self.api = PGoApi(device_info=device_info)
         self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(center[0], center[1], center[2])  # lat, lon, alt
         self.api.set_logger(self.logger)
@@ -476,6 +480,8 @@ class Overseer:
             start_step = self.workers[worker_no].step + 1
         else:
             start_step = 0
+        device_info = config.DEVICE_INFO.copy()
+        device_info['device_id'] = uuid.uuid4().hex
         worker = Slave(
             worker_no=worker_no,
             points=self.points[worker_no],
@@ -484,6 +490,7 @@ class Overseer:
             cell_ids_executor=self.cell_ids_executor,
             network_executor=self.network_executor,
             start_step=start_step,
+            device_info=device_info
         )
         self.workers[worker_no] = worker
         # For first time, we need to wait until all workers login before
