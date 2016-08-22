@@ -3,7 +3,7 @@ import enum
 import time
 
 from sqlalchemy import create_engine
-from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, SmallInteger, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -110,22 +110,22 @@ class Sighting(Base):
     __tablename__ = 'sightings'
 
     id = Column(Integer, primary_key=True)
-    pokemon_id = Column(Integer)
-    spawn_id = Column(String(32))
-    expire_timestamp = Column(Integer, index=True)
-    encounter_id = Column(String(32))
+    pokemon_id = Column(SmallInteger)
+    spawn_id = Column(String(12))
+    expire_timestamp = Column(Float(precision="double"), index=True)
+    encounter_id = Column(Text)
     normalized_timestamp = Column(Integer)
-    lat = Column(String(20), index=True)
-    lon = Column(String(20), index=True)
+    lat = Column(Float(precision="double"), index=True)
+    lon = Column(Float(precision="double"), index=True)
 
 
 class Fort(Base):
     __tablename__ = 'forts'
 
     id = Column(Integer, primary_key=True)
-    external_id = Column(String(64), unique=True)
-    lat = Column(String(20), index=True)
-    lon = Column(String(20), index=True)
+    external_id = Column(Text, unique=True)
+    lat = Column(Float(precision="double"), index=True)
+    lon = Column(Float(precision="double"), index=True)
 
     sightings = relationship(
         'FortSighting',
@@ -138,11 +138,11 @@ class FortSighting(Base):
     __tablename__ = 'fort_sightings'
 
     id = Column(Integer, primary_key=True)
-    fort_id = Column(Integer, ForeignKey('forts.id'))
-    last_modified = Column(Integer)
-    team = Column(Integer)
+    fort_id = Column(SmallInteger, ForeignKey('forts.id'))
+    last_modified = Column(Float(precision="double"))
+    team = Column(SmallInteger)
     prestige = Column(Integer)
-    guard_pokemon_id = Column(Integer)
+    guard_pokemon_id = Column(SmallInteger)
 
     __table_args__ = (
         UniqueConstraint(
@@ -178,16 +178,6 @@ def get_since_query_part(where=True):
 def add_sighting(session, pokemon):
     # Check if there isn't the same entry already
     if pokemon in SIGHTING_CACHE:
-        return
-    existing = session.query(Sighting) \
-        .filter(Sighting.pokemon_id == pokemon['pokemon_id']) \
-        .filter(Sighting.spawn_id == pokemon['spawn_id']) \
-        .filter(Sighting.expire_timestamp > pokemon['expire_timestamp'] - 10) \
-        .filter(Sighting.expire_timestamp < pokemon['expire_timestamp'] + 10) \
-        .filter(Sighting.lat == pokemon['lat']) \
-        .filter(Sighting.lon == pokemon['lon']) \
-        .first()
-    if existing:
         return
     obj = Sighting(
         pokemon_id=pokemon['pokemon_id'],
