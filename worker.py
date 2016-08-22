@@ -37,8 +37,6 @@ REQUIRED_SETTINGS = (
     'SCAN_DELAY',
     'COMPUTE_THREADS',
     'NETWORK_THREADS',
-    'ALTITUDE',
-    'ALT_RANGE',
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
@@ -398,7 +396,7 @@ class Overseer:
         self.workers = {}
         self.count = config.GRID[0] * config.GRID[1]
         self.logger.info('Generating points...')
-        self.points = utils.get_points_per_worker(altitude=config.ALTITUDE)
+        self.points = utils.get_points_per_worker()
         self.cell_ids = [{} for _ in range(self.count)]
         self.logger.info('Done')
         self.start_date = datetime.now()
