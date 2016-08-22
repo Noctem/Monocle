@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, CancelledError
 from collections import deque
 from datetime import datetime
 from functools import partial
@@ -47,6 +47,9 @@ BAD_STATUSES = (
     'LOGIN FAIL',
     'EXCEPTION',
     'BAD LOGIN',
+    'RETRYING',
+    'THROTTLE',
+    'NO POKEMON',
 )
 
 
@@ -82,24 +85,32 @@ class Slave:
         start_step=0,
     ):
         self.worker_no = worker_no
+        # Set of all points that worker needs to visit
         self.points = points
+        self.count_points = len(self.points)
+        # Cache for cell_ids for all points
         self.cell_ids = cell_ids
+        # asyncio/thread references
+        self.future = None  # worker's own future
         self.db_processor = db_processor
         self.cell_ids_executor = cell_ids_executor
         self.network_executor = network_executor
-        self.count_points = len(self.points)
-        self.start_step = start_step
+        # Some handy counters
+        self.start_step = start_step  # allow worker to pick up where it left
         self.step = 0
         self.cycle = 0
         self.seen_per_cycle = 0
         self.total_seen = 0
-        self.error_code = 'INIT'
-        self.running = True
-        self.killed = False
-        self.restart_me = False
+        # State variables
+        self.running = True  # not running worker should be restarted
+        self.killed = False  # killed worker will stay killed
+        self.restart_me = False  # ask overseer for restarting
         self.logged_in = False
+        # Other variables
         self.last_step_run_time = 0
         self.last_api_latency = 0
+        self.error_code = 'INIT'
+        # And now, configure logger and PGoApi
         center = self.points[0]
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
         self.api = PGoApi()
@@ -110,15 +121,22 @@ class Slave:
             self.api.set_proxy(config.PROXIES)
 
     async def first_run(self):
-        loop = asyncio.get_event_loop()
         total_workers = config.GRID[0] * config.GRID[1]
-        await self.sleep(self.worker_no / total_workers * config.SCAN_DELAY)
-        await self.run()
+        try:
+            await self.sleep(
+                self.worker_no / total_workers * config.SCAN_DELAY
+            )
+            await self.run()
+        except CancelledError:
+            self.kill()
 
     async def run(self):
-        if not self.logged_in:
-            await self.login()
-        await self.run_cycle()
+        try:
+            if not self.logged_in:
+                await self.login()
+            await self.run_cycle()
+        except CancelledError:
+            self.kill()
 
     def call_api(self, method, *args, **kwargs):
         """Returns decorated function that measures execution time
@@ -183,6 +201,9 @@ class Slave:
                 self.error_code = 'THROTTLE'
                 await self.sleep(random.uniform(5, 10))
                 continue
+            except CancelledError:
+                self.kill()
+                return
             except Exception:
                 self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
@@ -216,6 +237,9 @@ class Slave:
             except BannedAccount:
                 self.error_code = 'BANNED?'
                 self.restart(30, 90)
+            except CancelledError:
+                self.kill()
+                return
             except Exception:
                 self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
@@ -278,7 +302,7 @@ class Slave:
             if not responses:
                 self.logger.warning('Response: %s', response_dict)
                 raise MalformedResponse
-            map_objects = response_dict['responses'].get('GET_MAP_OBJECTS', {})
+            map_objects = responses.get('GET_MAP_OBJECTS', {})
             pokemons = []
             forts = []
             if map_objects.get('status') == 1:
@@ -380,18 +404,32 @@ class Slave:
 
     async def sleep(self, duration):
         """Sleeps and interrupts if detects that worker was killed"""
-        await asyncio.sleep(duration)
+        try:
+            await asyncio.sleep(duration)
+        except CancelledError:
+            self.kill()
 
     async def restart(self, sleep_min=5, sleep_max=20):
         """Sleeps for a bit, then restarts"""
+        if self.killed:
+            return
         self.logger.info('Restarting')
         await self.sleep(random.randint(sleep_min, sleep_max))
         self.restart_me = True
+        self.running = False
+
+    def slap(self):
+        """Slaps worker in face, telling it to improve itself
+
+        It's weaker form of killing - it will be restarted soon.
+        """
+        self.error_code = 'KILLED'
+        self.running = False
 
     def kill(self):
-        """Marks worker as not running
+        """Marks worker as killed
 
-        It should stop any operation as soon as possible and restart itself.
+        Killed worker won't be restarted.
         """
         self.error_code = 'KILLED'
         self.running = False
@@ -422,6 +460,8 @@ class Overseer:
         self.db_processor.stop()
         for worker in self.workers.values():
             worker.kill()
+            if worker.future is not None:
+                worker.future.cancel()
 
     def start_worker(self, worker_no, first_run=False):
         if self.killed:
@@ -449,12 +489,14 @@ class Overseer:
         # For first time, we need to wait until all workers login before
         # scanning
         if first_run:
-            asyncio.ensure_future(worker.first_run())
+            worker.future = asyncio.ensure_future(worker.first_run())
             return
         # WARNING: at this point, we're called by self.check which runs in
         # separate thread than event loop! That's why run_coroutine_threadsafe
         # is used here.
-        asyncio.run_coroutine_threadsafe(worker.run(), self.loop)
+        worker.future = asyncio.run_coroutine_threadsafe(
+            worker.run(), self.loop
+        )
 
     def get_point_stats(self):
         lenghts = [len(p) for p in self.points]
@@ -495,7 +537,7 @@ class Overseer:
                     if not worker.running:
                         continue
                     if worker.total_seen <= total_seen:
-                        worker.kill()
+                        worker.slap()
                 # Prepare new list
                 workers_check = [
                     (worker, worker.total_seen)
@@ -608,6 +650,8 @@ class Overseer:
             'Pokemon found count (10s interval):',
             ' '.join(self.things_count),
             '',
+            'Workers without sightings so far:',
+            ', '.join(w for w in self.workers.values() if w.total_seen == 0),
         ]
         dots, messages = self.get_dots_and_messages()
         output += [' '.join(row) for row in dots]
@@ -707,6 +751,10 @@ if __name__ == '__main__':
         loop.run_forever()
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
-        overseer.kill()
-        loop.run_until_complete(asyncio.gather(*asyncio.Task.all_tasks()))
+        overseer.kill()  # also cancels all workers' futures
+        all_futures = [
+            w.future for w in overseer.workers.values()
+            if w.future is not None
+        ]
+        loop.run_until_complete(asyncio.gather(*all_futures))
         loop.close()
