@@ -158,6 +158,14 @@ class Slave:
             return result
         return inner
 
+    def swap_account(self, reason=''):
+        self.logger.warning('Swapping out ' + config.ACCOUNTS[self.worker_no][0] + ' for ' + config.EXTRA_ACCOUNTS[0][0])
+        with open('account_failures.txt', 'at') as f:
+            print(config.ACCOUNTS[self.worker_no][0], reason, file=f)
+        config.EXTRA_ACCOUNTS.append(config.ACCOUNTS[self.worker_no])
+        config.ACCOUNTS[self.worker_no] = config.EXTRA_ACCOUNTS.pop(0)
+        return
+
     async def login(self):
         """Logs worker in and prepares for scanning"""
         self.cycle = 1
@@ -192,11 +200,13 @@ class Slave:
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
+                self.swap_account(reason='auth exception')
                 await self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
                 self.logger.error('Invalid credentials')
                 self.error_code = 'BAD LOGIN'
+                self.swap_account(reason='invalid credentials')
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerBusyOrOfflineException:
@@ -244,7 +254,9 @@ class Slave:
                 await self.restart()
             except BannedAccount:
                 self.error_code = 'BANNED?'
-                self.restart(30, 90)
+                self.swap_account(reason='code 3')
+                await self.restart(30, 90)
+                return
             except CancelledError:
                 self.kill()
                 return

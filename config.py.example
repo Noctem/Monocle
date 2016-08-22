@@ -19,12 +19,24 @@ ALT_RANGE = (1450, 1550)  # Generate random altitudes between these points
 
 SCAN_RADIUS = 70  # metres
 
-ACCOUNTS = [
+_workers_count = GRID[0] * GRID[1]
+COMPUTE_THREADS = int(_workers_count / 10) + 1
+NETWORK_THREADS = int(_workers_count / 2) + 1
+
+ALL_ACCOUNTS = [
     ('ash_ketchum', 'pik4chu', 'ptc'),
     ('ziemniak_kalafior', 'ogorek', 'google'),
     ('noideawhattoputhere', 's3cr3t', 'ptc'),
     ('whatever', 'mammoth', 'google'),
 ]
+
+ACCOUNTS = []
+EXTRA_ACCOUNTS = []
+for account in ALL_ACCOUNTS:
+    if len(ACCOUNTS) < _workers_count:
+        ACCOUNTS.append(account)
+    else:
+        EXTRA_ACCOUNTS.append(account)
 
 DEVICE_INFO = { 'device_brand': 'Apple',
                 'device_model': 'iPhone',
@@ -44,10 +56,6 @@ GOOGLE_MAPS_KEY = 's3cr3t'
 
 MAP_PROVIDER_URL = '//{s}.tile.osm.org/{z}/{x}/{y}.png'
 MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-
-_workers_count = GRID[0] * GRID[1]
-COMPUTE_THREADS = int(_workers_count / 10) + 1
-NETWORK_THREADS = int(_workers_count / 2) + 1
 
 # As many as can fit will be included as hashtags in your tweets, these will
 # be combined with landmark-specific hashtags (if applicable).
