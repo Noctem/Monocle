@@ -7,3 +7,5 @@ templates/footer.html
 *.so
 *.dll
 *.dylib
+account_failures.txt
+banned_ips.txt
