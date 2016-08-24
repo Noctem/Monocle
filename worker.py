@@ -284,19 +284,22 @@ class Slave:
         self.step = start_step or 0
         loop = asyncio.get_event_loop()
         for i, point in enumerate(self.points):
+            latitude = random.uniform(point[0] - 0.00001, point[0] + 0.00001)
+            longitude = random.uniform(point[1] - 0.00001, point[1] + 0.00001)
+            altitude = point[2]
             if not self.running:
                 return
             self.logger.info(
-                'Visiting point %d (%s,%s %sm)', i, round(point[0], 5),
-                round(point[1], 5), round(point[2])
+                'Visiting point %d (%s,%s %sm)', i, round(latitude, 4),
+                round(longitude, 4), altitude
             )
             start = time.time()
-            self.api.set_position(point[0], point[1], point[2])
+            self.api.set_position(latitude, longitude, altitude)
             if i not in self.cell_ids:
                 self.cell_ids[i] = await loop.run_in_executor(
                     self.cell_ids_executor,
                     partial(
-                        pgoapi_utils.get_cell_ids, point[0], point[1]
+                        pgoapi_utils.get_cell_ids, latitude, longitude
                     )
                 )
             cell_ids = self.cell_ids[i]
@@ -304,8 +307,8 @@ class Slave:
                 self.network_executor,
                 self.call_api(
                     self.api.get_map_objects,
-                    latitude=pgoapi_utils.f2i(point[0]),
-                    longitude=pgoapi_utils.f2i(point[1]),
+                    latitude=pgoapi_utils.f2i(latitude),
+                    longitude=pgoapi_utils.f2i(longitude),
                     cell_id=cell_ids
                 )
             )
