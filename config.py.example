@@ -16,6 +16,7 @@ SCAN_DELAY = (10, 12)  # will vary between these values (in seconds)
 PROXIES = None  # Insert dictionary with 'http' and 'https' keys to enable
 ALTITUDE = False  # Generate accurate altitudes where possible
 ALT_RANGE = (1450, 1550)  # Generate random altitudes between these points
+LONGSPAWNS = False  # Store sightings with invalid times in another DB table
 
 SCAN_RADIUS = 70  # metres
 

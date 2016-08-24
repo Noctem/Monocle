@@ -3,7 +3,7 @@ import enum
 import time
 
 from sqlalchemy import create_engine
-from sqlalchemy import Column, Integer, String, Float, SmallInteger, Text, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -119,6 +119,21 @@ class Sighting(Base):
     lon = Column(Float(precision="double"), index=True)
 
 
+class Longspawn(Base):
+    __tablename__ = 'longspawns'
+
+    id = Column(Integer, primary_key=True)
+    pokemon_id = Column(SmallInteger)
+    spawn_id = Column(String(12))
+    expire_timestamp = Column(Float(precision="double"), index=True)
+    encounter_id = Column(Text)
+    normalized_timestamp = Column(Integer)
+    lat = Column(Float(precision="double"), index=True)
+    lon = Column(Float(precision="double"), index=True)
+    time_till_hidden_ms = Column(Integer)
+    last_modified_timestamp_ms = Column(BigInteger)
+
+
 class Fort(Base):
     __tablename__ = 'forts'
 
@@ -190,6 +205,21 @@ def add_sighting(session, pokemon):
     )
     session.add(obj)
     SIGHTING_CACHE.add(pokemon)
+
+
+def add_longspawn(session, pokemon):
+    obj = Longspawn(
+        pokemon_id=pokemon['pokemon_id'],
+        spawn_id=pokemon['spawn_id'],
+        encounter_id=str(pokemon['encounter_id']),
+        expire_timestamp=pokemon['expire_timestamp'],
+        normalized_timestamp=normalize_timestamp(pokemon['expire_timestamp']),
+        lat=pokemon['lat'],
+        lon=pokemon['lon'],
+        time_till_hidden_ms=pokemon['time_till_hidden_ms'],
+        last_modified_timestamp_ms=pokemon['last_modified_timestamp_ms'],
+    )
+    session.add(obj)
 
 
 def add_fort_sighting(session, raw_fort):

@@ -54,6 +54,12 @@ BAD_STATUSES = (
     'NO POKEMON',
 )
 
+if hasattr(config, 'LONGSPAWNS') and config.LONGSPAWNS:
+    store_longspawns = True
+    longspawn_deque = deque(maxlen=1000)
+else
+    store_longspawns = False
+
 
 class MalformedResponse(Exception):
     """Raised when server response is malformed"""
@@ -324,6 +330,7 @@ class Slave:
                 raise MalformedResponse
             map_objects = responses.get('GET_MAP_OBJECTS', {})
             pokemons = []
+            longspawns = []
             forts = []
             if map_objects.get('status') == 1:
                 for map_cell in map_objects['map_cells']:
@@ -338,7 +345,10 @@ class Slave:
                             pokemon['time_till_hidden_ms'] > 900000
                         )
                         if invalid_time:
-                            continue
+                            if store_longspawns:
+                                longspawn_deque.append(pokemon['encounter_id'])
+                            else:
+                                continue
                         normalized = self.normalize_pokemon(
                                          pokemon,
                                          map_cell['current_timestamp_ms']
@@ -348,6 +358,12 @@ class Slave:
                             if normalized['pokemon_id'] in config.NOTIFY_IDS:
                                 self.logger.info('Trying to notify!')
                                 notification.notify(normalized)
+                            if pokemon['encounter_id'] in longspawn_deque:
+                                normalized['time_till_hidden_ms'] = pokemon[
+                                    'time_till_hidden_ms']
+                                normalized['last_modified_timestamp_ms'] = pokemon[
+                                    'last_modified_timestamp_ms']
+                                longspawns.append(normalized)
                         except NameError:
                             pass
                     for fort in map_cell.get('forts', []):
@@ -358,6 +374,8 @@ class Slave:
                         forts.append(self.normalize_fort(fort))
             self.db_processor.add(pokemons)
             self.db_processor.add(forts)
+            if store_longspawns:
+                self.db_processor.add(longspawns)
             self.seen_per_cycle += len(pokemons)
             self.total_seen += len(pokemons)
             self.logger.info(
@@ -392,6 +410,7 @@ class Slave:
             'lat': raw['latitude'],
             'lon': raw['longitude'],
         }
+
 
     @staticmethod
     def normalize_fort(raw):
@@ -730,6 +749,8 @@ class DatabaseProcessor(threading.Thread):
                         db.add_sighting(session, item)
                         session.commit()
                         self.count += 1
+                    elif item['type'] == 'longspawn':
+                        db.add_longspawn(session, item)
                     elif item['type'] == 'fort':
                         db.add_fort_sighting(session, item)
                         # No need to commit here - db takes care of it
