@@ -128,11 +128,9 @@ class Slave:
         self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(center[0], center[1], center[2])  # lat, lon, alt
         self.api.set_logger(self.logger)
-        if proxies:
-            self.proxies = proxies
-        elif hasattr(config, 'PROXIES') and config.PROXIES:
-            self.proxies = config.PROXIES
-        self.api.set_proxy(self.proxies)
+        self.proxies = proxies
+        if self.proxies:
+            self.api.set_proxy(self.proxies)
 
     async def first_run(self):
         total_workers = config.GRID[0] * config.GRID[1]
@@ -517,17 +515,13 @@ class Overseer:
         else:
             start_step = 0
         proxies = None
-        if isinstance(config.PROXIES, list):
-            if len(config.PROXIES) > 3:
-                position = worker_no / self.count
-                if position > (.75):
-                    proxies = config.PROXIES[3]
-                elif position > (.5):
-                    proxies = config.PROXIES[2]
-                elif position > (.25):
-                    proxies = config.PROXIES[1]
-                else:
-                    proxies = config.PROXIES[0]
+        if hasattr(config, 'PROXIES'):
+            if isinstance(config.PROXIES, (tuple,list)):
+                proxies = random.choice(config.PROXIES)
+            else:
+                proxies = config.PROXIES
+        else:
+            proxies = None
         device_info = config.DEVICE_INFO.copy()
         device_info['device_id'] = uuid.uuid4().hex
         worker = Slave(
