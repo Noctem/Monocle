@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, CancelledError
 from collections import deque
 from datetime import datetime
 from functools import partial
+from sqlalchemy.exc import IntegrityError
 import argparse
 import asyncio
 import logging
@@ -747,8 +748,11 @@ class DatabaseProcessor(threading.Thread):
                         db.add_fort_sighting(session, item)
                         # No need to commit here - db takes care of it
                     self.logger.debug('Item saved to db')
+                except IntegrityError:
+                    session.rollback()
+                    self.logger.info('Tried and failed to add a duplicate to DB.')
                 except Exception:
-                    self.session.rollback()
+                    session.rollback()
                     self.logger.exception('A wild exception appeared!')
                     self.logger.info('Skipping the item.')
         session.close()
