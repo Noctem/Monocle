@@ -387,10 +387,19 @@ class Slave:
                 time.time() - start - self.last_api_latency
             )
             processing_time = time.time() - processing_start
-            sleep_for = config.SCAN_DELAY - processing_time
-            await self.sleep(
-                random.uniform(sleep_for, sleep_for + 2)
-            )
+            if isinstance(config.PROXIES, (tuple,list)):
+                sleep_min = config.SCAN_DELAY[0] - processing_time
+                sleep_max = config.SCAN_DELAY[1] - processing_time
+                if len(config.PROXIES) > 2:
+                    sleep_mode = config.SCAN_DELAY[2]
+                    sleep_time = random.triangular(sleep_min, sleep_max,
+                                                   sleep_mode)
+                else:
+                    sleep_time = random.uniform(sleep_min, sleep_max)
+            else:
+                sleep_for = config.SCAN_DELAY
+                sleep_time = random.uniform(sleep_for, sleep_for + 2)
+            await self.sleep(sleep_time)
         if self.seen_per_cycle == 0:
             self.error_code = 'NO POKEMON'
 

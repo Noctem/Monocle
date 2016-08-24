@@ -12,7 +12,7 @@ MAP_START = (12.3456, 34.5678)
 MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
 CYCLES_PER_WORKER = 3
-SCAN_DELAY = (10, 12)  # will vary between these values (in seconds)
+SCAN_DELAY = (10, 16, 12)  # varies between these values, favoring the third
 PROXIES = None  # Insert dict or tuple of dicts with 'http' and 'https' keys
 LONGSPAWNS = False  # Store sightings with invalid times in another DB table
 
