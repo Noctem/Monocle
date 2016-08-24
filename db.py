@@ -194,6 +194,12 @@ def add_sighting(session, pokemon):
     # Check if there isn't the same entry already
     if pokemon in SIGHTING_CACHE:
         return
+    existing = session.query(Sighting) \
+        .filter(Sighting.spawn_id == pokemon['spawn_id']) \
+        .filter(Sighting.lon == pokemon['encounter_id']) \
+        .first()
+    if existing:
+        return
     obj = Sighting(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
