@@ -11,7 +11,6 @@ import random
 import sys
 import threading
 import time
-import uuid
 
 from pgoapi import (
     exceptions as pgoapi_exceptions,
@@ -38,7 +37,6 @@ REQUIRED_SETTINGS = (
     'SCAN_DELAY',
     'COMPUTE_THREADS',
     'NETWORK_THREADS',
-    'DEVICE_INFO',
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
@@ -91,7 +89,7 @@ class Slave:
         cell_ids_executor,
         network_executor,
         start_step=0,
-        device_info=config.DEVICE_INFO,
+        device_info=None,
         proxies=None
     ):
         self.worker_no = worker_no
@@ -129,8 +127,7 @@ class Slave:
         self.api.set_position(center[0], center[1], center[2])  # lat, lon, alt
         self.api.set_logger(self.logger)
         self.proxies = proxies
-        if self.proxies:
-            self.api.set_proxy(self.proxies)
+        self.api.set_proxy(self.proxies)
 
     async def first_run(self):
         total_workers = config.GRID[0] * config.GRID[1]
@@ -522,8 +519,6 @@ class Overseer:
                 proxies = config.PROXIES
         else:
             proxies = None
-        device_info = config.DEVICE_INFO.copy()
-        device_info['device_id'] = uuid.uuid4().hex
         worker = Slave(
             worker_no=worker_no,
             points=self.points[worker_no],
@@ -532,7 +527,7 @@ class Overseer:
             cell_ids_executor=self.cell_ids_executor,
             network_executor=self.network_executor,
             start_step=start_step,
-            device_info=device_info,
+            device_info=utils.get_worker_device(worker_no),
             proxies=proxies
         )
         self.workers[worker_no] = worker

@@ -85,6 +85,7 @@ def get_points_per_worker():
     total_columns = math.ceil(
         abs(config.MAP_START[1] - config.MAP_END[1]) / lon_gain
     )
+    alts = (10, 30, 50, 65, 100, 200)
     for map_row, lat in enumerate(
         float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)
     ):
@@ -101,7 +102,6 @@ def get_points_per_worker():
             if map_col >= total_columns:  # should happen only once per 2 rows
                 grid_col -= 1
             worker_no = grid_row * config.GRID[1] + grid_col
-            alts = [10, 30, 50, 65, 100, 200]
             alt = random.choice(alts)
             points[worker_no].append((lat, lon, alt))
     points = [
@@ -109,6 +109,31 @@ def get_points_per_worker():
         for i, p in enumerate(points)
     ]
     return points
+
+
+def get_worker_device(worker_number):
+    hardware = {'iPhone5,1': 'N41AP',
+                'iPhone5,2': 'N42AP',
+                'iPhone5,3': 'N48AP',
+                'iPhone5,4': 'N49AP',
+                'iPhone6,1': 'N51AP',
+                'iPhone6,2': 'N53AP',
+                'iPhone7,1': 'N56AP',
+                'iPhone7,2': 'N61AP',
+                'iPhone8,1': 'N71AP',
+                'iPhone8,2': 'N66AP',
+                'iPhone8,4': 'N69AP'}
+    account = config.ACCOUNTS[worker_number]
+    device_info = { 'device_brand': 'Apple',
+                    'device_model': 'iPhone',
+                    'hardware_manufacturer': 'Apple',
+                    'firmware_brand': 'iPhone OS'
+                  }
+    device_info['device_model_boot'] = account[3]
+    device_info['hardware_model'] = hardware[account[3]]
+    device_info['firmware_type'] = account[4]
+    device_info['device_id'] = account[5]
+    return device_info
 
 
 def sort_points_for_worker(points, worker_no):

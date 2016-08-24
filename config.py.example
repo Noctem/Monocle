@@ -23,10 +23,9 @@ COMPUTE_THREADS = int(_workers_count / 10) + 1
 NETWORK_THREADS = int(_workers_count / 2) + 1
 
 ALL_ACCOUNTS = [
-    ('ash_ketchum', 'pik4chu', 'ptc'),
-    ('ziemniak_kalafior', 'ogorek', 'google'),
-    ('noideawhattoputhere', 's3cr3t', 'ptc'),
-    ('whatever', 'mammoth', 'google'),
+    ('ash_ketchum', 'pik4chu', 'ptc', 'iPhone6,1', '9.3.4', '67c51fda79104a5a87935992e15d2246'),
+    ('ziemniak_kalafior', 'ogorek', 'google', 'iPhone5,4', '9.0', 'bf8d044125424678be8e6050aac205f6'),
+    ('noideawhattoputhere', 's3cr3t', 'ptc', 'iPhone8,2', '9.3.3', '433a80e3168f488288ae587c3e67441c')
 ]
 
 ACCOUNTS = []
@@ -36,15 +35,6 @@ for account in ALL_ACCOUNTS:
         ACCOUNTS.append(account)
     else:
         EXTRA_ACCOUNTS.append(account)
-
-DEVICE_INFO = { 'device_brand': 'Apple',
-                'device_model': 'iPhone',
-                'device_model_boot': 'iPhone8,1',
-                'hardware_manufacturer': 'Apple',
-                'hardware_model': 'N71AP',
-                'firmware_brand': 'iPhone OS',
-                'firmware_type': '9.3.4'
-              }
 
 TRASH_IDS = [13, 16, 19, 21, 41, 96]
 STAGE2 = [94, 139, 141, 149]
