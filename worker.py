@@ -55,7 +55,7 @@ BAD_STATUSES = (
 if hasattr(config, 'LONGSPAWNS') and config.LONGSPAWNS:
     store_longspawns = True
     longspawn_deque = deque(maxlen=1000)
-else
+else:
     store_longspawns = False
 
 
@@ -133,7 +133,7 @@ class Slave:
         total_workers = config.GRID[0] * config.GRID[1]
         try:
             await self.sleep(
-                self.worker_no / total_workers * config.SCAN_DELAY
+                self.worker_no / total_workers * config.SCAN_DELAY[0]
             )
             await self.run()
         except CancelledError:
@@ -176,7 +176,7 @@ class Slave:
         while True:
             self.logger.info('Trying to log in')
             try:
-                loginsuccess = await loop.run_in_executor(
+                await loop.run_in_executor(
                     self.network_executor,
                     self.call_api(
                         self.api.set_authentication,
@@ -186,10 +186,6 @@ class Slave:
                         proxy_config=self.proxies
                     )
                 )
-                if not loginsuccess:
-                    self.error_code = 'LOGIN FAIL'
-                    await self.restart()
-                    return
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 import requests
                 ip_address = requests.get('https://icanhazip.com/', proxies=self.proxies).text
@@ -387,18 +383,14 @@ class Slave:
                 time.time() - start - self.last_api_latency
             )
             processing_time = time.time() - processing_start
-            if isinstance(config.PROXIES, (tuple,list)):
-                sleep_min = config.SCAN_DELAY[0] - processing_time
-                sleep_max = config.SCAN_DELAY[1] - processing_time
-                if len(config.PROXIES) > 2:
-                    sleep_mode = config.SCAN_DELAY[2]
-                    sleep_time = random.triangular(sleep_min, sleep_max,
-                                                   sleep_mode)
-                else:
-                    sleep_time = random.uniform(sleep_min, sleep_max)
+            sleep_min = config.SCAN_DELAY[0] - processing_time
+            sleep_max = config.SCAN_DELAY[1] - processing_time
+            if len(config.PROXIES) > 2:
+                sleep_mode = config.SCAN_DELAY[2]
+                sleep_time = random.triangular(sleep_min, sleep_max,
+                                               sleep_mode)
             else:
-                sleep_for = config.SCAN_DELAY
-                sleep_time = random.uniform(sleep_for, sleep_for + 2)
+                sleep_time = random.uniform(sleep_min, sleep_max)
             await self.sleep(sleep_time)
         if self.seen_per_cycle == 0:
             self.error_code = 'NO POKEMON'
