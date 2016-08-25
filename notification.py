@@ -10,7 +10,7 @@ import config
 # Maintain deque of 200 most recent sightings to check for duplicates. Could
 # also be used in future for making decisions about whether to notify or not
 # i.e. skip species if most of the recent notifications have been about it.
-recent_monsters = deque(maxlen=200)
+recent_encounters = deque(maxlen=200)
 
 
 def notify(pokemon):
@@ -37,20 +37,19 @@ def notify(pokemon):
         coordinates = Point(latitude=round(pokemon['lat'], 6),
                             longitude=round(pokemon['lon'], 6))
         pokeid = pokemon['pokemon_id']
-        current_monster = (pokeid, coordinates, int(expire_timestamp))
-        if current_monster in recent_monsters:
-            return  # skip duplicate
+        encounter_id = pokemon['encounter_id']
+        if encounter_id in recent_encounters:
+            return (False, 'already notified')  # skip duplicate
         else:
-            recent_monsters.append(current_monster)
+            recent_encounters.append(encounter_id)
             pokename = POKEMON_NAMES[pokeid]
             expire_timestamp = pokemon['expire_timestamp']
             seconds_remaining = int(expire_timestamp - time.time())
             # do not notify if it expires in less than 3 minutes
             if seconds_remaining < 180:
-                return
+                return (False, 'expiring too soon')
             if 'TZ_OFFSET' in conf:
-                expire_time = datetime.fromtimestamp(
-                    expire_timestamp, timezone(
+                expire_time = datetime.fromtimestamp(expire_timestamp, timezone(
                     timedelta(hours=conf['TZ_OFFSET']))).strftime('%I:%M %p')
             else:
                 expire_time = datetime.fromtimestamp(
@@ -63,15 +62,23 @@ def notify(pokemon):
             if landmark.hashtags:
                 conf['HASHTAGS'] = landmark.hashtags
 
+            tweeted = False
+            pushed = False
             if 'PB_API_KEY' in conf:
-                pbpush(pokename, seconds_remaining, expire_time, map_link,
-                       place_string, conf)
+                pushed = pbpush(pokename, seconds_remaining, expire_time,
+                                map_link, place_string, conf)
             if all(x in conf for x in ['TWITTER_CONSUMER_KEY',
                                        'TWITTER_CONSUMER_SECRET',
                                        'TWITTER_ACCESS_KEY',
                                        'TWITTER_ACCESS_SECRET']):
-                tweet(pokename, expire_time, map_link, place_string,
-                      coordinates, conf)
+                tweeted = tweet(pokename, expire_time, map_link, place_string,
+                                coordinates, conf)
+            if tweeted or pushed:
+                return (True, 'notified')
+            else:
+                return (False, 'failed')
+    else:
+        return (False, 'no API keys')
 
 
 def find_landmark(coordinates, conf):
@@ -123,7 +130,7 @@ def pbpush(pokename, seconds_remaining, expire_time, map_link, place_string,
         from pushbullet import Pushbullet
         pb = Pushbullet(conf['PB_API_KEY'])
     except (ImportError, Pushbullet.errors.InvalidKeyError):
-        return
+        return False
 
     minutes, seconds = divmod(seconds_remaining, 60)
     time_remaining = str(minutes) + 'm' + str(seconds) + 's'
@@ -142,6 +149,8 @@ def pbpush(pokename, seconds_remaining, expire_time, map_link, place_string,
         channel.push_link(title, map_link, body)
     except (IndexError, KeyError):
         pb.push_link(title, map_link, body)
+    else:
+        return True
 
 
 def tweet(pokename, expire_time, map_link, place_string, coordinates, conf):
@@ -151,7 +160,7 @@ def tweet(pokename, expire_time, map_link, place_string, coordinates, conf):
     try:
         import twitter
     except ImportError:
-        return
+        return False
 
     def generate_tag_string(hashtags):
         '''convert hashtag set to string'''
@@ -199,4 +208,6 @@ def tweet(pokename, expire_time, map_link, place_string, coordinates, conf):
                        longitude=coordinates.longitude,
                        display_coordinates=True)
     except twitter.error.TwitterError:
-        return
+        return False
+    else:
+        return True
