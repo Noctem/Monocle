@@ -145,7 +145,7 @@ def pbpush(pokename, delta, expire_time, map_link, place_string):
         return False
 
     minutes, seconds = divmod(delta.total_seconds(), 60)
-    time_remaining = str(minutes) + 'm' + str(seconds) + 's'
+    time_remaining = str(int(minutes)) + 'm' + str(round(seconds)) + 's'
 
     try:
         title = ('A wild ' + pokename + ' will be in ' + cnf['AREA_NAME'] +
