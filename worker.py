@@ -63,8 +63,10 @@ else:
 class MalformedResponse(Exception):
     """Raised when server response is malformed"""
 
+
 class BannedAccount(Exception):
     """Raised when account is banned"""
+
 
 def configure_logger(filename='worker.log'):
     logging.basicConfig(
@@ -161,7 +163,9 @@ class Slave:
         return inner
 
     def swap_account(self, reason=''):
-        self.logger.warning('Swapping out ' + config.ACCOUNTS[self.worker_no][0] + ' for ' + config.EXTRA_ACCOUNTS[0][0])
+        self.logger.warning('Swapping out ' +
+                            config.ACCOUNTS[self.worker_no][0] +
+                            ' for ' + config.EXTRA_ACCOUNTS[0][0])
         with open('account_failures.txt', 'at') as f:
             print(config.ACCOUNTS[self.worker_no][0], reason, file=f)
         config.EXTRA_ACCOUNTS.append(config.ACCOUNTS[self.worker_no])
@@ -189,7 +193,9 @@ class Slave:
                 )
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 import requests
-                ip_address = requests.get('https://icanhazip.com/', proxies=self.proxies).text
+                ip_address = requests.get(
+                    'https://icanhazip.com/',
+                    proxies=self.proxies).text
                 self.logger.error('Banned IP: ' + ip_address)
                 self.error_code = 'IP BANNED'
                 with open('banned_ips.txt', 'at') as f:
@@ -331,30 +337,37 @@ class Slave:
             if map_objects.get('status') == 1:
                 for map_cell in map_objects['map_cells']:
                     for pokemon in map_cell.get('wild_pokemons', []):
-                        # Care only about 15 min spawns
-                        # 30 and 45 min ones (negative) will be just put after
-                        # time_till_hidden is below 15 min
-                        # As of 2016.08.14 we don't know what values over
-                        # 60 minutes are, so ignore them too
-                        invalid_time = (
+                        # Store spawns outside of the 15 minute range in a
+                        # different table until they fall under 15 minutes,
+                        # and notify about them differently.
+                        long_spawn = (
                             pokemon['time_till_hidden_ms'] < 0 or
-                            pokemon['time_till_hidden_ms'] > 900000
+                            pokemon['time_till_hidden_ms'] > 3600000
                         )
-                        if invalid_time:
+                        if long_spawn:
                             if store_longspawns:
                                 longspawn_deque.append(pokemon['encounter_id'])
                             else:
                                 continue
                         normalized = self.normalize_pokemon(
-                                         pokemon,
-                                         map_cell['current_timestamp_ms']
-                                     )
+                            pokemon,
+                            map_cell['current_timestamp_ms']
+                        )
                         pokemons.append(normalized)
                         try:
                             if normalized['pokemon_id'] in config.NOTIFY_IDS:
-                                self.logger.info('Trying to notify!')
-                                notification.notify(normalized)
-                            if pokemon['encounter_id'] in longspawn_deque:
+                                notified = notification.notify(pokemon)
+                                if notified[0]:
+                                    self.logger.info(
+                                        'Successfully ' + notified[1] + '.')
+                                else:
+                                    if notified[1] == 'Already notified.':
+                                        self.logger.warning(
+                                            'Skipped sending duplicate notification.')
+                                    else:
+                                        self.logger.error(notified[1])
+                            if (long_spawn or pokemon['encounter_id']
+                                    in longspawn_deque):
                                 normalized['time_till_hidden_ms'] = pokemon[
                                     'time_till_hidden_ms']
                                 normalized['last_modified_timestamp_ms'] = pokemon[
@@ -411,7 +424,6 @@ class Slave:
             'lat': raw['latitude'],
             'lon': raw['longitude'],
         }
-
 
     @staticmethod
     def normalize_fort(raw):
@@ -518,7 +530,7 @@ class Overseer:
             start_step = 0
         proxies = None
         if hasattr(config, 'PROXIES'):
-            if isinstance(config.PROXIES, (tuple,list)):
+            if isinstance(config.PROXIES, (tuple, list)):
                 proxies = random.choice(config.PROXIES)
             else:
                 proxies = config.PROXIES
@@ -750,7 +762,8 @@ class DatabaseProcessor(threading.Thread):
                     self.logger.debug('Item saved to db')
                 except IntegrityError:
                     session.rollback()
-                    self.logger.info('Tried and failed to add a duplicate to DB.')
+                    self.logger.info(
+                        'Tried and failed to add a duplicate to DB.')
                 except Exception:
                     session.rollback()
                     self.logger.exception('A wild exception appeared!')

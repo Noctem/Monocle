@@ -1,4 +1,3 @@
-import time
 from datetime import datetime, timedelta, timezone
 from collections import deque
 from geopy.distance import distance, Point
@@ -12,76 +11,90 @@ import config
 # i.e. skip species if most of the recent notifications have been about it.
 recent_encounters = deque(maxlen=200)
 
+# put relevant variables into dict for simple initalization checking
+cnf = {}
+for variable_name in ['PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
+                      'TWITTER_CONSUMER_SECRET', 'TWITTER_ACCESS_KEY',
+                      'TWITTER_ACCESS_SECRET', 'LANDMARKS', 'AREA_NAME',
+                      'HASHTAGS', 'TZ_OFFSET']:
+    try:
+        variable = getattr(config, variable_name)
+        cnf[variable_name] = variable
+    except AttributeError:
+        cnf[variable_name] = None
+
 
 def notify(pokemon):
     """Send a PushBullet notification and/or a Tweet, depending on if their
     respective API keys have been set in config.
     """
 
-    # put relevant variables into dict for simple initalization checking
-    conf = {}
-    for variable_name in ['PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
-                          'TWITTER_CONSUMER_SECRET', 'TWITTER_ACCESS_KEY',
-                          'TWITTER_ACCESS_SECRET', 'LANDMARKS', 'AREA_NAME',
-                          'HASHTAGS', 'TZ_OFFSET']:
-        try:
-            variable = getattr(config, variable_name)
-            if variable is not None:
-                conf[variable_name] = variable
-        except AttributeError:
-            pass
-
     # skip if no API keys have been set in config
-    if ('PB_API_KEY' in conf) or ('TWITTER_CONSUMER_KEY' in conf):
-        expire_timestamp = pokemon['expire_timestamp']
-        coordinates = Point(latitude=round(pokemon['lat'], 6),
-                            longitude=round(pokemon['lon'], 6))
-        pokeid = pokemon['pokemon_id']
+    if cnf['PB_API_KEY'] or cnf['TWITTER_CONSUMER_KEY']:
+        time_till_hidden = pokemon['time_till_hidden_ms']
+        coordinates = Point(latitude=round(pokemon['latitude'], 6),
+                            longitude=round(pokemon['longitude'], 6))
+        pokeid = pokemon['pokemon_data']['pokemon_id']
         encounter_id = pokemon['encounter_id']
         if encounter_id in recent_encounters:
-            return (False, 'already notified')  # skip duplicate
+            return (False, 'Already notified.')  # skip duplicate
         else:
-            recent_encounters.append(encounter_id)
             pokename = POKEMON_NAMES[pokeid]
-            expire_timestamp = pokemon['expire_timestamp']
-            seconds_remaining = int(expire_timestamp - time.time())
             # do not notify if it expires in less than 3 minutes
-            if seconds_remaining < 180:
-                return (False, 'expiring too soon')
-            if 'TZ_OFFSET' in conf:
-                expire_time = datetime.fromtimestamp(expire_timestamp, timezone(
-                    timedelta(hours=conf['TZ_OFFSET']))).strftime('%I:%M %p')
+            if time_till_hidden < 180000:
+                return (False, pokename + ' was expiring too soon to notify.')
+
+            if cnf['TZ_OFFSET']:
+                now = datetime.now(timezone(timedelta(hours=cnf['TZ_OFFSET'])))
             else:
-                expire_time = datetime.fromtimestamp(
-                    expire_timestamp).strftime('%I:%M %p')
+                now = datetime.now()
+
+            if time_till_hidden > 3600000:
+                # actual expiration time should be a minimum of 15 minutes away
+                delta = timedelta(minutes=15)
+            else:
+                delta = timedelta(milliseconds=time_till_hidden)
+
+            expire_time = (now + delta).strftime('%I:%M %p').lstrip('0')
+
+            if time_till_hidden > 3600000:
+                expire_time = 'at least ' + expire_time
 
             map_link = ('https://maps.google.com/maps?q=' +
                         str(coordinates.latitude) + ',' +
                         str(coordinates.longitude))
-            place_string, landmark = find_landmark(coordinates, conf)
+            place_string, landmark = find_landmark(coordinates)
             if landmark.hashtags:
-                conf['HASHTAGS'] = landmark.hashtags
+                cnf['HASHTAGS'] = landmark.hashtags
 
             tweeted = False
             pushed = False
-            if 'PB_API_KEY' in conf:
-                pushed = pbpush(pokename, seconds_remaining, expire_time,
-                                map_link, place_string, conf)
-            if all(x in conf for x in ['TWITTER_CONSUMER_KEY',
-                                       'TWITTER_CONSUMER_SECRET',
-                                       'TWITTER_ACCESS_KEY',
-                                       'TWITTER_ACCESS_SECRET']):
+            if cnf['PB_API_KEY']:
+                pushed = pbpush(pokename, delta, expire_time, map_link,
+                                place_string)
+
+            if (cnf['TWITTER_CONSUMER_KEY'] and
+                    cnf['TWITTER_CONSUMER_SECRET'] and
+                    cnf['TWITTER_ACCESS_KEY'] and
+                    cnf['TWITTER_ACCESS_SECRET']):
                 tweeted = tweet(pokename, expire_time, map_link, place_string,
-                                coordinates, conf)
-            if tweeted or pushed:
-                return (True, 'notified')
+                                coordinates)
+            if tweeted and pushed:
+                recent_encounters.append(encounter_id)
+                return (True, 'tweeted and pushed about ' + pokename)
+            elif tweeted:
+                recent_encounters.append(encounter_id)
+                return (True, 'tweeted about ' + pokename)
+            elif pushed:
+                recent_encounters.append(encounter_id)
+                return (True, 'pushed about ' + pokename)
             else:
-                return (False, 'failed')
+                return (False, 'Failed to notify about ' + pokename)
     else:
-        return (False, 'no API keys')
+        return (False, 'Did not notify, no Twitter/PushBullet keys set.')
 
 
-def find_landmark(coordinates, conf):
+def find_landmark(coordinates):
     """ Try to create a description of the location of the coordinates based
     on nearby landmarks, or fallback to a generic description depending
     on what variables are set in the config and whether any landmarks are
@@ -90,7 +103,7 @@ def find_landmark(coordinates, conf):
 
     try:
         closest_distance = None
-        for landmark in conf['LANDMARKS']:
+        for landmark in cnf['LANDMARKS']:
             landmark_coordinates = landmark.center
             landmark_distance = distance(coordinates,
                                          landmark_coordinates).meters
@@ -120,32 +133,32 @@ def generic_place_string():
         return 'around'
 
 
-def pbpush(pokename, seconds_remaining, expire_time, map_link, place_string,
-           conf):
+def pbpush(pokename, delta, expire_time, map_link, place_string):
     """ Send a PushBullet notification either privately or to a channel,
     depending on whether or not PB_CHANNEL is set in config.
     """
 
     try:
         from pushbullet import Pushbullet
-        pb = Pushbullet(conf['PB_API_KEY'])
+        pb = Pushbullet(cnf['PB_API_KEY'])
     except (ImportError, Pushbullet.errors.InvalidKeyError):
         return False
 
-    minutes, seconds = divmod(seconds_remaining, 60)
+    minutes, seconds = divmod(delta.total_seconds(), 60)
     time_remaining = str(minutes) + 'm' + str(seconds) + 's'
 
     try:
-        title = ('A wild ' + pokename +
-                 ' appeared in ' + conf['AREA_NAME'] + '!')
+        title = ('A wild ' + pokename + ' will be in ' + cnf['AREA_NAME'] +
+                 ' until ' + expire_time + '!')
     except KeyError:
-        title = 'A wild ' + pokename + ' appeared!'
+        title = ('A wild ' + pokename + ' will be around until ' + expire_time
+                 + '!')
 
     body = ('It will be ' + place_string + ' until ' + expire_time + ' (' +
             time_remaining + ')')
 
     try:
-        channel = pb.channels[conf['PB_CHANNEL']]
+        channel = pb.channels[cnf['PB_CHANNEL']]
         channel.push_link(title, map_link, body)
     except (IndexError, KeyError):
         pb.push_link(title, map_link, body)
@@ -153,7 +166,7 @@ def pbpush(pokename, seconds_remaining, expire_time, map_link, place_string,
         return True
 
 
-def tweet(pokename, expire_time, map_link, place_string, coordinates, conf):
+def tweet(pokename, expire_time, map_link, place_string, coordinates):
     """ Create message, reduce it until it fits in a tweet, and then tweet it
     with a link to Google maps and tweet location included.
     """
@@ -171,7 +184,7 @@ def tweet(pokename, expire_time, map_link, place_string, coordinates, conf):
         return tag_string
 
     try:
-        hashtags = conf['HASHTAGS']
+        hashtags = cnf['HASHTAGS']
     except KeyError:
         hashtags = None
 
@@ -188,20 +201,20 @@ def tweet(pokename, expire_time, map_link, place_string, coordinates, conf):
                           place_string + ' until ' + expire_time + '. ' +
                           tag_string)
         else:
-            if (len(tweet_text) > 116) and ('AREA_NAME' in conf):
-                tweet_text = ('A wild ' + pokename + ' appeared in ' +
-                              conf['AREA_NAME'] + '! It expires at ' +
+            if (len(tweet_text) > 116) and cnf['AREA_NAME']:
+                tweet_text = ('A wild ' + pokename + ' will be in ' +
+                              cnf['AREA_NAME'] + ' until ' +
                               expire_time + '. ')
             if len(tweet_text) > 116:
-                tweet_text = ('A wild ' + pokename + ' appeared! It will'
-                              ' expire at ' + expire_time + '. ')
+                tweet_text = ('A wild ' + pokename + ' will be around until '
+                              + expire_time + '. ')
             break
 
     try:
-        api = twitter.Api(consumer_key=conf['TWITTER_CONSUMER_KEY'],
-                          consumer_secret=conf['TWITTER_CONSUMER_SECRET'],
-                          access_token_key=conf['TWITTER_ACCESS_KEY'],
-                          access_token_secret=conf['TWITTER_ACCESS_SECRET'])
+        api = twitter.Api(consumer_key=cnf['TWITTER_CONSUMER_KEY'],
+                          consumer_secret=cnf['TWITTER_CONSUMER_SECRET'],
+                          access_token_key=cnf['TWITTER_ACCESS_KEY'],
+                          access_token_secret=cnf['TWITTER_ACCESS_SECRET'])
 
         api.PostUpdate(tweet_text + map_link,
                        latitude=coordinates.latitude,
