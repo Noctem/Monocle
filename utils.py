@@ -6,6 +6,14 @@ from pgoapi import utilities as pgoapi_utils
 
 import config
 
+if config.ALTITUDE:
+    from geocoder import google
+    from collections import deque
+    from statistics import mean
+
+    recent_altitudes = deque(maxlen=5)
+    alt_counter = 0
+
 
 def get_map_center():
     """Returns center of the map"""
@@ -72,7 +80,7 @@ def get_gains():
     return abs(start.latitude - lat_gain), abs(start.longitude - lon_gain)
 
 
-def get_points_per_worker():
+def get_points_per_worker(altitude=False):
     """Returns all points that should be visited for whole grid"""
     total_workers = config.GRID[0] * config.GRID[1]
 
@@ -85,7 +93,7 @@ def get_points_per_worker():
     total_columns = math.ceil(
         abs(config.MAP_START[1] - config.MAP_END[1]) / lon_gain
     )
-    alts = (10, 30, 50, 65, 100, 200)
+
     for map_row, lat in enumerate(
         float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)
     ):
@@ -102,7 +110,10 @@ def get_points_per_worker():
             if map_col >= total_columns:  # should happen only once per 2 rows
                 grid_col -= 1
             worker_no = grid_row * config.GRID[1] + grid_col
-            alt = random.choice(alts)
+            if altitude:
+                alt = get_altitude(lat, lon)
+            else:
+                alt = random.randint(config.ALT_RANGE[0], config.ALT_RANGE[1])
             points[worker_no].append((lat, lon, alt))
     points = [
         sort_points_for_worker(p, i)
@@ -134,6 +145,28 @@ def get_worker_device(worker_number):
     device_info['firmware_type'] = account[4]
     device_info['device_id'] = account[5]
     return device_info
+
+
+def get_altitude(lat, lon):
+    """Determine altitudes from coordinates and rolling averages."""
+    global alt_counter
+
+    if (alt_counter % 25) == 0:
+        alt = google([lat, lon], method='elevation',
+                     key=config.GOOGLE_MAPS_KEY).meters
+        if alt:
+            recent_altitudes.append(alt)
+            alt_counter += 1
+            # generate digits since Google only provides one decimal place
+            return random.uniform(alt - .01, alt + 0.01)
+    try:
+        average = mean(recent_altitudes)
+        alt_counter += 1
+        # generate variance
+        return random.uniform(average - 2, average + 2)
+    except statistics.StatisticsError:
+        # fall back to range if average doesn't compute
+        return random.uniform(config.ALT_RANGE[0], config.ALT_RANGE[1])
 
 
 def sort_points_for_worker(points, worker_no):
