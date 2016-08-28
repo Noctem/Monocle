@@ -181,15 +181,15 @@ class Slave:
         while True:
             self.logger.info('Trying to log in')
             try:
+                self.api.set_authentication(
+                    username=config.ACCOUNTS[self.worker_no][0],
+                    password=config.ACCOUNTS[self.worker_no][1],
+                    provider=config.ACCOUNTS[self.worker_no][2],
+                    proxy_config=self.proxies
+                )
                 await loop.run_in_executor(
                     self.network_executor,
-                    self.call_api(
-                        self.api.set_authentication,
-                        username=config.ACCOUNTS[self.worker_no][0],
-                        password=config.ACCOUNTS[self.worker_no][1],
-                        provider=config.ACCOUNTS[self.worker_no][2],
-                        proxy_config=self.proxies
-                    )
+                    self.call_api(self.api.app_simulation_login)
                 )
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 import requests
