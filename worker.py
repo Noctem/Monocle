@@ -199,7 +199,7 @@ class Slave:
                 self.logger.error('Banned IP: ' + ip_address)
                 self.error_code = 'IP BANNED'
                 with open('banned_ips.txt', 'at') as f:
-                    print(ip_address, file=f)
+                    f.write(ip_address + '\n')
                 await self.restart(sleep_min=90, sleep_max=150)
                 return
             except pgoapi_exceptions.AuthException:

@@ -196,7 +196,7 @@ def add_sighting(session, pokemon):
         return
     existing = session.query(Sighting) \
         .filter(Sighting.spawn_id == pokemon['spawn_id']) \
-        .filter(Sighting.lon == pokemon['encounter_id']) \
+        .filter(Sighting.encounter_id == str(pokemon['encounter_id'])) \
         .first()
     if existing:
         return
