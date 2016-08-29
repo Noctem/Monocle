@@ -64,8 +64,11 @@ def notify(pokemon):
                         str(coordinates.latitude) + ',' +
                         str(coordinates.longitude))
             place_string, landmark = find_landmark(coordinates)
-            if landmark.hashtags:
-                cnf['HASHTAGS'] = landmark.hashtags
+            try:
+                if landmark.hashtags:
+                    cnf['HASHTAGS'] = landmark.hashtags
+            except AttributeError:
+                pass
 
             tweeted = False
             pushed = False
@@ -103,14 +106,17 @@ def find_landmark(coordinates):
 
     try:
         closest_distance = None
-        for landmark in cnf['LANDMARKS']:
-            landmark_coordinates = landmark.center
-            landmark_distance = distance(coordinates,
-                                         landmark_coordinates).meters
-            if (closest_distance is None) or (
-                    landmark_distance < closest_distance):
-                closest_distance = landmark_distance
-                closest_landmark = landmark
+        if cnf['LANDMARKS']:
+            for landmark in cnf['LANDMARKS']:
+                landmark_coordinates = landmark.center
+                landmark_distance = distance(coordinates,
+                                             landmark_coordinates).meters
+                if (closest_distance is None) or (
+                        landmark_distance < closest_distance):
+                    closest_distance = landmark_distance
+                    closest_landmark = landmark
+        else:
+            return (generic_place_string(), None)
     except KeyError:
         return (generic_place_string(), None)
 
