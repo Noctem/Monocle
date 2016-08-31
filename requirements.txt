@@ -7,5 +7,5 @@ gpsoauth>=0.3.0
 coveralls>=1.1
 werkzeug>=0.11.10
 sqlalchemy>=1.0.14
--e git+https://github.com/pogodevorg/pgoapi.git@58fe49698677f7fcc4725a2048ecec5f1d666408#egg=pgoapi
+-e git+https://github.com/pogodevorg/pgoapi.git@b5d2667d85ee20085846e168990b1783bd6095d4#egg=pgoapi
 enum34>=1.1.6

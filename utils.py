@@ -140,7 +140,7 @@ def get_worker_device(worker_number):
                     'hardware_manufacturer': 'Apple',
                     'firmware_brand': 'iPhone OS'
                   }
-    device_info['device_model_boot'] = account[3]
+    device_info['device_model'] = account[3]
     device_info['hardware_model'] = hardware[account[3]]
     device_info['firmware_type'] = account[4]
     device_info['device_id'] = account[5]
