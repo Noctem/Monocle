@@ -9,3 +9,4 @@ werkzeug>=0.11.10
 sqlalchemy>=1.0.14
 -e git+https://github.com/pogodevorg/pgoapi.git@b5d2667d85ee20085846e168990b1783bd6095d4#egg=pgoapi
 enum34>=1.1.6
+polyline>=1.3.1

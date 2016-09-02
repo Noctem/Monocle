@@ -6,7 +6,7 @@ from landmark import Landmark
 DB_ENGINE = 'sqlite:///db.sqlite'
 ENCRYPT_PATH = './libencrypt.so'
 
-AREA_NAME = u'Wrocław'
+AREA_NAME = 'Wrocław'
 LANGUAGE = 'EN'  # ISO 639-1 codes EN, DE, FR, and ZH currently supported.
 MAP_START = (12.3456, 34.5678)
 MAP_END = (13.4567, 35.6789)
@@ -14,8 +14,7 @@ GRID = (2, 2)  # row, column
 CYCLES_PER_WORKER = 3
 SCAN_DELAY = (10, 12, 10.5)  # varies between these values, favoring the third
 PROXIES = None  # Insert dict or tuple of dicts with 'http' and 'https' keys
-ALTITUDE = False  # Generate accurate altitudes where possible
-ALT_RANGE = (1450, 1550)  # Generate random altitudes between these points
+ALT_RANGE = (1450, 1550)  # Fall back to altitudes in this range if generation fails
 LONGSPAWNS = False  # Store sightings with invalid times in another DB table
 
 SCAN_RADIUS = 70  # metres
@@ -32,15 +31,17 @@ ALL_ACCOUNTS = [
 
 ACCOUNTS = []
 EXTRA_ACCOUNTS = []
+# If you have more accounts than workers, this will add extras to
+# a separate list and swap them in if another account has problems or
+# gets banned.
 for account in ALL_ACCOUNTS:
     if len(ACCOUNTS) < _workers_count:
         ACCOUNTS.append(account)
     else:
         EXTRA_ACCOUNTS.append(account)
 
-TRASH_IDS = [13, 16, 19, 21, 41, 96]
-STAGE2 = [94, 139, 141, 149]
-NOTIFY_IDS = [141, 142, 143, 144, 145, 146, 148, 149, 150, 151]
+TRASH_IDS = (13, 16, 19, 21, 41, 96)
+STAGE2 = (141, 142, 143, 144, 145, 146, 148, 149, 150, 151)
 
 REPORT_SINCE = datetime(2016, 7, 29)
 GOOGLE_MAPS_KEY = 's3cr3t'
@@ -48,11 +49,26 @@ GOOGLE_MAPS_KEY = 's3cr3t'
 MAP_PROVIDER_URL = '//{s}.tile.osm.org/{z}/{x}/{y}.png'
 MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 
+
+### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
+
 # As many as can fit will be included as hashtags in your tweets, these will
 # be combined with landmark-specific hashtags (if applicable).
 HASHTAGS = {AREA_NAME, 'PokemonGO'}
 TZ_OFFSET = 0  # hours offset from server time for reported times
+NOTIFY_IDS = STAGE2  # Pokémon to notify about
 
+# The following values are fake, replace them with your own keys to enable
+# PushBullet notifications and/or tweeting, otherwise leave them out of your
+# config or set them to None.
+PB_API_KEY = 'o.9187cb7d5b857c97bfcaa8d63eaa8494'
+PB_CHANNEL = 0  # set to the integer of your channel, or to None to push privately
+TWITTER_CONSUMER_KEY = '53d997264eb7f6452b7bf101d'
+TWITTER_CONSUMER_SECRET = '64b9ebf618829a51f8c0535b56cebc808eb3e80d3d18bf9e00'
+TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
+TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'
+
+# Landmarks to reference when Pokemon are nearby
 LANDMARKS = [
     Landmark('Indian Hills', north=40.279321, west=-111.644326,
              south=40.270809, east=-111.633194,
@@ -64,13 +80,3 @@ LANDMARKS = [
              south=40.255872, east=-111.653050,
              center=(40.257526, -111.654546), hashtags={'GoCougs'})
 ]
-
-# The following values are fake, replace them with your own keys to enable
-# PushBullet notifications and/or tweeting, otherwise leave them out of your
-# config or set them to None.
-PB_API_KEY = 'o.9187cb7d5b857c97bfcaa8d63eaa8494'
-PB_CHANNEL = 0  # set to the integer of your channel, or to None to push privately
-TWITTER_CONSUMER_KEY = '53d997264eb7f6452b7bf101d'
-TWITTER_CONSUMER_SECRET = '64b9ebf618829a51f8c0535b56cebc808eb3e80d3d18bf9e00'
-TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
-TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'

@@ -38,7 +38,6 @@ REQUIRED_SETTINGS = (
     'SCAN_DELAY',
     'COMPUTE_THREADS',
     'NETWORK_THREADS',
-    'ALTITUDE',
     'ALT_RANGE',
 )
 for setting_name in REQUIRED_SETTINGS:
@@ -295,12 +294,12 @@ class Slave:
         for i, point in enumerate(self.points):
             latitude = random.uniform(point[0] - 0.00001, point[0] + 0.00001)
             longitude = random.uniform(point[1] - 0.00001, point[1] + 0.00001)
-            altitude = point[2]
+            altitude = random.uniform(point[2] - 20, point[2] + 20)
             if not self.running:
                 return
             self.logger.info(
                 'Visiting point %d (%s,%s %sm)', i, round(latitude, 4),
-                round(longitude, 4), altitude
+                round(longitude, 4), round(altitude)
             )
             start = time.time()
             self.api.set_position(latitude, longitude, altitude)
@@ -496,7 +495,7 @@ class Overseer:
         self.workers = {}
         self.count = config.GRID[0] * config.GRID[1]
         self.logger.info('Generating points...')
-        self.points = utils.get_points_per_worker(altitude=config.ALTITUDE)
+        self.points = utils.get_points_per_worker(gen_alts=True)
         self.cell_ids = [{} for _ in range(self.count)]
         self.logger.info('Done')
         self.start_date = datetime.now()

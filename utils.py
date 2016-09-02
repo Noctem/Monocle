@@ -1,18 +1,12 @@
 import math
 import random
+import requests
+import polyline
 
 from geopy import distance, Point
 from pgoapi import utilities as pgoapi_utils
 
 import config
-
-if config.ALTITUDE:
-    from geocoder import google
-    from collections import deque
-    from statistics import mean
-
-    recent_altitudes = deque(maxlen=5)
-    alt_counter = 0
 
 
 def get_map_center():
@@ -80,7 +74,42 @@ def get_gains():
     return abs(start.latitude - lat_gain), abs(start.longitude - lon_gain)
 
 
-def get_points_per_worker(altitude=False):
+def get_altitudes():
+    rounded_coords = set()
+    lat_gain, lon_gain = get_gains()
+    for map_row, lat in enumerate(
+        float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)
+    ):
+        row_start_lon = config.MAP_START[1]
+        odd = map_row % 2 != 0
+        if odd:
+            row_start_lon -= 0.5 * lon_gain
+        for map_col, lon in enumerate(
+            float_range(row_start_lon, config.MAP_END[1], lon_gain)
+        ):
+            rounded_coords.add((round(lat, 2), round(lon, 2)))
+    altitudes = dict()
+    try:
+        params = {'locations': 'enc:' + polyline.encode(tuple(rounded_coords))}
+        if hasattr(config, 'GOOGLE_MAPS_KEY'):
+            params['key'] = config.GOOGLE_MAPS_KEY
+        r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
+                         params=params).json()
+
+        for result in r['results']:
+            coords = (round(result['location']['lat'], 2),
+                      round(result['location']['lng'], 2))
+            altitudes[coords] = result['elevation']
+    except Exception:
+        for coord in rounded_coords:
+            if hasattr(config, 'ALT_RANGE'):
+                altitudes[coord] = random.uniform(*config.ALT_RANGE)
+            else:
+                altitudes[coord] = random.uniform(300, 400)
+    return altitudes
+
+
+def get_points_per_worker(gen_alts=False):
     """Returns all points that should be visited for whole grid"""
     total_workers = config.GRID[0] * config.GRID[1]
 
@@ -93,6 +122,9 @@ def get_points_per_worker(altitude=False):
     total_columns = math.ceil(
         abs(config.MAP_START[1] - config.MAP_END[1]) / lon_gain
     )
+
+    if gen_alts:
+        altitudes = get_altitudes()
 
     for map_row, lat in enumerate(
         float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)
@@ -110,11 +142,12 @@ def get_points_per_worker(altitude=False):
             if map_col >= total_columns:  # should happen only once per 2 rows
                 grid_col -= 1
             worker_no = grid_row * config.GRID[1] + grid_col
-            if altitude:
-                alt = get_altitude(lat, lon)
+            rounded = (round(lat, 2), round(lon, 2))
+            if gen_alts:
+                alt = altitudes[rounded]
+                points[worker_no].append((lat, lon, alt))
             else:
-                alt = random.randint(config.ALT_RANGE[0], config.ALT_RANGE[1])
-            points[worker_no].append((lat, lon, alt))
+                points[worker_no].append((lat, lon))
     points = [
         sort_points_for_worker(p, i)
         for i, p in enumerate(points)
@@ -135,38 +168,16 @@ def get_worker_device(worker_number):
                 'iPhone8,2': 'N66AP',
                 'iPhone8,4': 'N69AP'}
     account = config.ACCOUNTS[worker_number]
-    device_info = { 'device_brand': 'Apple',
-                    'device_model': 'iPhone',
-                    'hardware_manufacturer': 'Apple',
-                    'firmware_brand': 'iPhone OS'
-                  }
+    device_info = {'device_brand': 'Apple',
+                   'device_model': 'iPhone',
+                   'hardware_manufacturer': 'Apple',
+                   'firmware_brand': 'iPhone OS'
+                   }
     device_info['device_model'] = account[3]
     device_info['hardware_model'] = hardware[account[3]]
     device_info['firmware_type'] = account[4]
     device_info['device_id'] = account[5]
     return device_info
-
-
-def get_altitude(lat, lon):
-    """Determine altitudes from coordinates and rolling averages."""
-    global alt_counter
-
-    if (alt_counter % 25) == 0:
-        alt = google([lat, lon], method='elevation',
-                     key=config.GOOGLE_MAPS_KEY).meters
-        if alt:
-            recent_altitudes.append(alt)
-            alt_counter += 1
-            # generate digits since Google only provides one decimal place
-            return random.uniform(alt - .01, alt + 0.01)
-    try:
-        average = mean(recent_altitudes)
-        alt_counter += 1
-        # generate variance
-        return random.uniform(average - 2, average + 2)
-    except statistics.StatisticsError:
-        # fall back to range if average doesn't compute
-        return random.uniform(config.ALT_RANGE[0], config.ALT_RANGE[1])
 
 
 def sort_points_for_worker(points, worker_no):
