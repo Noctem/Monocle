@@ -112,7 +112,7 @@ class Sighting(Base):
     id = Column(Integer, primary_key=True)
     pokemon_id = Column(SmallInteger)
     spawn_id = Column(String(12))
-    expire_timestamp = Column(Float(precision="double"), index=True)
+    expire_timestamp = Column(Integer, index=True)
     encounter_id = Column(Text)
     normalized_timestamp = Column(Integer)
     lat = Column(Float(precision="double"), index=True)
@@ -125,7 +125,7 @@ class Longspawn(Base):
     id = Column(Integer, primary_key=True)
     pokemon_id = Column(SmallInteger)
     spawn_id = Column(String(12))
-    expire_timestamp = Column(Float(precision="double"), index=True)
+    expire_timestamp = Column(Integer, index=True)
     encounter_id = Column(Text)
     normalized_timestamp = Column(Integer)
     lat = Column(Float(precision="double"), index=True)
@@ -204,7 +204,7 @@ def add_sighting(session, pokemon):
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
         encounter_id=str(pokemon['encounter_id']),
-        expire_timestamp=pokemon['expire_timestamp'],
+        expire_timestamp=int(pokemon['expire_timestamp']),
         normalized_timestamp=normalize_timestamp(pokemon['expire_timestamp']),
         lat=pokemon['lat'],
         lon=pokemon['lon'],
@@ -218,7 +218,7 @@ def add_longspawn(session, pokemon):
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
         encounter_id=str(pokemon['encounter_id']),
-        expire_timestamp=pokemon['expire_timestamp'],
+        expire_timestamp=int(pokemon['expire_timestamp']),
         normalized_timestamp=normalize_timestamp(pokemon['expire_timestamp']),
         lat=pokemon['lat'],
         lon=pokemon['lon'],
