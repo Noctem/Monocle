@@ -22,7 +22,7 @@ from pgoapi import (
 import config
 import db
 import utils
-import notification
+from notification import notifier
 
 
 # Check whether config has all necessary attributes
@@ -355,18 +355,19 @@ class Slave:
                             map_cell['current_timestamp_ms']
                         )
                         pokemons.append(normalized)
-                        try:
-                            if normalized['pokemon_id'] in config.NOTIFY_IDS:
-                                notified = notification.notify(pokemon)
-                                if notified[0]:
-                                    self.logger.info(
-                                        'Successfully ' + notified[1] + '.')
+
+                        if notifier.is_worthy(normalized['pokemon_id']):
+                            notified = notifier.notify(pokemon)
+                            if notified[0]:
+                                self.logger.info(
+                                    'Successfully ' + notified[1] + '.')
+                            else:
+                                if notified[1] == 'Already notified.':
+                                    self.logger.warning(
+                                        'Skipped sending duplicate notification.')
                                 else:
-                                    if notified[1] == 'Already notified.':
-                                        self.logger.warning(
-                                            'Skipped sending duplicate notification.')
-                                    else:
-                                        self.logger.error(notified[1])
+                                    self.logger.error(notified[1])
+                        try:
                             if (long_spawn or pokemon['encounter_id']
                                     in longspawn_deque):
                                 normalized['time_till_hidden_ms'] = pokemon[
@@ -786,7 +787,7 @@ def parse_args():
     parser.add_argument(
         '--log-level',
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-        default=logging.INFO
+        default=logging.WARNING
     )
     return parser.parse_args()
 

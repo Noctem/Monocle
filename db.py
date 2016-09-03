@@ -376,6 +376,24 @@ def get_top_pokemon(session, count=30, order='DESC'):
     return query.fetchall()
 
 
+def get_pokemon_ranking(session, order='ASC'):
+    ranking = []
+    query = session.execute('''
+        SELECT
+            pokemon_id,
+            COUNT(*) how_many
+        FROM sightings
+        GROUP BY pokemon_id
+        ORDER BY how_many {order}
+    '''.format(order=order))
+    db_ids = [r[0] for r in query.fetchall()]
+    for pokemon_id in range(1, 152):
+        if pokemon_id not in db_ids:
+            ranking.append(pokemon_id)
+    ranking.extend(db_ids)
+    return ranking
+
+
 def get_stage2_pokemon(session):
     result = []
     if not hasattr(config, 'STAGE2'):
