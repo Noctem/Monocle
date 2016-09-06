@@ -44,7 +44,7 @@ class Notification:
             now = datetime.now()
 
         if config.HASHTAGS:
-            self.hashtags = config.HASHTAGS
+            self.hashtags = config.HASHTAGS.copy()
         else:
             self.hashtags = set()
 
@@ -109,11 +109,11 @@ class Notification:
         if config.AREA_NAME:
             if self.longspawn:
                 title = ('A wild ' + self.name + ' will be in ' +
-                         config.AREA_NAME + ' until ' + self.expire_time + '!')
-            else:
-                title = ('A wild ' + self.name + ' will be in ' +
                          config.AREA_NAME + ' until at least ' +
                          self.expire_time + '!')
+            else:
+                title = ('A wild ' + self.name + ' will be in ' +
+                         config.AREA_NAME + ' until ' + self.expire_time + '!')
         elif self.longspawn:
             title = ('A wild ' + self.name +
                      ' will expire within 45 minutes of ' +
