@@ -24,6 +24,7 @@ REQUIRED_SETTINGS = (
     'SCAN_RADIUS',
     'MAP_PROVIDER_URL',
     'MAP_PROVIDER_ATTRIBUTION',
+    'GOOGLE_MAPS_KEY'
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):

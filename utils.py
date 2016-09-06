@@ -8,6 +8,14 @@ from pgoapi import utilities as pgoapi_utils
 
 import config
 
+OPTIONAL_SETTINGS = {
+    'ALT_RANGE': (300, 400),
+    'GOOGLE_MAPS_KEY': None,
+}
+for setting_name, default in OPTIONAL_SETTINGS.items():
+    if not hasattr(config, setting_name):
+        setattr(config, setting_name, default)
+
 
 def get_map_center():
     """Returns center of the map"""

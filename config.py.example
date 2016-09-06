@@ -1,12 +1,11 @@
 # coding: utf-8
 from datetime import datetime
-
-from landmark import Landmark
+from landmarks import Landmarks
 
 DB_ENGINE = 'sqlite:///db.sqlite'
 ENCRYPT_PATH = './libencrypt.so'
 
-AREA_NAME = 'Wrocław'
+AREA_NAME = 'Salt Lake City'
 LANGUAGE = 'EN'  # ISO 639-1 codes EN, DE, FR, and ZH currently supported.
 MAP_START = (12.3456, 34.5678)
 MAP_END = (13.4567, 35.6789)
@@ -17,7 +16,7 @@ PROXIES = None  # Insert dict or tuple of dicts with 'http' and 'https' keys
 ALT_RANGE = (1450, 1550)  # Fall back to altitudes in this range if generation fails
 LONGSPAWNS = False  # Store sightings with invalid times in another DB table
 
-SCAN_RADIUS = 70  # metres
+SCAN_RADIUS = 70  # meters
 
 _workers_count = GRID[0] * GRID[1]
 COMPUTE_THREADS = int(_workers_count / 10) + 1
@@ -52,11 +51,27 @@ MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreet
 
 ### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
 
-# As many as can fit will be included as hashtags in your tweets, these will
+# As many hashtags as can fit will be included in your tweets, these will
 # be combined with landmark-specific hashtags (if applicable).
 HASHTAGS = {AREA_NAME, 'PokemonGO'}
 TZ_OFFSET = 0  # hours offset from server time for reported times
-NOTIFY_IDS = STAGE2  # Pokémon to notify about
+
+
+# Only set one of the following two options. Only use NOTIFY_RANKING if your
+# database has enough data to accurately determine rareness.
+NOTIFY_IDS = STAGE2  # a list or tuple of Pokémon IDs to notify about
+#NOTIFY_RANKING = 50  # notify about the (x) rarest according to your database
+
+# the required number of seconds remaining to notify about a Pokémon
+MIN_TIME = 300
+
+# Sightings of the top (x) will always be notified about, even if below MIN_TIME
+ALWAYS_NOTIFY = 11
+
+# If this is set, the amount of seconds required for Pokémon will be a sliding
+# scale from MIN_TIME to MAX_TIME, from rarest to least rare, or in the order
+# you specify in your NOTIFY_IDS (depending on which variable you set above)
+#MAX_TIME = 600
 
 # The following values are fake, replace them with your own keys to enable
 # PushBullet notifications and/or tweeting, otherwise leave them out of your
@@ -68,15 +83,37 @@ TWITTER_CONSUMER_SECRET = '64b9ebf618829a51f8c0535b56cebc808eb3e80d3d18bf9e00'
 TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
 TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'
 
-# Landmarks to reference when Pokemon are nearby
-LANDMARKS = [
-    Landmark('Indian Hills', north=40.279321, west=-111.644326,
-             south=40.270809, east=-111.633194,
-             center=(40.272910, -111.639777), phrase='in'),
-    Landmark('the Provo Temple', north=40.264291, west=-111.642234,
-             south=40.262820, east=-111.638420,
-             center=(40.263684, -111.639896)),
-    Landmark('LaVell Edwards Stadium', north=40.258695, west=-111.655977,
-             south=40.255872, east=-111.653050,
-             center=(40.257526, -111.654546), hashtags={'GoCougs'})
-]
+
+
+
+# It is recommended to store the LANDMARKS object in a pickle to reduce startup 
+# time if you are using queries.
+LANDMARKS = Landmarks(query_suffix=AREA_NAME)
+
+# Landmarks to reference when Pokémon are nearby
+# If no points are specified then it will query OpenStreetMap for the coordinates
+# If 1 point is provided then it will use those coordinates but not create a shape
+# If 2 points are provided it will create a rectangle with its corners at those points
+# If 3 or more points are provided it will create a polygon with vertices at each point
+# You can specify the string to search for on OpenStreetMap with the query parameter
+# If no query or points is provided it will query with the name of the landmark (and query_suffix)
+# Optionally provide a set of hashtags to be used for tweets about this landmark
+# Use is_area for large neighborhoods or regions
+# When selecting a landmark, non-areas will be chosen first if any are close enough
+# the default phrase is 'in' for areas and 'at' for non-areas, but can be overriden for either.
+
+# since no points or query is provided, the names provided will be queried and suffixed with AREA_NAME
+LANDMARKS.add('Rice Eccles Stadium', hashtags={'Utes'})
+LANDMARKS.add('the Salt Lake Temple', hashtags={'TempleSquare'})
+
+# provide two corner points to create a square for this area
+LANDMARKS.add('City Creek Center', points=((40.769210, -111.893901), (40.767231, -111.888275)), hashtags={'CityCreek'})
+
+# provide a query that is different from the landmark name so that OpenStreetMap finds the correct one
+LANDMARKS.add('the State Capitol', query='Utah State Capitol Building')
+
+## area examples ##
+# query using name, override the default area phrase so that it says 'at (name)' instead of 'in'
+LANDMARKS.add('the University of Utah', hashtags={'Utes'}, phrase='at', is_area=True)
+# provide corner points to create a polygon of the area since OpenStreetMap does not have a shape for it
+LANDMARKS.add('Yalecrest', points=((40.750263, -111.836502), (40.750377, -111.851108), (40.751515, -111.853833), (40.741212, -111.853909), (40.741188, -111.836519)), is_area=True)

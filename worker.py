@@ -22,28 +22,36 @@ from pgoapi import (
 import config
 import db
 import utils
-from notification import notifier
 
 
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
     'DB_ENGINE',
     'ENCRYPT_PATH',
-    'CYCLES_PER_WORKER',
     'MAP_START',
     'MAP_END',
     'GRID',
     'ACCOUNTS',
-    'SCAN_RADIUS',
-    'SCAN_DELAY',
     'COMPUTE_THREADS',
-    'NETWORK_THREADS',
-    'ALT_RANGE',
+    'NETWORK_THREADS'
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
 
+# Set defaults for missing config options
+OPTIONAL_SETTINGS = {
+    'LONGSPAWNS': False,
+    'PROXIES': None,
+    'CYCLES_PER_WORKER': 3,
+    'SCAN_RADIUS': 70,
+    'SCAN_DELAY': (10, 12, 11),
+    'NOTIFY_IDS': None,
+    'NOTIFY_RANKING': None
+}
+for setting_name, default in OPTIONAL_SETTINGS.items():
+    if not hasattr(config, setting_name):
+        setattr(config, setting_name, default)
 
 BAD_STATUSES = (
     'LOGIN FAIL',
@@ -54,11 +62,12 @@ BAD_STATUSES = (
     'NO POKEMON',
 )
 
-if hasattr(config, 'LONGSPAWNS') and config.LONGSPAWNS:
-    store_longspawns = True
-    longspawn_deque = deque(maxlen=1000)
-else:
-    store_longspawns = False
+if config.LONGSPAWNS:
+    longspawns = deque(maxlen=1000)
+
+if config.NOTIFY_IDS or config.NOTIFY_RANKING:
+    import notification
+    notifier = notification.Notifier()
 
 
 class MalformedResponse(Exception):
@@ -85,16 +94,16 @@ class Slave:
     """Single worker walking on the map"""
 
     def __init__(
-        self,
-        worker_no,
-        points,
-        cell_ids,
-        db_processor,
-        cell_ids_executor,
-        network_executor,
-        start_step=0,
-        device_info=None,
-        proxies=None
+            self,
+            worker_no,
+            points,
+            cell_ids,
+            db_processor,
+            cell_ids_executor,
+            network_executor,
+            start_step=0,
+            device_info=None,
+            proxies=None
     ):
         self.worker_no = worker_no
         # Set of all points that worker needs to visit
@@ -167,8 +176,9 @@ class Slave:
         self.logger.warning('Swapping out ' +
                             config.ACCOUNTS[self.worker_no][0] +
                             ' for ' + config.EXTRA_ACCOUNTS[0][0])
+        t = datetime.now().strftime('%Y-%m-%d %H:%M')
         with open('account_failures.txt', 'at') as f:
-            print(config.ACCOUNTS[self.worker_no][0], reason, file=f)
+            print(config.ACCOUNTS[self.worker_no][0], reason, t, file=f)
         config.EXTRA_ACCOUNTS.append(config.ACCOUNTS[self.worker_no])
         config.ACCOUNTS[self.worker_no] = config.EXTRA_ACCOUNTS.pop(0)
         return
@@ -333,7 +343,7 @@ class Slave:
                 raise MalformedResponse
             map_objects = responses.get('GET_MAP_OBJECTS', {})
             pokemons = []
-            longspawns = []
+            ls_seen = []
             forts = []
             if map_objects.get('status') == 1:
                 for map_cell in map_objects['map_cells']:
@@ -346,8 +356,8 @@ class Slave:
                             pokemon['time_till_hidden_ms'] > 3600000
                         )
                         if long_spawn:
-                            if store_longspawns:
-                                longspawn_deque.append(pokemon['encounter_id'])
+                            if config.LONGSPAWNS:
+                                longspawns.append(pokemon['encounter_id'])
                             else:
                                 continue
                         normalized = self.normalize_pokemon(
@@ -356,27 +366,24 @@ class Slave:
                         )
                         pokemons.append(normalized)
 
-                        if notifier.is_worthy(normalized['pokemon_id']):
-                            notified = notifier.notify(pokemon)
-                            if notified[0]:
+                        if normalized['pokemon_id'] in config.NOTIFY_IDS:
+                            notified, explanation = notifier.notify(pokemon)
+                            if notified:
                                 self.logger.info(
-                                    'Successfully ' + notified[1] + '.')
+                                    'Successfully ' + explanation + '.')
                             else:
-                                if notified[1] == 'Already notified.':
+                                if explanation == 'Already notified.':
                                     self.logger.warning(
                                         'Skipped sending duplicate notification.')
                                 else:
-                                    self.logger.error(notified[1])
-                        try:
-                            if (long_spawn or pokemon['encounter_id']
-                                    in longspawn_deque):
-                                normalized['time_till_hidden_ms'] = pokemon[
-                                    'time_till_hidden_ms']
-                                normalized['last_modified_timestamp_ms'] = pokemon[
-                                    'last_modified_timestamp_ms']
-                                longspawns.append(normalized)
-                        except NameError:
-                            pass
+                                    self.logger.error(notified)
+                        if config.LONGSPAWNS and (
+                                long_spawn or pokemon['encounter_id'] in longspawns):
+                            normalized['time_till_hidden_ms'] = pokemon[
+                                'time_till_hidden_ms']
+                            normalized['last_modified_timestamp_ms'] = pokemon[
+                                'last_modified_timestamp_ms']
+                            ls_seen.append(normalized)
                     for fort in map_cell.get('forts', []):
                         if not fort.get('enabled'):
                             continue
@@ -385,8 +392,8 @@ class Slave:
                         forts.append(self.normalize_fort(fort))
             self.db_processor.add(pokemons)
             self.db_processor.add(forts)
-            if store_longspawns:
-                self.db_processor.add(longspawns)
+            if ls_seen:
+                self.db_processor.add(ls_seen)
             self.seen_per_cycle += len(pokemons)
             self.total_seen += len(pokemons)
             self.logger.info(
@@ -530,14 +537,14 @@ class Overseer:
             start_step = self.workers[worker_no].step + 1
         else:
             start_step = 0
-        proxies = None
-        if hasattr(config, 'PROXIES'):
-            if isinstance(config.PROXIES, (tuple, list)):
-                proxies = random.choice(config.PROXIES)
-            else:
-                proxies = config.PROXIES
+
+        if isinstance(config.PROXIES, (tuple, list)):
+            proxies = random.choice(config.PROXIES)
+        elif isinstance(config.PROXIES, dict):
+            proxies = config.PROXIES
         else:
             proxies = None
+
         worker = Slave(
             worker_no=worker_no,
             points=self.points[worker_no],
