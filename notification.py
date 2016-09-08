@@ -48,13 +48,11 @@ class Notification:
         else:
             self.hashtags = set()
 
-        if time_till_hidden > 3600:
-            # actual expiration time should be a minimum of 15 minutes away
-            self.delta = timedelta(minutes=15)
+        if time_till_hidden == 901:
             self.longspawn = True
         else:
-            self.delta = timedelta(seconds=time_till_hidden)
             self.longspawn = False
+        self.delta = timedelta(seconds=time_till_hidden)
         self.expire_time = (now + self.delta).strftime('%I:%M %p').lstrip('0')
         self.map_link = ('https://maps.google.com/maps?q=' +
                          str(round(self.coordinates[0], 5)) + ',' +
@@ -241,6 +239,8 @@ class Notifier:
             return (False, 'Did not notify, no Twitter/PushBullet keys set.')
 
         time_till_hidden = pokemon['time_till_hidden_ms'] / 1000
+        if time_till_hidden < 0 or time_till_hidden > 3600:
+            time_till_hidden = 901
         coordinates = (pokemon['latitude'], pokemon['longitude'])
         pokeid = pokemon['pokemon_data']['pokemon_id']
         encounter_id = pokemon['encounter_id']
