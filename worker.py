@@ -369,20 +369,16 @@ class Slave:
                         if normalized['pokemon_id'] in config.NOTIFY_IDS:
                             notified, explanation = notifier.notify(pokemon)
                             if notified:
-                                self.logger.info(
-                                    'Successfully ' + explanation + '.')
+                                self.logger.info(explanation)
                             else:
-                                if explanation == 'Already notified.':
-                                    self.logger.warning(
-                                        'Skipped sending duplicate notification.')
-                                else:
-                                    self.logger.error(notified)
-                        if config.LONGSPAWNS and (
-                                long_spawn or pokemon['encounter_id'] in longspawns):
+                                self.logger.warning(explanation)
+                        if config.LONGSPAWNS and (long_spawn
+                                or pokemon['encounter_id'] in longspawns):
                             normalized['time_till_hidden_ms'] = pokemon[
                                 'time_till_hidden_ms']
                             normalized['last_modified_timestamp_ms'] = pokemon[
                                 'last_modified_timestamp_ms']
+                            normalized['type'] = 'longspawn'
                             ls_seen.append(normalized)
                     for fort in map_cell.get('forts', []):
                         if not fort.get('enabled'):

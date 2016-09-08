@@ -87,13 +87,13 @@ class Notification:
             tweeted = self.tweet()
 
         if tweeted and pushed:
-            return (True, 'tweeted and pushed about ' + self.name)
+            return (True, 'Tweeted and pushed about ' + self.name + '.')
         elif tweeted:
-            return (True, 'tweeted about ' + self.name)
+            return (True, 'Tweeted about ' + self.name + '.')
         elif pushed:
-            return (True, 'pushed about ' + self.name)
+            return (True, 'Pushed about ' + self.name + '.')
         else:
-            return (False, 'Failed to notify about ' + self.name)
+            return (False, 'Failed to notify about ' + self.name + '.')
 
     def pbpush(self):
         """ Send a PushBullet notification either privately or to a channel,
@@ -182,7 +182,6 @@ class Notification:
                               consumer_secret=config.TWITTER_CONSUMER_SECRET,
                               access_token_key=config.TWITTER_ACCESS_KEY,
                               access_token_secret=config.TWITTER_ACCESS_SECRET)
-            print(tweet_text + self.map_link)
             api.PostUpdate(tweet_text + self.map_link,
                            latitude=self.coordinates[0],
                            longitude=self.coordinates[1],
