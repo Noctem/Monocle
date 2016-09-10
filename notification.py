@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta, timezone
 from collections import deque
+from statistics import mean
 
 from db import Session, get_pokemon_ranking
 from names import POKEMON_NAMES
+
+import time
 
 import config
 
@@ -20,6 +23,8 @@ if not hasattr(config, 'MIN_TIME'):
     setattr(config, 'MIN_TIME', 120)
 if not hasattr(config, 'ALWAYS_NOTIFY'):
     setattr(config, 'ALWAYS_NOTIFY', 0)
+if not hasattr(config, 'ALWAYS_NOTIFY'):
+    setattr(config, 'DESIRED_FREQUENCY', (1200, 1800))
 
 
 def generic_place_string():
@@ -194,16 +199,31 @@ class Notifier:
 
     def __init__(self):
         self.recent_notifications = deque(maxlen=200)
+        self.notify_ranking = config.NOTIFY_RANKING
         self.set_pokemon_ranking()
         self.set_required_times()
+        self.differences = deque(maxlen=10)
+        self.last_notification = None
+
+    def increase_range(self):
+        if self.notify_ranking < 75:
+            self.notify_ranking += 2
+            self.set_pokemon_ranking()
+            self.set_required_times()
+
+    def decrease_range(self):
+        if self.notify_ranking > 20:
+            self.notify_ranking -= 2
+            self.set_pokemon_ranking()
+            self.set_required_times()
 
     def set_pokemon_ranking(self):
-        if config.NOTIFY_RANKING:
+        if self.notify_ranking:
             session = Session()
             self.pokemon_ranking = get_pokemon_ranking(session)
             session.close()
             setattr(config, 'NOTIFY_IDS', [])
-            for pokemon_id in self.pokemon_ranking[0:config.NOTIFY_RANKING]:
+            for pokemon_id in self.pokemon_ranking[0:self.notify_ranking]:
                 config.NOTIFY_IDS.append(pokemon_id)
         elif config.NOTIFY_IDS:
             self.pokemon_ranking = config.NOTIFY_IDS
@@ -217,16 +237,16 @@ class Notifier:
         for pokemon_id in self.pokemon_ranking[0:config.ALWAYS_NOTIFY]:
             self.time_required[pokemon_id] = 0
         required_time = config.MIN_TIME
-        if config.MAX_TIME and (config.NOTIFY_RANKING > config.ALWAYS_NOTIFY):
+        if config.MAX_TIME and (self.notify_ranking > config.ALWAYS_NOTIFY):
             increment = (config.MAX_TIME /
-                         (config.NOTIFY_RANKING - config.ALWAYS_NOTIFY))
+                         (self.notify_ranking - config.ALWAYS_NOTIFY))
             for pokemon_id in self.pokemon_ranking[
-                    config.ALWAYS_NOTIFY:config.NOTIFY_RANKING]:
+                    config.ALWAYS_NOTIFY:self.notify_ranking]:
                 required_time += increment
                 self.time_required[pokemon_id] = int(required_time)
         else:
             for pokemon_id in self.pokemon_ranking[
-                    config.ALWAYS_NOTIFY:config.NOTIFY_RANKING]:
+                    config.ALWAYS_NOTIFY:self.notify_ranking]:
                 self.time_required[pokemon_id] = int(required_time)
 
     def notify(self, pokemon):
@@ -255,5 +275,23 @@ class Notifier:
                     + str(time_till_hidden) + 's/'
                     + str(self.time_required[pokeid]) + 's')
 
-        self.recent_notifications.append(encounter_id)
-        return Notification(name, coordinates, time_till_hidden).notify()
+        code, explanation = Notification(name, coordinates, time_till_hidden).notify()
+        if code:
+            self.recent_notifications.append(encounter_id)
+            if self.last_notification:
+                difference = time.time() - self.last_notification
+                self.differences.append(difference)
+                average = mean(self.differences)
+                if average < config.DESIRED_FREQUENCY[0]:
+                    self.decrease_range()
+                    with open('range_log.txt', 'at') as f:
+                        f.write('Average: ' + str(round(average)) + ', decreasing range to ' + str(self.notify_ranking) + '\n')
+                elif average > config.DESIRE_FREQUENCY[1]:
+                    self.increase_range()
+                    with open('range_log.txt', 'at') as f:
+                        f.write('Average: ' + str(round(average)) + ', increasing range to ' + str(self.notify_ranking) + '\n')
+                else:
+                    with open('range_log.txt', 'at') as f:
+                        f.write('Average: ' + str(round(average)) + ', so keeping the range at ' + str(self.notify_ranking) + '\n')
+            self.last_notification = time.time()
+        return (code, explanation)
