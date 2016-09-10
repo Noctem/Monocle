@@ -53,6 +53,12 @@ for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
 
+if isinstance(config.PROXIES, (tuple, list)):
+    if len(config.PROXIES) > 1:
+        MULTIPLE_PROXIES = True
+else:
+    MULTIPLE_PROXIES = False
+
 BAD_STATUSES = (
     'LOGIN FAIL',
     'EXCEPTION',
@@ -169,6 +175,8 @@ class Slave:
             start = time.time()
             result = method(*args, **kwargs)
             self.last_api_latency = time.time() - start
+            if self.last_api_latency > 10:
+                self.swap_proxy(reason='excessive latency')
             return result
         return inner
 
@@ -182,6 +190,13 @@ class Slave:
         config.EXTRA_ACCOUNTS.append(config.ACCOUNTS[self.worker_no])
         config.ACCOUNTS[self.worker_no] = config.EXTRA_ACCOUNTS.pop(0)
         return
+
+    def swap_proxy(self, reason=''):
+        if MULTIPLE_PROXIES:
+            previous = list(self.proxies.values())[0]
+            while self.proxies['https'] == previous:
+                self.proxies = random.choice(config.PROXIES)
+            self.logger.warning('Swapped out ' + previous + ' for ' + list(self.proxies.values())[0] + ' due to ' + reason)
 
     async def login(self):
         """Logs worker in and prepares for scanning"""
@@ -211,23 +226,27 @@ class Slave:
                 self.error_code = 'IP BANNED'
                 with open('banned_ips.txt', 'at') as f:
                     f.write(ip_address + '\n')
-                await self.restart(sleep_min=90, sleep_max=150)
+                self.swap_proxy(reason='ban')
+                await self.restart(sleep_min=10, sleep_max=30)
                 return
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
-                self.swap_account(reason='auth exception')
+                #self.swap_account(reason='auth exception')
+                self.swap_proxy(reason='login failure')
                 await self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
                 self.logger.error('Invalid credentials')
                 self.error_code = 'BAD LOGIN'
-                self.swap_account(reason='invalid credentials')
+                #self.swap_account(reason='invalid credentials')
+                self.swap_proxy(reason='invalid credentials')
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerBusyOrOfflineException:
                 self.logger.info('Server too busy - restarting')
                 self.error_code = 'RETRYING'
+                self.swap_proxy('busy server')
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerSideRequestThrottlingException:
@@ -264,6 +283,32 @@ class Slave:
                 return
             try:
                 await self.main(start_step=start_step)
+            except pgoapi_exceptions.ServerSideAccessForbiddenException:
+                import requests
+                ip_address = requests.get(
+                    'https://icanhazip.com/',
+                    proxies=self.proxies).text
+                self.logger.error('Banned IP: ' + ip_address)
+                self.error_code = 'IP BANNED'
+                with open('banned_ips.txt', 'at') as f:
+                    f.write(ip_address + '\n')
+                self.swap_proxy(reason='ban')
+                await self.restart(sleep_min=10, sleep_max=30)
+                return
+            except pgoapi_exceptions.AuthException:
+                self.logger.warning('Login failed!')
+                self.error_code = 'LOGIN FAIL'
+                #self.swap_account(reason='auth exception')
+                self.swap_proxy(reason='login failure')
+                await self.restart()
+                return
+            except pgoapi_exceptions.NotLoggedInException:
+                self.logger.error('Invalid credentials')
+                self.error_code = 'BAD LOGIN'
+                #self.swap_account(reason='invalid credentials')
+                self.swap_proxy(reason='invalid credentials')
+                await self.restart()
+                return
             except MalformedResponse:
                 self.logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
