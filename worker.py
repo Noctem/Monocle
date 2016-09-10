@@ -407,7 +407,7 @@ class Slave:
             processing_time = time.time() - processing_start
             sleep_min = config.SCAN_DELAY[0] - processing_time
             sleep_max = config.SCAN_DELAY[1] - processing_time
-            if len(config.PROXIES) > 2:
+            if len(config.SCAN_DELAY) > 2:
                 sleep_mode = config.SCAN_DELAY[2]
                 sleep_time = random.triangular(sleep_min, sleep_max,
                                                sleep_mode)
