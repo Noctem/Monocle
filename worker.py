@@ -4,6 +4,8 @@ from collections import deque
 from datetime import datetime
 from functools import partial
 from sqlalchemy.exc import IntegrityError
+from stem import Signal
+from stem.control import Controller
 import argparse
 import asyncio
 import logging
@@ -56,6 +58,13 @@ for setting_name, default in OPTIONAL_SETTINGS.items():
 if isinstance(config.PROXIES, (tuple, list)):
     if len(config.PROXIES) > 1:
         MULTIPLE_PROXIES = True
+        LAST_CHANGED = {
+            'socks5://127.0.0.1:9050': 0,
+            'socks5://127.0.0.1:9051': 0,
+            'socks5://127.0.0.1:9052': 0,
+            'socks5://127.0.0.1:9053': 0,
+            'socks5://127.0.0.1:9054': 0,
+        }
 else:
     MULTIPLE_PROXIES = False
 
@@ -175,7 +184,7 @@ class Slave:
             start = time.time()
             result = method(*args, **kwargs)
             self.last_api_latency = time.time() - start
-            if self.last_api_latency > 10:
+            if self.last_api_latency > 12:
                 self.swap_proxy(reason='excessive latency')
             return result
         return inner
@@ -193,10 +202,17 @@ class Slave:
 
     def swap_proxy(self, reason=''):
         if MULTIPLE_PROXIES:
-            previous = list(self.proxies.values())[0]
-            while self.proxies['https'] == previous:
-                self.proxies = random.choice(config.PROXIES)
-            self.logger.warning('Swapped out ' + previous + ' for ' + list(self.proxies.values())[0] + ' due to ' + reason)
+            proxy = self.proxies['https']
+            if (time.time() - LAST_CHANGED[proxy]) > 75:
+                socket = config.CONTROL_SOCKS[proxy]
+
+                with Controller.from_socket_file(path=socket) as controller:
+                    controller.authenticate()
+                    controller.signal(Signal.NEWNYM)
+                LAST_CHANGED[proxy] = time.time()
+                self.logger.warning('Changed circuit on ' + proxy + ' due to ' + reason)
+            else:
+                self.logger.warning('Skipped change on ' + proxy + ' because it was changed recently.')
 
     async def login(self):
         """Logs worker in and prepares for scanning"""
@@ -207,15 +223,9 @@ class Slave:
         while True:
             self.logger.info('Trying to log in')
             try:
-                self.api.set_authentication(
-                    username=config.ACCOUNTS[self.worker_no][0],
-                    password=config.ACCOUNTS[self.worker_no][1],
-                    provider=config.ACCOUNTS[self.worker_no][2],
-                    proxy_config=self.proxies
-                )
                 await loop.run_in_executor(
                     self.network_executor,
-                    self.call_api(self.api.app_simulation_login)
+                    self.call_api(self.api.login, provider=config.ACCOUNTS[self.worker_no][2], username=config.ACCOUNTS[self.worker_no][0], password=config.ACCOUNTS[self.worker_no][1], app_simulation=False)
                 )
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 import requests
@@ -227,26 +237,26 @@ class Slave:
                 with open('banned_ips.txt', 'at') as f:
                     f.write(ip_address + '\n')
                 self.swap_proxy(reason='ban')
-                await self.restart(sleep_min=10, sleep_max=30)
+                await self.restart(sleep_min=10, sleep_max=15)
                 return
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
                 #self.swap_account(reason='auth exception')
-                self.swap_proxy(reason='login failure')
+                #self.swap_proxy(reason='login failure')
                 await self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
                 self.logger.error('Invalid credentials')
                 self.error_code = 'BAD LOGIN'
                 #self.swap_account(reason='invalid credentials')
-                self.swap_proxy(reason='invalid credentials')
+                #self.swap_proxy(reason='invalid credentials')
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerBusyOrOfflineException:
                 self.logger.info('Server too busy - restarting')
                 self.error_code = 'RETRYING'
-                self.swap_proxy('busy server')
+                #self.swap_proxy('busy server')
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerSideRequestThrottlingException:
@@ -293,20 +303,20 @@ class Slave:
                 with open('banned_ips.txt', 'at') as f:
                     f.write(ip_address + '\n')
                 self.swap_proxy(reason='ban')
-                await self.restart(sleep_min=10, sleep_max=30)
+                await self.restart(sleep_min=10, sleep_max=15)
                 return
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
                 #self.swap_account(reason='auth exception')
-                self.swap_proxy(reason='login failure')
+                #self.swap_proxy(reason='login failure')
                 await self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
                 self.logger.error('Invalid credentials')
                 self.error_code = 'BAD LOGIN'
                 #self.swap_account(reason='invalid credentials')
-                self.swap_proxy(reason='invalid credentials')
+                #self.swap_proxy(reason='invalid credentials')
                 await self.restart()
                 return
             except MalformedResponse:
