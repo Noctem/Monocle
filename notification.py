@@ -2,10 +2,10 @@ from datetime import datetime, timedelta, timezone
 from collections import deque
 from statistics import mean
 
+import time
+
 from db import Session, get_pokemon_ranking
 from names import POKEMON_NAMES
-
-import time
 
 import config
 
@@ -23,8 +23,8 @@ if not hasattr(config, 'MIN_TIME'):
     setattr(config, 'MIN_TIME', 120)
 if not hasattr(config, 'ALWAYS_NOTIFY'):
     setattr(config, 'ALWAYS_NOTIFY', 0)
-if not hasattr(config, 'ALWAYS_NOTIFY'):
-    setattr(config, 'DESIRED_FREQUENCY', (1200, 1800))
+if not hasattr(config, 'DESIRED_FREQUENCY'):
+    setattr(config, 'DESIRED_FREQUENCY', 1440)
 
 
 def generic_place_string():
@@ -53,10 +53,8 @@ class Notification:
         else:
             self.hashtags = set()
 
-        if time_till_hidden == 901:
-            self.longspawn = True
-        else:
-            self.longspawn = False
+        self.longspawn = bool(time_till_hidden == 901)
+
         self.delta = timedelta(seconds=time_till_hidden)
         self.expire_time = (now + self.delta).strftime('%I:%M %p').lstrip('0')
         self.map_link = ('https://maps.google.com/maps?q=' +
@@ -205,15 +203,9 @@ class Notifier:
         self.differences = deque(maxlen=10)
         self.last_notification = None
 
-    def increase_range(self):
-        if self.notify_ranking < 75:
-            self.notify_ranking += 2
-            self.set_pokemon_ranking()
-            self.set_required_times()
-
-    def decrease_range(self):
-        if self.notify_ranking > 20:
-            self.notify_ranking -= 2
+    def modify_range(self, modify_by):
+        if self.notify_ranking + modify_by < 75 and self.notify_ranking + modify_by > 20:
+            self.notify_ranking += modify_by
             self.set_pokemon_ranking()
             self.set_required_times()
 
@@ -279,17 +271,21 @@ class Notifier:
         if code:
             self.recent_notifications.append(encounter_id)
             if self.last_notification:
-                difference = time.time() - self.last_notification
-                self.differences.append(difference)
-                average = mean(self.differences)
-                if average < config.DESIRED_FREQUENCY[0]:
-                    self.decrease_range()
+                time_difference = time.time() - self.last_notification
+                self.differences.append(time_difference)
+                weight = 1
+                weighted = []
+                for diff in self.differences:
+                    for x in range(0,weight):
+                        weighted.append(diff)
+                    weight += 1
+                average = mean(weighted)
+                if not (average > config.DESIRED_FREQUENCY - 360 and average < config.DESIRED_FREQUENCY + 360):
+                    desired_difference = average - config.DESIRED_FREQUENCY
+                    modify_by = int(desired_difference / 360)
+                    self.modify_range(modify_by)
                     with open('range_log.txt', 'at') as f:
-                        f.write('Average: ' + str(round(average)) + ', decreasing range to ' + str(self.notify_ranking) + '\n')
-                elif average > config.DESIRE_FREQUENCY[1]:
-                    self.increase_range()
-                    with open('range_log.txt', 'at') as f:
-                        f.write('Average: ' + str(round(average)) + ', increasing range to ' + str(self.notify_ranking) + '\n')
+                        f.write('Average: ' + str(round(average)) + ', so changed range to ' + str(self.notify_ranking) + '\n')
                 else:
                     with open('range_log.txt', 'at') as f:
                         f.write('Average: ' + str(round(average)) + ', so keeping the range at ' + str(self.notify_ranking) + '\n')
