@@ -200,7 +200,7 @@ class Landmarks:
         else:
             print(landmark.name, landmark.size, type(landmark.location), '\n')
 
-    def find_landmark(self, coords, max_distance=1000):
+    def find_landmark(self, coords, max_distance=750):
         if self.points_of_interest:
             found = find_within(self.points_of_interest, coords)
             if found:
