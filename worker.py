@@ -423,16 +423,20 @@ class Slave:
     @staticmethod
     def normalize_pokemon(raw, now):
         """Normalizes data coming from API into something acceptable by db"""
-        return {
+        normalized = {
             'type': 'pokemon',
             'encounter_id': raw['encounter_id'],
-            'spawn_id': raw['spawn_point_id'],
             'pokemon_id': raw['pokemon_data']['pokemon_id'],
             'expire_timestamp': round(
                 (now + raw['time_till_hidden_ms']) / 1000),
             'lat': raw['latitude'],
             'lon': raw['longitude'],
         }
+        if config.SPAWN_ID_INT:
+            normalized['spawn_id'] = int(raw['spawn_point_id'], 16)
+        else:
+            normalized['spawn_id'] = raw['spawn_point_id']
+        return normalized
 
     @staticmethod
     def normalize_fort(raw):

@@ -16,6 +16,10 @@ PROXIES = None  # Insert dict or tuple of dicts with 'http' and 'https' keys
 ALT_RANGE = (1450, 1550)  # Fall back to altitudes in this range if generation fails
 LONGSPAWNS = False  # Store sightings with invalid times in another DB table
 
+# convert spawn_id to integer for more efficient DB storage, set to False if
+# using an existing database since the data types are incompatible.
+SPAWN_ID_INT = True
+
 SCAN_RADIUS = 70  # meters
 
 _workers_count = GRID[0] * GRID[1]
