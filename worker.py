@@ -428,7 +428,8 @@ class Slave:
             'encounter_id': raw['encounter_id'],
             'spawn_id': raw['spawn_point_id'],
             'pokemon_id': raw['pokemon_data']['pokemon_id'],
-            'expire_timestamp': (now + raw['time_till_hidden_ms']) / 1000.0,
+            'expire_timestamp': round(
+                (now + raw['time_till_hidden_ms']) / 1000),
             'lat': raw['latitude'],
             'lon': raw['longitude'],
         }
@@ -443,7 +444,7 @@ class Slave:
             'team': raw.get('owned_by_team', 0),
             'prestige': raw.get('gym_points', 0),
             'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
-            'last_modified': raw['last_modified_timestamp_ms'] / 1000.0,
+            'last_modified': round(raw['last_modified_timestamp_ms'] / 1000),
         }
 
     @property

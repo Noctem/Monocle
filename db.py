@@ -111,12 +111,12 @@ class Sighting(Base):
 
     id = Column(Integer, primary_key=True)
     pokemon_id = Column(SmallInteger)
-    spawn_id = Column(String(12))
+    spawn_id = Column(String(11))
     expire_timestamp = Column(Integer, index=True)
     encounter_id = Column(Text)
     normalized_timestamp = Column(Integer)
-    lat = Column(Float(precision="double"), index=True)
-    lon = Column(Float(precision="double"), index=True)
+    lat = Column(Float, index=True)
+    lon = Column(Float, index=True)
 
 
 class Longspawn(Base):
@@ -124,12 +124,12 @@ class Longspawn(Base):
 
     id = Column(Integer, primary_key=True)
     pokemon_id = Column(SmallInteger)
-    spawn_id = Column(String(12))
-    expire_timestamp = Column(Integer, index=True)
+    spawn_id = Column(String(11))
+    expire_timestamp = Column(Integer)
     encounter_id = Column(Text)
     normalized_timestamp = Column(Integer)
-    lat = Column(Float(precision="double"), index=True)
-    lon = Column(Float(precision="double"), index=True)
+    lat = Column(Float, index=True)
+    lon = Column(Float, index=True)
     time_till_hidden_ms = Column(Integer)
     last_modified_timestamp_ms = Column(BigInteger)
 
@@ -139,8 +139,8 @@ class Fort(Base):
 
     id = Column(Integer, primary_key=True)
     external_id = Column(Text, unique=True)
-    lat = Column(Float(precision="double"), index=True)
-    lon = Column(Float(precision="double"), index=True)
+    lat = Column(Float, index=True)
+    lon = Column(Float, index=True)
 
     sightings = relationship(
         'FortSighting',
@@ -154,7 +154,7 @@ class FortSighting(Base):
 
     id = Column(Integer, primary_key=True)
     fort_id = Column(SmallInteger, ForeignKey('forts.id'))
-    last_modified = Column(Float(precision="double"))
+    last_modified = Column(Integer)
     team = Column(SmallInteger)
     prestige = Column(Integer)
     guard_pokemon_id = Column(SmallInteger)
@@ -195,7 +195,6 @@ def add_sighting(session, pokemon):
     if pokemon in SIGHTING_CACHE:
         return
     existing = session.query(Sighting) \
-        .filter(Sighting.spawn_id == pokemon['spawn_id']) \
         .filter(Sighting.encounter_id == str(pokemon['encounter_id'])) \
         .first()
     if existing:
@@ -204,7 +203,7 @@ def add_sighting(session, pokemon):
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
         encounter_id=str(pokemon['encounter_id']),
-        expire_timestamp=int(pokemon['expire_timestamp']),
+        expire_timestamp=pokemon['expire_timestamp'],
         normalized_timestamp=normalize_timestamp(pokemon['expire_timestamp']),
         lat=pokemon['lat'],
         lon=pokemon['lon'],
@@ -218,7 +217,7 @@ def add_longspawn(session, pokemon):
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
         encounter_id=str(pokemon['encounter_id']),
-        expire_timestamp=int(pokemon['expire_timestamp']),
+        expire_timestamp=pokemon['expire_timestamp'],
         normalized_timestamp=normalize_timestamp(pokemon['expire_timestamp']),
         lat=pokemon['lat'],
         lon=pokemon['lon'],
