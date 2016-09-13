@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 from collections import deque
-from statistics import mean
 
 import time
 
@@ -23,8 +22,8 @@ if not hasattr(config, 'MIN_TIME'):
     setattr(config, 'MIN_TIME', 120)
 if not hasattr(config, 'ALWAYS_NOTIFY'):
     setattr(config, 'ALWAYS_NOTIFY', 0)
-if not hasattr(config, 'DESIRED_FREQUENCY'):
-    setattr(config, 'DESIRED_FREQUENCY', 1440)
+if not hasattr(config, 'FULL_TIME'):
+    setattr(config, 'FULL_TIME', 1800)
 
 
 def generic_place_string():
@@ -196,32 +195,30 @@ class Notification:
 class Notifier:
 
     def __init__(self):
-        self.recent_notifications = deque(maxlen=200)
-        self.notify_ranking = config.NOTIFY_RANKING
+        self.recent_notifications = deque(maxlen=100)
+        self.notify_ranking = config.INITIAL_RANKING
         self.set_pokemon_ranking()
-        self.set_required_times()
         self.differences = deque(maxlen=10)
         self.last_notification = None
+        if self.notify_ranking:
+            setattr(config, 'NOTIFY_IDS', [])
+            for pokemon_id in self.pokemon_ranking[0:config.NOTIFY_RANKING]:
+                config.NOTIFY_IDS.append(pokemon_id)
+            self.set_notify_ids()
 
-    def modify_range(self, modify_by):
-        if self.notify_ranking + modify_by < 75 and self.notify_ranking + modify_by > 20:
-            self.notify_ranking += modify_by
-            self.set_pokemon_ranking()
-            self.set_required_times()
+    def set_notify_ids(self):
+        self.notify_ids = []
+        for pokemon_id in self.pokemon_ranking[0:self.notify_ranking]:
+            self.notify_ids.append(pokemon_id)
 
     def set_pokemon_ranking(self):
         if self.notify_ranking:
             session = Session()
             self.pokemon_ranking = get_pokemon_ranking(session)
             session.close()
-            setattr(config, 'NOTIFY_IDS', [])
-            for pokemon_id in self.pokemon_ranking[0:self.notify_ranking]:
-                config.NOTIFY_IDS.append(pokemon_id)
-        elif config.NOTIFY_IDS:
-            self.pokemon_ranking = config.NOTIFY_IDS
-            setattr(config, 'NOTIFY_RANKING', len(config.NOTIFY_IDS))
+            self.set_required_times()
         else:
-            raise ValueError('Must configure NOTIFY_RANKING or NOTIFY_IDS.')
+            raise ValueError('Must configure NOTIFY_RANKING.')
 
     def set_required_times(self):
         self.time_required = dict()
@@ -229,16 +226,16 @@ class Notifier:
         for pokemon_id in self.pokemon_ranking[0:config.ALWAYS_NOTIFY]:
             self.time_required[pokemon_id] = 0
         required_time = config.MIN_TIME
-        if config.MAX_TIME and (self.notify_ranking > config.ALWAYS_NOTIFY):
+        if config.MAX_TIME and (config.NOTIFY_RANKING > config.ALWAYS_NOTIFY):
             increment = (config.MAX_TIME /
-                         (self.notify_ranking - config.ALWAYS_NOTIFY))
+                         (config.NOTIFY_RANKING - config.ALWAYS_NOTIFY))
             for pokemon_id in self.pokemon_ranking[
-                    config.ALWAYS_NOTIFY:self.notify_ranking]:
+                    config.ALWAYS_NOTIFY:config.NOTIFY_RANKING]:
                 required_time += increment
                 self.time_required[pokemon_id] = int(required_time)
         else:
             for pokemon_id in self.pokemon_ranking[
-                    config.ALWAYS_NOTIFY:self.notify_ranking]:
+                    config.ALWAYS_NOTIFY:config.NOTIFY_RANKING]:
                 self.time_required[pokemon_id] = int(required_time)
 
     def notify(self, pokemon):
@@ -262,6 +259,21 @@ class Notifier:
             # skip duplicate
             return (False, 'Already notified about ' + name + '.')
 
+        if self.last_notification:
+            time_passed = time.time() - self.last_notification
+            if time_passed < config.FULL_TIME:
+                fraction = time_passed / config.FULL_TIME
+            else:
+                fraction = 1
+            dynamic_range = config.NOTIFY_RANKING - config.ALWAYS_ELIGIBLE
+            self.notify_ranking = round(config.ALWAYS_ELIGIBLE + (dynamic_range * fraction))
+            self.set_notify_ids()
+            with open('range_log.txt', 'at') as f:
+                f.write(str(round(time_passed)) + ' seconds passed, so using range of ' + str(self.notify_ranking) + '\n')
+
+        if pokeid not in self.notify_ids:
+            return (False, name + ' is not in the top ' + str(self.notify_ranking))
+
         if time_till_hidden < self.time_required[pokeid]:
             return (False, name + ' was expiring too soon to notify. '
                     + str(time_till_hidden) + 's/'
@@ -269,25 +281,7 @@ class Notifier:
 
         code, explanation = Notification(name, coordinates, time_till_hidden).notify()
         if code:
-            self.recent_notifications.append(encounter_id)
-            if self.last_notification:
-                time_difference = time.time() - self.last_notification
-                self.differences.append(time_difference)
-                weight = 1
-                weighted = []
-                for diff in self.differences:
-                    for x in range(0,weight):
-                        weighted.append(diff)
-                    weight += 1
-                average = mean(weighted)
-                if not (average > config.DESIRED_FREQUENCY - 360 and average < config.DESIRED_FREQUENCY + 360):
-                    desired_difference = average - config.DESIRED_FREQUENCY
-                    modify_by = int(desired_difference / 360)
-                    self.modify_range(modify_by)
-                    with open('range_log.txt', 'at') as f:
-                        f.write('Average: ' + str(round(average)) + ', so changed range to ' + str(self.notify_ranking) + '\n')
-                else:
-                    with open('range_log.txt', 'at') as f:
-                        f.write('Average: ' + str(round(average)) + ', so keeping the range at ' + str(self.notify_ranking) + '\n')
             self.last_notification = time.time()
+            self.recent_notifications.append(encounter_id)
+            self.set_pokemon_ranking()
         return (code, explanation)
