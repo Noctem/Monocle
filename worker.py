@@ -49,24 +49,20 @@ OPTIONAL_SETTINGS = {
     'SCAN_RADIUS': 70,
     'SCAN_DELAY': (10, 12, 11),
     'NOTIFY_IDS': None,
-    'NOTIFY_RANKING': None
+    'NOTIFY_RANKING': None,
+    'CONTROL_SOCKS': None
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
 
-if isinstance(config.PROXIES, (tuple, list)):
-    if len(config.PROXIES) > 1:
-        MULTIPLE_PROXIES = True
-        LAST_CHANGED = {
-            'socks5://127.0.0.1:9050': 0,
-            'socks5://127.0.0.1:9051': 0,
-            'socks5://127.0.0.1:9052': 0,
-            'socks5://127.0.0.1:9053': 0,
-            'socks5://127.0.0.1:9054': 0,
-        }
-else:
-    MULTIPLE_PROXIES = False
+if config.CONTROL_SOCKS:
+    import stem.util.log
+    stem.util.log.get_logger().level = 40
+    CIRCUIT_TIME = dict()
+    for proxy in config.PROXIES:
+        address = proxy.get('https')
+        CIRCUIT_TIME[address] = time.time()
 
 BAD_STATUSES = (
     'LOGIN FAIL',
@@ -184,7 +180,7 @@ class Slave:
             start = time.time()
             result = method(*args, **kwargs)
             self.last_api_latency = time.time() - start
-            if self.last_api_latency > 12:
+            if self.last_api_latency > 20:
                 self.swap_proxy(reason='excessive latency')
             return result
         return inner
@@ -201,18 +197,22 @@ class Slave:
         return
 
     def swap_proxy(self, reason=''):
-        if MULTIPLE_PROXIES:
-            proxy = self.proxies['https']
-            if (time.time() - LAST_CHANGED[proxy]) > 75:
-                socket = config.CONTROL_SOCKS[proxy]
-
-                with Controller.from_socket_file(path=socket) as controller:
-                    controller.authenticate()
-                    controller.signal(Signal.NEWNYM)
-                LAST_CHANGED[proxy] = time.time()
-                self.logger.warning('Changed circuit on ' + proxy + ' due to ' + reason)
-            else:
-                self.logger.warning('Skipped change on ' + proxy + ' because it was changed recently.')
+        if not config.CONTROL_SOCKS:
+            return
+        address = self.proxies.get('https')
+        time_passed = time.time() - CIRCUIT_TIME[address]
+        if time_passed > 60:
+            socket = config.CONTROL_SOCKS[address]
+            with Controller.from_socket_file(path=socket) as controller:
+                controller.authenticate()
+                controller.signal(Signal.NEWNYM)
+            CIRCUIT_TIME[proxy] = time.time()
+            self.logger.warning('Changed circuit on ' + address +
+                                ' due to ' + reason)
+        else:
+            self.logger.info('Skipped changing circuit on ' + address +
+                             ' because it was changed ' + str(time_passed)
+                             + ' seconds ago.')
 
     async def login(self):
         """Logs worker in and prepares for scanning"""
@@ -242,21 +242,16 @@ class Slave:
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
-                #self.swap_account(reason='auth exception')
-                #self.swap_proxy(reason='login failure')
                 await self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
                 self.logger.error('Invalid credentials')
                 self.error_code = 'BAD LOGIN'
-                #self.swap_account(reason='invalid credentials')
-                #self.swap_proxy(reason='invalid credentials')
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerBusyOrOfflineException:
                 self.logger.info('Server too busy - restarting')
                 self.error_code = 'RETRYING'
-                #self.swap_proxy('busy server')
                 await self.restart()
                 return
             except pgoapi_exceptions.ServerSideRequestThrottlingException:
@@ -308,15 +303,11 @@ class Slave:
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
-                #self.swap_account(reason='auth exception')
-                #self.swap_proxy(reason='login failure')
                 await self.restart()
                 return
             except pgoapi_exceptions.NotLoggedInException:
                 self.logger.error('Invalid credentials')
                 self.error_code = 'BAD LOGIN'
-                #self.swap_account(reason='invalid credentials')
-                #self.swap_proxy(reason='invalid credentials')
                 await self.restart()
                 return
             except MalformedResponse:
