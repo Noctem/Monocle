@@ -721,6 +721,11 @@ class Overseer:
             ' '.join(self.things_count),
             '',
         ]
+        no_sightings = ', '.join(str(w.worker_no)
+                                 for w in self.workers.values()
+                                 if w.total_seen == 0)
+        if no_sightings:
+            output += ['Workers without sightings so far:', no_sightings, '']
         dots, messages = self.get_dots_and_messages()
         output += [' '.join(row) for row in dots]
         previous = 0
