@@ -16,7 +16,6 @@ SCAN_DELAY = (10, 12, 10.5)  # varies between these values, favoring the third
 ALT_RANGE = (1450, 1550)  # Fall back to altitudes in this range if generation fails
 LONGSPAWNS = False  # Store sightings with invalid times in another DB table
 
-
 PROXIES = []  # Dict or tuple/list of dicts with 'http' and 'https' keys
 for proxy in ('127.0.0.1:9050', '127.0.0.1:9051', '127.0.0.1:9052'):
     PROXIES.append({'http': 'socks5://' + proxy, 'https': 'socks5://' + proxy})
@@ -27,6 +26,10 @@ CONTROL_SOCKS = {
     'socks5://127.0.0.1:9051': '/usr/local/var/run/tor/control2',
     'socks5://127.0.0.1:9052': '/usr/local/var/run/tor/control3',
 }
+
+# convert spawn_id to integer for more efficient DB storage, set to False if
+# using an existing database since the data types are incompatible.
+SPAWN_ID_INT = True
 
 SCAN_RADIUS = 70  # meters
 

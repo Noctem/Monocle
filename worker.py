@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from concurrent.futures import ThreadPoolExecutor, CancelledError
+from concurrent.futures import ThreadPoolExecutor, CancelledError, Future
 from collections import deque
 from datetime import datetime
 from functools import partial
@@ -223,10 +223,19 @@ class Slave:
         while True:
             self.logger.info('Trying to log in')
             try:
-                await loop.run_in_executor(
+                loginsuccess = await loop.run_in_executor(
                     self.network_executor,
-                    self.call_api(self.api.login, provider=config.ACCOUNTS[self.worker_no][2], username=config.ACCOUNTS[self.worker_no][0], password=config.ACCOUNTS[self.worker_no][1], app_simulation=False)
+                    self.call_api(
+                        self.api.login,
+                        username=config.ACCOUNTS[self.worker_no][0],
+                        password=config.ACCOUNTS[self.worker_no][1],
+                        provider=config.ACCOUNTS[self.worker_no][2],
+                    )
                 )
+                if not loginsuccess:
+                    self.error_code = 'LOGIN FAIL'
+                    await self.restart()
+                    return
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 import requests
                 ip_address = requests.get(
@@ -466,15 +475,20 @@ class Slave:
     @staticmethod
     def normalize_pokemon(raw, now):
         """Normalizes data coming from API into something acceptable by db"""
-        return {
+        normalized = {
             'type': 'pokemon',
             'encounter_id': raw['encounter_id'],
-            'spawn_id': raw['spawn_point_id'],
             'pokemon_id': raw['pokemon_data']['pokemon_id'],
-            'expire_timestamp': (now + raw['time_till_hidden_ms']) / 1000.0,
+            'expire_timestamp': round(
+                (now + raw['time_till_hidden_ms']) / 1000),
             'lat': raw['latitude'],
             'lon': raw['longitude'],
         }
+        if config.SPAWN_ID_INT:
+            normalized['spawn_id'] = int(raw['spawn_point_id'], 16)
+        else:
+            normalized['spawn_id'] = raw['spawn_point_id']
+        return normalized
 
     @staticmethod
     def normalize_fort(raw):
@@ -486,7 +500,7 @@ class Slave:
             'team': raw.get('owned_by_team', 0),
             'prestige': raw.get('gym_points', 0),
             'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
-            'last_modified': raw['last_modified_timestamp_ms'] / 1000.0,
+            'last_modified': round(raw['last_modified_timestamp_ms'] / 1000),
         }
 
     @property
@@ -563,7 +577,7 @@ class Overseer:
         self.db_processor.stop()
         for worker in self.workers.values():
             worker.kill()
-            if worker.future is not None:
+            if worker.future:
                 worker.future.cancel()
 
     def start_worker(self, worker_no, first_run=False):
@@ -764,6 +778,11 @@ class Overseer:
             ' '.join(self.things_count),
             '',
         ]
+        no_sightings = ', '.join(str(w.worker_no)
+                                 for w in self.workers.values()
+                                 if w.total_seen == 0)
+        if no_sightings:
+            output += ['Workers without sightings so far:', no_sightings, '']
         dots, messages = self.get_dots_and_messages()
         output += [' '.join(row) for row in dots]
         previous = 0
@@ -871,7 +890,7 @@ if __name__ == '__main__':
         overseer.kill()  # also cancels all workers' futures
         all_futures = [
             w.future for w in overseer.workers.values()
-            if w.future is not None
+            if w.future and not isinstance(w.future, Future)
         ]
         loop.run_until_complete(asyncio.gather(*all_futures))
         loop.close()

@@ -33,7 +33,7 @@ class Landmark:
                     self.location = box(points[0][0], points[0][1],
                                         points[1][0], points[1][1])
                 elif len(points) == 1:
-                    self.location = Point(*points)
+                    self.location = Point(*points[0])
             except (TypeError, IndexError):
                 print('points must be a list/tuple of lists/tuples'
                       ' containing 2 coordinates each')

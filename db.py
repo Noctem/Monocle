@@ -3,7 +3,7 @@ import enum
 import time
 
 from sqlalchemy import create_engine
-from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, Text, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, Text, ForeignKey, UniqueConstraint, Numeric
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -15,6 +15,14 @@ try:
 except (ImportError, AttributeError):
     DB_ENGINE = 'sqlite:///db.sqlite'
 
+OPTIONAL_SETTINGS = {
+    'SPAWN_ID_INT': False,
+    'STAGE2': [],
+    'REPORT_SINCE': None,
+}
+for setting_name, default in OPTIONAL_SETTINGS.items():
+    if not hasattr(config, setting_name):
+        setattr(config, setting_name, default)
 
 class Team(enum.Enum):
     none = 0
@@ -110,26 +118,37 @@ class Sighting(Base):
     __tablename__ = 'sightings'
 
     id = Column(Integer, primary_key=True)
-    pokemon_id = Column(SmallInteger)
-    spawn_id = Column(String(12))
+    pokemon_id = Column(SmallInteger, index=True)
+    if config.SPAWN_ID_INT:
+        spawn_id = Column(BigInteger)
+    else:
+        spawn_id = Column(String(11))
     expire_timestamp = Column(Integer, index=True)
-    encounter_id = Column(Text)
+    if DB_ENGINE.startswith('sqlite'):
+        encounter_id = Column(BigInteger, unique=True)
+    else:
+        encounter_id = Column(Numeric(precision=20, scale=0), unique=True)
     normalized_timestamp = Column(Integer)
-    lat = Column(Float(precision="double"), index=True)
-    lon = Column(Float(precision="double"), index=True)
+    lat = Column(Float, index=True)
+    lon = Column(Float, index=True)
 
 
 class Longspawn(Base):
     __tablename__ = 'longspawns'
 
     id = Column(Integer, primary_key=True)
-    pokemon_id = Column(SmallInteger)
-    spawn_id = Column(String(12))
-    expire_timestamp = Column(Integer, index=True)
-    encounter_id = Column(Text)
-    normalized_timestamp = Column(Integer)
-    lat = Column(Float(precision="double"), index=True)
-    lon = Column(Float(precision="double"), index=True)
+    pokemon_id = Column(SmallInteger, index=True)
+    if config.SPAWN_ID_INT:
+        spawn_id = Column(BigInteger)
+    else:
+        spawn_id = Column(String(11))
+    expire_timestamp = Column(Integer)
+    if DB_ENGINE.startswith('sqlite'):
+        encounter_id = Column(BigInteger)
+    else:
+        encounter_id = Column(Numeric(precision=20, scale=0))
+    lat = Column(Float, index=True)
+    lon = Column(Float, index=True)
     time_till_hidden_ms = Column(Integer)
     last_modified_timestamp_ms = Column(BigInteger)
 
@@ -139,8 +158,8 @@ class Fort(Base):
 
     id = Column(Integer, primary_key=True)
     external_id = Column(Text, unique=True)
-    lat = Column(Float(precision="double"), index=True)
-    lon = Column(Float(precision="double"), index=True)
+    lat = Column(Float, index=True)
+    lon = Column(Float, index=True)
 
     sightings = relationship(
         'FortSighting',
@@ -154,7 +173,7 @@ class FortSighting(Base):
 
     id = Column(Integer, primary_key=True)
     fort_id = Column(SmallInteger, ForeignKey('forts.id'))
-    last_modified = Column(Float(precision="double"))
+    last_modified = Column(Integer)
     team = Column(SmallInteger)
     prestige = Column(Integer)
     guard_pokemon_id = Column(SmallInteger)
@@ -195,16 +214,15 @@ def add_sighting(session, pokemon):
     if pokemon in SIGHTING_CACHE:
         return
     existing = session.query(Sighting) \
-        .filter(Sighting.spawn_id == pokemon['spawn_id']) \
-        .filter(Sighting.encounter_id == str(pokemon['encounter_id'])) \
+        .filter(Sighting.encounter_id == pokemon['encounter_id']) \
         .first()
     if existing:
         return
     obj = Sighting(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
-        encounter_id=str(pokemon['encounter_id']),
-        expire_timestamp=int(pokemon['expire_timestamp']),
+        encounter_id=pokemon['encounter_id'],
+        expire_timestamp=pokemon['expire_timestamp'],
         normalized_timestamp=normalize_timestamp(pokemon['expire_timestamp']),
         lat=pokemon['lat'],
         lon=pokemon['lon'],
@@ -217,9 +235,8 @@ def add_longspawn(session, pokemon):
     obj = Longspawn(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
-        encounter_id=str(pokemon['encounter_id']),
-        expire_timestamp=int(pokemon['expire_timestamp']),
-        normalized_timestamp=normalize_timestamp(pokemon['expire_timestamp']),
+        encounter_id=pokemon['encounter_id'],
+        expire_timestamp=pokemon['expire_timestamp'],
         lat=pokemon['lat'],
         lon=pokemon['lon'],
         time_till_hidden_ms=pokemon['time_till_hidden_ms'],
