@@ -12,9 +12,21 @@ MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
 CYCLES_PER_WORKER = 3
 SCAN_DELAY = (10, 12, 10.5)  # varies between these values, favoring the third
-PROXIES = None  # Insert dict or tuple of dicts with 'http' and 'https' keys
+
 ALT_RANGE = (1450, 1550)  # Fall back to altitudes in this range if generation fails
 LONGSPAWNS = False  # Store sightings with invalid times in another DB table
+
+
+PROXIES = []  # Dict or tuple/list of dicts with 'http' and 'https' keys
+for proxy in ('127.0.0.1:9050', '127.0.0.1:9051', '127.0.0.1:9052'):
+    PROXIES.append({'http': 'socks5://' + proxy, 'https': 'socks5://' + proxy})
+
+# location of control sockets for Tor instances (if applicable)
+CONTROL_SOCKS = {
+    'socks5://127.0.0.1:9050': '/usr/local/var/run/tor/control',
+    'socks5://127.0.0.1:9051': '/usr/local/var/run/tor/control2',
+    'socks5://127.0.0.1:9052': '/usr/local/var/run/tor/control3',
+}
 
 SCAN_RADIUS = 70  # meters
 
@@ -82,8 +94,6 @@ TWITTER_CONSUMER_KEY = '53d997264eb7f6452b7bf101d'
 TWITTER_CONSUMER_SECRET = '64b9ebf618829a51f8c0535b56cebc808eb3e80d3d18bf9e00'
 TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
 TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'
-
-
 
 
 # It is recommended to store the LANDMARKS object in a pickle to reduce startup 
