@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from concurrent.futures import ThreadPoolExecutor, CancelledError
+from concurrent.futures import ThreadPoolExecutor, CancelledError, Future
 from collections import deque
 from datetime import datetime
 from functools import partial
@@ -520,7 +520,7 @@ class Overseer:
         self.db_processor.stop()
         for worker in self.workers.values():
             worker.kill()
-            if worker.future is not None:
+            if worker.future:
                 worker.future.cancel()
 
     def start_worker(self, worker_no, first_run=False):
@@ -833,7 +833,7 @@ if __name__ == '__main__':
         overseer.kill()  # also cancels all workers' futures
         all_futures = [
             w.future for w in overseer.workers.values()
-            if w.future is not None
+            if w.future and not isinstance(w.future, Future)
         ]
         loop.run_until_complete(asyncio.gather(*all_futures))
         loop.close()
