@@ -206,7 +206,7 @@ class Slave:
             with Controller.from_socket_file(path=socket) as controller:
                 controller.authenticate()
                 controller.signal(Signal.NEWNYM)
-            CIRCUIT_TIME[proxy] = time.time()
+            CIRCUIT_TIME[address] = time.time()
             self.logger.warning('Changed circuit on ' + address +
                                 ' due to ' + reason)
         else:
