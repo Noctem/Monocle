@@ -52,10 +52,15 @@ class SightingCache(object):
         self.store = {}
 
     def add(self, sighting):
-        self.store[sighting['encounter_id']] = sighting['expire_timestamp']
+        dictionary = {
+            'expire_timestamp': sighting['expire_timestamp'],
+            'last_modified_timestamp_ms': sighting['last_modified_timestamp_ms'],
+            'time_till_hidden_ms': sighting['time_till_hidden_ms']
+        }
+        self.store[sighting['encounter_id']] = dictionary
 
     def __contains__(self, raw_sighting):
-        expire_timestamp = self.store.get(raw_sighting['encounter_id'])
+        expire_timestamp = self.store.get(raw_sighting['encounter_id']).get('expire_timestamp')
         if not expire_timestamp:
             return False
         timestamp_in_range = (
@@ -65,8 +70,37 @@ class SightingCache(object):
         return timestamp_in_range
 
     def clean_expired(self):
-        for key, timestamp in self.store.items():
-            if timestamp < time.time() - 1800:
+        for key, dictionary in self.store.items():
+            timestamp = dictionary.get('expire_timestamp')
+            if timestamp < time.time() - 2700:
+                del self.store[key]
+
+
+class LongspawnCache(object):
+    """Simple cache for storing longspawns
+
+    It's used in order not to make as many queries to the database.
+    It's also capable of purging old entries.
+    """
+    def __init__(self):
+        self.store = {}
+
+    def add(self, sighting):
+        self.store[sighting['encounter_id']] = (sighting['expire_timestamp'], sighting['time_till_hidden_ms'])
+
+    def __contains__(self, raw_sighting):
+        remaining_time = self.store.get(raw_sighting['encounter_id'])[1]
+        if not remaining_time:
+            return False
+        timestamp_in_range = (
+            remaining_time > raw_sighting['time_till_hidden_ms'] - 5 and
+            remaining_time < raw_sighting['time_till_hidden_ms'] + 5
+        )
+        return timestamp_in_range
+
+    def clean_expired(self):
+        for key, timestamps in self.store.items():
+            if timestamps[0] < time.time() - 3600:
                 del self.store[key]
 
 
@@ -98,6 +132,7 @@ class FortCache(object):
         return is_the_same
 
 SIGHTING_CACHE = SightingCache()
+LONGSPAWN_CACHE = LongspawnCache()
 FORT_CACHE = FortCache()
 
 
@@ -224,6 +259,8 @@ def add_sighting(session, pokemon):
 
 
 def add_longspawn(session, pokemon):
+    if pokemon in LONGSPAWN_CACHE:
+        return
     obj = Longspawn(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],

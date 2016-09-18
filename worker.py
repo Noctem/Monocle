@@ -73,9 +73,6 @@ BAD_STATUSES = (
     'NO POKEMON',
 )
 
-if config.LONGSPAWNS:
-    longspawns = deque(maxlen=5000)
-
 if config.NOTIFY_IDS or config.NOTIFY_RANKING:
     import notification
     notifier = notification.Notifier()
@@ -410,11 +407,8 @@ class Slave:
                             pokemon['time_till_hidden_ms'] < 0 or
                             pokemon['time_till_hidden_ms'] > 3600000
                         )
-                        if long_spawn:
-                            if config.LONGSPAWNS:
-                                longspawns.append(pokemon['encounter_id'])
-                            else:
-                                continue
+                        if long_spawn and not config.LONGSPAWNS:
+                            continue
                         normalized = self.normalize_pokemon(
                             pokemon,
                             map_cell['current_timestamp_ms']
@@ -428,8 +422,12 @@ class Slave:
                             else:
                                 self.logger.warning(explanation)
                         if config.LONGSPAWNS and (long_spawn
-                                or pokemon['encounter_id'] in longspawns):
+                                or pokemon['encounter_id'] in db.LONGSPAWN_CACHE.store):
                             normalized['type'] = 'longspawn'
+                            if pokemon['encounter_id'] in db.SIGHTING_CACHE.store:
+                                previous_pokemon = normalized.copy()
+                                previous_pokemon.update(db.SIGHTING_CACHE.store.get(pokemon['encounter_id']))
+                                ls_seen.append(previous_pokemon)
                             ls_seen.append(normalized)
                     for fort in map_cell.get('forts', []):
                         if not fort.get('enabled'):
