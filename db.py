@@ -51,21 +51,11 @@ class SightingCache(object):
     def __init__(self):
         self.store = {}
 
-    @staticmethod
-    def _make_key(sighting):
-        return (
-            sighting['pokemon_id'],
-            sighting['spawn_id'],
-            normalize_timestamp(sighting['expire_timestamp']),
-            sighting['lat'],
-            sighting['lon'],
-        )
-
     def add(self, sighting):
-        self.store[self._make_key(sighting)] = sighting['expire_timestamp']
+        self.store[sighting['encounter_id']] = sighting['expire_timestamp']
 
     def __contains__(self, raw_sighting):
-        expire_timestamp = self.store.get(self._make_key(raw_sighting))
+        expire_timestamp = self.store.get(raw_sighting['encounter_id'])
         if not expire_timestamp:
             return False
         timestamp_in_range = (
@@ -75,12 +65,9 @@ class SightingCache(object):
         return timestamp_in_range
 
     def clean_expired(self):
-        to_remove = []
         for key, timestamp in self.store.items():
-            if timestamp < time.time() - 120:
-                to_remove.append(key)
-        for key in to_remove:
-            del self.store[key]
+            if timestamp < time.time() - 1800:
+                del self.store[key]
 
 
 class FortCache(object):
@@ -211,10 +198,14 @@ def get_since_query_part(where=True):
 
 def add_sighting(session, pokemon):
     # Check if there isn't the same entry already
-    if pokemon in SIGHTING_CACHE:
+    if pokemon['encounter_id'] in SIGHTING_CACHE.store:
+        if pokemon in SIGHTING_CACHE:
+            return
+        with open('double_spawns.txt', 'at') as f:
+            f.write('possible 2x15: ' + str(pokemon['spawn_id']) + '\n')
+        add_longspawn(session, pokemon)
         return
     existing = session.query(Sighting) \
-        .filter(Sighting.spawn_id == pokemon['spawn_id']) \
         .filter(Sighting.encounter_id == pokemon['encounter_id']) \
         .first()
     if existing:

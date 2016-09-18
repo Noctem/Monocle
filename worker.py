@@ -74,7 +74,7 @@ BAD_STATUSES = (
 )
 
 if config.LONGSPAWNS:
-    longspawns = deque(maxlen=1000)
+    longspawns = deque(maxlen=5000)
 
 if config.NOTIFY_IDS or config.NOTIFY_RANKING:
     import notification
@@ -429,10 +429,6 @@ class Slave:
                                 self.logger.warning(explanation)
                         if config.LONGSPAWNS and (long_spawn
                                 or pokemon['encounter_id'] in longspawns):
-                            normalized['time_till_hidden_ms'] = pokemon[
-                                'time_till_hidden_ms']
-                            normalized['last_modified_timestamp_ms'] = pokemon[
-                                'last_modified_timestamp_ms']
                             normalized['type'] = 'longspawn'
                             ls_seen.append(normalized)
                     for fort in map_cell.get('forts', []):
@@ -488,6 +484,9 @@ class Slave:
             normalized['spawn_id'] = int(raw['spawn_point_id'], 16)
         else:
             normalized['spawn_id'] = raw['spawn_point_id']
+        if config.LONGSPAWNS:
+            normalized['time_till_hidden_ms'] = raw['time_till_hidden_ms']
+            normalized['last_modified_timestamp_ms'] = raw['last_modified_timestamp_ms']
         return normalized
 
     @staticmethod
@@ -654,7 +653,7 @@ class Overseer:
                 if self.workers[worker_no].restart_me:
                     self.start_worker(worker_no)
             # Clean cache
-            if now - last_cleaned_cache > (15 * 60):  # clean cache
+            if now - last_cleaned_cache > (900):  # clean cache
                 self.db_processor.clean_cache()
                 last_cleaned_cache = now
             # Check up on workers
