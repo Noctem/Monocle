@@ -38,6 +38,8 @@ def get_engine():
 def get_engine_name(session):
     return session.connection().engine.name
 
+def combine_key(sighting):
+    return(sighting['encounter_id'], sighting['spawn_id'])
 
 Base = declarative_base()
 
@@ -57,23 +59,26 @@ class SightingCache(object):
             'last_modified_timestamp_ms': sighting['last_modified_timestamp_ms'],
             'time_till_hidden_ms': sighting['time_till_hidden_ms']
         }
-        self.store[sighting['encounter_id']] = dictionary
+        self.store[combine_key(sighting)] = dictionary
 
     def __contains__(self, raw_sighting):
-        expire_timestamp = self.store.get(raw_sighting['encounter_id']).get('expire_timestamp')
+        expire_timestamp = self.store.get(combine_key(raw_sighting)).get('expire_timestamp')
         if not expire_timestamp:
             return False
-        timestamp_in_range = (
-            expire_timestamp > raw_sighting['expire_timestamp'] - 5 and
-            expire_timestamp < raw_sighting['expire_timestamp'] + 5
+        within_range = (
+            expire_timestamp > raw_sighting['expire_timestamp'] - 1 and
+            expire_timestamp < raw_sighting['expire_timestamp'] + 1
         )
-        return timestamp_in_range
+        return within_range
 
     def clean_expired(self):
+        to_remove = []
         for key, dictionary in self.store.items():
             timestamp = dictionary.get('expire_timestamp')
             if timestamp < time.time() - 2700:
-                del self.store[key]
+                to_remove.append(key)
+        for key in to_remove:
+            del self.store[key]
 
 
 class LongspawnCache(object):
@@ -86,22 +91,27 @@ class LongspawnCache(object):
         self.store = {}
 
     def add(self, sighting):
-        self.store[sighting['encounter_id']] = (sighting['expire_timestamp'], sighting['time_till_hidden_ms'])
+        self.store[combine_key(sighting)] = (sighting['expire_timestamp'], round(sighting['last_modified_timestamp_ms'] / 1000))
 
     def __contains__(self, raw_sighting):
-        remaining_time = self.store.get(raw_sighting['encounter_id'])[1]
-        if not remaining_time:
+        timestamps = self.store.get(combine_key(raw_sighting))
+        if not timestamps:
             return False
+        sighting_time = timestamps[1]
+        raw_sighting_time = round(raw_sighting['last_modified_timestamp_ms'] / 1000)
         timestamp_in_range = (
-            remaining_time > raw_sighting['time_till_hidden_ms'] - 5 and
-            remaining_time < raw_sighting['time_till_hidden_ms'] + 5
+            sighting_time > raw_sighting_time - 5 and
+            sighting_time < raw_sighting_time + 5
         )
         return timestamp_in_range
 
     def clean_expired(self):
+        to_remove = []
         for key, timestamps in self.store.items():
             if timestamps[0] < time.time() - 3600:
-                del self.store[key]
+                to_remove.append(key)
+        for key in to_remove:
+            del self.store[key]
 
 
 class FortCache(object):
@@ -147,12 +157,20 @@ class Sighting(Base):
         spawn_id = Column(String(11))
     expire_timestamp = Column(Integer, index=True)
     if DB_ENGINE.startswith('sqlite'):
-        encounter_id = Column(BigInteger, unique=True)
+        encounter_id = Column(BigInteger)
     else:
-        encounter_id = Column(Numeric(precision=20, scale=0), unique=True)
+        encounter_id = Column(Numeric(precision=20, scale=0))
     normalized_timestamp = Column(Integer)
     lat = Column(Float, index=True)
     lon = Column(Float, index=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'encounter_id',
+            'expire_timestamp',
+            name='timestamp_encounter_id_unique'
+        ),
+    )
 
 
 class Longspawn(Base):
@@ -173,6 +191,14 @@ class Longspawn(Base):
     lon = Column(Float, index=True)
     time_till_hidden_ms = Column(Integer)
     last_modified_timestamp_ms = Column(BigInteger)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'encounter_id',
+            'last_modified_timestamp_ms',
+            name='encounter_time_unique'
+        ),
+    )
 
 
 class Fort(Base):
@@ -233,18 +259,22 @@ def get_since_query_part(where=True):
 
 def add_sighting(session, pokemon):
     # Check if there isn't the same entry already
-    if pokemon['encounter_id'] in SIGHTING_CACHE.store:
+    key = combine_key(pokemon)
+    if key in SIGHTING_CACHE.store:
         if pokemon in SIGHTING_CACHE:
             return
-        with open('double_spawns.txt', 'at') as f:
-            f.write('possible 2x15: ' + str(pokemon['spawn_id']) + '\n')
+        previous_pokemon = pokemon.copy()
+        previous_pokemon.update(SIGHTING_CACHE.store.get(key))
+        add_longspawn(session, previous_pokemon)
         add_longspawn(session, pokemon)
         return
-    existing = session.query(Sighting) \
-        .filter(Sighting.encounter_id == pokemon['encounter_id']) \
-        .first()
-    if existing:
-        return
+    if get_engine_name(session) not in ('mysql', 'postgresql'):
+        existing = session.query(Sighting) \
+            .filter(Sighting.encounter_id == pokemon['encounter_id']) \
+            .filter(Sighting.expire_timestamp == pokemon['expire_timestamp']) \
+            .first()
+        if existing:
+            return
     obj = Sighting(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
@@ -272,6 +302,7 @@ def add_longspawn(session, pokemon):
         last_modified_timestamp_ms=pokemon['last_modified_timestamp_ms'],
     )
     session.add(obj)
+    LONGSPAWN_CACHE.add(pokemon)
 
 
 def add_fort_sighting(session, raw_fort):

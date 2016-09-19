@@ -421,13 +421,11 @@ class Slave:
                                 self.logger.info(explanation)
                             else:
                                 self.logger.warning(explanation)
+                        key = db.combine_key(normalized)
                         if config.LONGSPAWNS and (long_spawn
-                                or pokemon['encounter_id'] in db.LONGSPAWN_CACHE.store):
+                                or key in db.LONGSPAWN_CACHE.store):
+                            normalized = normalized.copy()
                             normalized['type'] = 'longspawn'
-                            if pokemon['encounter_id'] in db.SIGHTING_CACHE.store:
-                                previous_pokemon = normalized.copy()
-                                previous_pokemon.update(db.SIGHTING_CACHE.store.get(pokemon['encounter_id']))
-                                ls_seen.append(previous_pokemon)
                             ls_seen.append(normalized)
                     for fort in map_cell.get('forts', []):
                         if not fort.get('enabled'):
@@ -457,7 +455,7 @@ class Slave:
             sleep_min = config.SCAN_DELAY[0] - processing_time
             sleep_max = config.SCAN_DELAY[1] - processing_time
             if len(config.SCAN_DELAY) > 2:
-                sleep_mode = config.SCAN_DELAY[2]
+                sleep_mode = config.SCAN_DELAY[2] - processing_time
                 sleep_time = random.triangular(sleep_min, sleep_max,
                                                sleep_mode)
             else:
@@ -651,7 +649,7 @@ class Overseer:
                 if self.workers[worker_no].restart_me:
                     self.start_worker(worker_no)
             # Clean cache
-            if now - last_cleaned_cache > (900):  # clean cache
+            if now - last_cleaned_cache > 900:  # clean cache
                 self.db_processor.clean_cache()
                 last_cleaned_cache = now
             # Check up on workers
@@ -809,6 +807,7 @@ class DatabaseProcessor(threading.Thread):
         while self.running or self.queue:
             if self._clean_cache:
                 db.SIGHTING_CACHE.clean_expired()
+                db.LONGSPAWN_CACHE.clean_expired()
                 self._clean_cache = False
             try:
                 item = self.queue.popleft()
@@ -831,10 +830,10 @@ class DatabaseProcessor(threading.Thread):
                     session.rollback()
                     self.logger.info(
                         'Tried and failed to add a duplicate to DB.')
-                except Exception:
+                except Exception as err:
                     session.rollback()
                     self.logger.exception('A wild exception appeared!')
-                    self.logger.info('Skipping the item.')
+                    self.logger.warning('Tried and failed to add to DB.')
         session.close()
 
     def clean_cache(self):
@@ -885,9 +884,14 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
         overseer.kill()  # also cancels all workers' futures
+        time.sleep(1)
         all_futures = [
             w.future for w in overseer.workers.values()
             if w.future and not isinstance(w.future, Future)
         ]
+        time.sleep(1)
         loop.run_until_complete(asyncio.gather(*all_futures))
+        time.sleep(1)
+        loop.stop()
+        time.sleep(1)
         loop.close()
