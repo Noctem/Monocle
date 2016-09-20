@@ -125,12 +125,20 @@ class Sighting(Base):
         spawn_id = Column(String(11))
     expire_timestamp = Column(Integer, index=True)
     if DB_ENGINE.startswith('sqlite'):
-        encounter_id = Column(BigInteger, unique=True)
+        encounter_id = Column(BigInteger)
     else:
-        encounter_id = Column(Numeric(precision=20, scale=0), unique=True)
+        encounter_id = Column(Numeric(precision=20, scale=0))
     normalized_timestamp = Column(Integer)
     lat = Column(Float, index=True)
     lon = Column(Float, index=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'encounter_id',
+            'expire_timestamp',
+            name='timestamp_encounter_id_unique'
+        ),
+    )
 
 
 class Longspawn(Base):
@@ -151,6 +159,14 @@ class Longspawn(Base):
     lon = Column(Float, index=True)
     time_till_hidden_ms = Column(Integer)
     last_modified_timestamp_ms = Column(BigInteger)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'encounter_id',
+            'last_modified_timestamp_ms',
+            name='encounter_time_unique'
+        ),
+    )
 
 
 class Fort(Base):
@@ -213,11 +229,13 @@ def add_sighting(session, pokemon):
     # Check if there isn't the same entry already
     if pokemon in SIGHTING_CACHE:
         return
-    existing = session.query(Sighting) \
-        .filter(Sighting.encounter_id == pokemon['encounter_id']) \
-        .first()
-    if existing:
-        return
+    if get_engine_name(session) not in ('mysql', 'postgresql'):
+        existing = session.query(Sighting) \
+            .filter(Sighting.expire_timestamp == pokemon['expire_timestamp']) \
+            .filter(Sighting.encounter_id == pokemon['encounter_id']) \
+            .first()
+        if existing:
+            return
     obj = Sighting(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],

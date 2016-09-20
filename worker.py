@@ -411,7 +411,7 @@ class Slave:
             sleep_min = config.SCAN_DELAY[0] - processing_time
             sleep_max = config.SCAN_DELAY[1] - processing_time
             if len(config.SCAN_DELAY) > 2:
-                sleep_mode = config.SCAN_DELAY[2]
+                sleep_mode = config.SCAN_DELAY[2] - processing_time
                 sleep_time = random.triangular(sleep_min, sleep_max,
                                                sleep_mode)
             else:
@@ -602,7 +602,7 @@ class Overseer:
                 if self.workers[worker_no].restart_me:
                     self.start_worker(worker_no)
             # Clean cache
-            if now - last_cleaned_cache > (15 * 60):  # clean cache
+            if now - last_cleaned_cache > 900:  # clean cache after 15min
                 self.db_processor.clean_cache()
                 last_cleaned_cache = now
             # Check up on workers
@@ -785,7 +785,7 @@ class DatabaseProcessor(threading.Thread):
                 except Exception:
                     session.rollback()
                     self.logger.exception('A wild exception appeared!')
-                    self.logger.info('Skipping the item.')
+                    self.logger.warning('Tried and failed to add to DB.')
         session.close()
 
     def clean_cache(self):
@@ -836,9 +836,13 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
         overseer.kill()  # also cancels all workers' futures
+        time.sleep(1)
         all_futures = [
             w.future for w in overseer.workers.values()
             if w.future and not isinstance(w.future, Future)
         ]
+        time.sleep(1)
         loop.run_until_complete(asyncio.gather(*all_futures))
+        time.sleep(1)
+        loop.stop()
         loop.close()
