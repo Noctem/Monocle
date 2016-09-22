@@ -237,6 +237,20 @@ class FortSighting(Base):
 
 Session = sessionmaker(bind=get_engine())
 
+def get_spawn_locations(session):
+    query = session.execute('''
+        SELECT DISTINCT ON (spawn_id) lat, lon, expire_timestamp
+        FROM sightings
+    ''')
+    spawn_points = []
+    for spawn_point in query.fetchall():
+        spawn_points.append({
+            'point': (spawn_point[0], spawn_point[1]),
+            'time': (spawn_point[2] + 2700) % 3600
+        })
+    #print(len(result))
+    spawn_points = sorted(spawn_points, key=lambda k: k['time'])
+    return spawn_points
 
 def normalize_timestamp(timestamp):
     return int(float(timestamp) / 120.0) * 120
