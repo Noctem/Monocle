@@ -41,7 +41,7 @@ def get_scan_area():
     return area
 
 
-def get_start_coords(worker_no):
+def get_start_coords(worker_no, altitude=False):
     """Returns center of square for given worker"""
     grid = config.GRID
     total_workers = grid[0] * grid[1]
@@ -52,7 +52,11 @@ def get_start_coords(worker_no):
     part_lon = (config.MAP_END[1] - config.MAP_START[1]) / float(grid[1])
     start_lat = config.MAP_START[0] + part_lat * row + part_lat / 2
     start_lon = config.MAP_START[1] + part_lon * column + part_lon / 2
-    return start_lat, start_lon
+    if altitude:
+        start_alt = get_altitude((start_lat, start_lon))
+        return start_lat, start_lon, start_alt
+    else:
+        return start_lat, start_lon
 
 
 def float_range(start, end, step):
@@ -82,7 +86,77 @@ def get_gains():
     return abs(start.latitude - lat_gain), abs(start.longitude - lon_gain)
 
 
-def get_altitudes():
+def chunks(l, n):
+    """Yield successive n-sized chunks from l."""
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
+
+
+def get_altitude_key(point, precision=2):
+    return (round(point[0], precision), round(point[1], precision))
+
+
+def random_altitude():
+    if hasattr(config, 'ALT_RANGE'):
+        altitude = random.uniform(*config.ALT_RANGE)
+    else:
+        altitude = random.uniform(300, 400)
+    return altitude
+
+
+def get_altitude(point):
+    try:
+        params = {'locations': 'enc:' + polyline.encode((point,))}
+        r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
+                         params=params).json()
+        altitude = r['results'][0]['elevation']
+    except Exception:
+        altitude = random_altitude()
+    return altitude
+
+
+def get_altitudes(coords, precision=2):
+    altitudes = dict()
+    if len(coords) > 300:
+        for chunk in tuple(chunks(coords, 300)):
+            altitudes.update(get_altitudes(chunk, precision))
+    else:
+        try:
+            params = {'locations': 'enc:' + polyline.encode(coords)}
+            if hasattr(config, 'GOOGLE_MAPS_KEY'):
+                params['key'] = config.GOOGLE_MAPS_KEY
+            r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
+                             params=params).json()
+
+            for result in r['results']:
+                point = (result['location']['lat'], result['location']['lng'])
+                key = get_altitude_key(point, precision)
+                altitudes[key] = result['elevation']
+        except Exception:
+            pass
+    return altitudes
+
+
+def get_spawn_altitudes(spawns, precision=2):
+    rounded_coords = set()
+    for spawn in spawns:
+        key = get_altitude_key(spawn['point'], precision)
+        rounded_coords.add(key)
+    rounded_coords = tuple(rounded_coords)
+    altitudes = get_altitudes(rounded_coords, precision)
+    return altitudes
+
+
+def add_spawn_altitudes(spawns, precision=2):
+    altitudes = get_spawn_altitudes(spawns, precision)
+    for spawn in spawns:
+        key = get_altitude_key(spawn['point'], precision)
+        altitude = altitudes.get(key, random_altitude())
+        spawn['point'] = (*spawn['point'], altitude)
+    return spawns
+
+
+def get_point_altitudes(precision=2):
     rounded_coords = set()
     lat_gain, lon_gain = get_gains()
     for map_row, lat in enumerate(
@@ -95,25 +169,10 @@ def get_altitudes():
         for map_col, lon in enumerate(
             float_range(row_start_lon, config.MAP_END[1], lon_gain)
         ):
-            rounded_coords.add((round(lat, 2), round(lon, 2)))
-    altitudes = dict()
-    try:
-        params = {'locations': 'enc:' + polyline.encode(tuple(rounded_coords))}
-        if hasattr(config, 'GOOGLE_MAPS_KEY'):
-            params['key'] = config.GOOGLE_MAPS_KEY
-        r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
-                         params=params).json()
-
-        for result in r['results']:
-            coords = (round(result['location']['lat'], 2),
-                      round(result['location']['lng'], 2))
-            altitudes[coords] = result['elevation']
-    except Exception:
-        for coord in rounded_coords:
-            if hasattr(config, 'ALT_RANGE'):
-                altitudes[coord] = random.uniform(*config.ALT_RANGE)
-            else:
-                altitudes[coord] = random.uniform(300, 400)
+            key = get_altitude_key((lat, lon), precision)
+            rounded_coords.add(key)
+    rounded_coords = tuple(rounded_coords)
+    altitudes = get_altitudes(rounded_coords, precision)
     return altitudes
 
 
@@ -132,7 +191,7 @@ def get_points_per_worker(gen_alts=False):
     )
 
     if gen_alts:
-        altitudes = get_altitudes()
+        altitudes = get_point_altitudes()
 
     for map_row, lat in enumerate(
         float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)
@@ -150,9 +209,9 @@ def get_points_per_worker(gen_alts=False):
             if map_col >= total_columns:  # should happen only once per 2 rows
                 grid_col -= 1
             worker_no = grid_row * config.GRID[1] + grid_col
-            rounded = (round(lat, 2), round(lon, 2))
+            key = get_altitude_key((lat, lon))
             if gen_alts:
-                alt = altitudes[rounded]
+                alt = altitudes.get(key, random_altitude())
                 points[worker_no].append((lat, lon, alt))
             else:
                 points[worker_no].append((lat, lon))
