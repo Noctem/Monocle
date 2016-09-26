@@ -4,8 +4,6 @@ from collections import deque
 from datetime import datetime
 from functools import partial
 from sqlalchemy.exc import IntegrityError
-from stem import Signal
-from stem.control import Controller
 from geopy.distance import great_circle
 import argparse
 import asyncio
@@ -64,12 +62,17 @@ for setting_name, default in OPTIONAL_SETTINGS.items():
         setattr(config, setting_name, default)
 
 if config.CONTROL_SOCKS:
+    from stem import Signal
+    from stem.control import Controller
     import stem.util.log
     stem.util.log.get_logger().level = 40
     CIRCUIT_TIME = dict()
+    CIRCUIT_FAILURES = dict()
+    CIRCUIT_LATENCIES = dict()
     for proxy in config.PROXIES:
-        address = proxy.get('https')
-        CIRCUIT_TIME[address] = time.time()
+        CIRCUIT_TIME[proxy] = time.time()
+        CIRCUIT_FAILURES[proxy] = 0
+        CIRCUIT_LATENCIES[proxy] = deque(maxlen=30)
 
 BAD_STATUSES = (
     'LOGIN FAIL',
@@ -122,7 +125,7 @@ class Slave:
             cell_ids_executor,
             network_executor,
             device_info=None,
-            proxies=None
+            proxy=None
     ):
         self.worker_no = worker_no
         self.visits = 0
@@ -141,10 +144,10 @@ class Slave:
         self.logged_in = False
         self.ever_authenticated = False
         # Other variables
-        self.last_step_run_time = 0
         self.last_visit = 0
         self.last_api_latency = 0
         self.error_code = 'INIT'
+        self.empty_visits = 0
         self.location = utils.get_start_coords(self.worker_no, altitude=True)
         # And now, configure logger and PGoApi
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
@@ -155,8 +158,10 @@ class Slave:
         self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(*self.location)
         self.api.set_logger(self.logger)
-        self.proxies = proxies
-        self.api.set_proxy(self.proxies)
+        if proxy:
+            self.set_proxy(proxy)
+        else:
+            self.proxy = None
 
     def call_api(self, method, *args, **kwargs):
         """Returns decorated function that measures execution time
@@ -167,38 +172,54 @@ class Slave:
             start = time.time()
             result = method(*args, **kwargs)
             self.last_api_latency = time.time() - start
-            if self.last_api_latency > 60:
-                self.swap_proxy(reason='excessive latency')
+            if CIRCUIT_LATENCIES:
+                self.add_circuit_latency()
             return result
         return inner
 
-    def swap_account(self, reason=''):
+    def add_circuit_latency(self):
+        CIRCUIT_LATENCIES[self.proxy].append(self.last_api_latency)
+        samples = len(CIRCUIT_LATENCIES[self.proxy])
+        if samples > 10:
+            average = sum(CIRCUIT_LATENCIES[self.proxy]) / samples
+            if average > 10:
+                self.swap_circuit('average latency of ' + str(round(average)) + 's')
+
+    def set_proxy(self, proxy):
+        self.proxy = proxy
+        self.api.set_proxy({'http': proxy, 'https': proxy})
+        return
+
+    async def swap_account(self, reason=''):
         self.logged_in = False
         self.ever_authenticated = False
         self.error_code = 'SWAPPING'
-        self.last_visit = time.time() - 180
+        #self.last_visit = time.time() - 180
+        self.empty_visits = 0
         self.logger.warning('Swapping out ' +
                             config.ACCOUNTS[self.worker_no][0] +
                             ' for ' + config.EXTRA_ACCOUNTS[0][0])
         config.EXTRA_ACCOUNTS.append(config.ACCOUNTS[self.worker_no])
         config.ACCOUNTS[self.worker_no] = config.EXTRA_ACCOUNTS.pop(0)
+        await asyncio.sleep(10)
         return
 
-    def swap_proxy(self, reason=''):
+    def swap_circuit(self, reason=''):
         if not config.CONTROL_SOCKS:
             return
-        address = self.proxies.get('https')
-        time_passed = time.time() - CIRCUIT_TIME[address]
-        if time_passed > 60:
-            socket = config.CONTROL_SOCKS[address]
+        time_passed = time.time() - CIRCUIT_TIME[self.proxy]
+        if time_passed > 180:
+            socket = config.CONTROL_SOCKS[self.proxy]
             with Controller.from_socket_file(path=socket) as controller:
                 controller.authenticate()
                 controller.signal(Signal.NEWNYM)
-            CIRCUIT_TIME[address] = time.time()
-            self.logger.warning('Changed circuit on ' + address +
+            CIRCUIT_TIME[self.proxy] = time.time()
+            CIRCUIT_FAILURES[self.proxy] = 0
+            CIRCUIT_LATENCIES[self.proxy] = deque(maxlen=30)
+            self.logger.warning('Changed circuit on ' + self.proxy +
                                 ' due to ' + reason)
         else:
-            self.logger.info('Skipped changing circuit on ' + address +
+            self.logger.info('Skipped changing circuit on ' + self.proxy +
                              ' because it was changed ' + str(time_passed)
                              + ' seconds ago.')
 
@@ -242,8 +263,8 @@ class Slave:
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 self.logger.error('Banned IP.')
                 self.error_code = 'IP BANNED'
-                self.swap_proxy(reason='ban')
-                await self.random_sleep()
+                self.swap_circuit(reason='ban')
+                await self.random_sleep(sleep_min=15, sleep_max=20)
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed!')
                 self.error_code = 'LOGIN FAIL'
@@ -284,7 +305,7 @@ class Slave:
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 self.logger.error('Banned IP.')
                 self.error_code = 'IP BANNED'
-                self.swap_proxy(reason='ban')
+                self.swap_circuit(reason='ban')
                 await self.random_sleep(sleep_min=15, sleep_max=20)
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed!')
@@ -294,7 +315,7 @@ class Slave:
             except pgoapi_exceptions.NotLoggedInException:
                 self.logger.error('Invalid credentials')
                 self.error_code = 'BAD LOGIN'
-                self.swap_account(reason='bad login')
+                await self.swap_account(reason='bad login')
                 self.logged_in = False
                 await self.random_sleep()
             except pgoapi_exceptions.ServerBusyOrOfflineException:
@@ -311,7 +332,7 @@ class Slave:
                 await self.random_sleep()
             except BannedAccount:
                 self.error_code = 'BANNED?'
-                self.swap_account(reason='code 3')
+                await self.swap_account(reason='code 3')
             except Exception as err:
                 self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
@@ -332,23 +353,24 @@ class Slave:
             altitude = random.uniform(point[2] - 1, point[2] + 1)
         except KeyError:
             altitude = utils.random_altitude()
+        rounded_coords = utils.round_coords(point, precision=5)
         self.error_code = '!'
         self.logger.info(
-            'Visiting point %d (%s,%s %sm)', i, round(latitude, 4),
-            round(longitude, 4), round(altitude)
+            'Visiting point %d (%s,%s %sm)', i, rounded_coords[0],
+            rounded_coords[1], round(altitude)
         )
         start = time.time()
         self.api.set_position(latitude, longitude, altitude)
         self.last_visit = start
         self.location = point
-        if i not in CELL_IDS:
-            CELL_IDS[i] = await loop.run_in_executor(
+        if rounded_coords not in CELL_IDS:
+            CELL_IDS[rounded_coords] = await loop.run_in_executor(
                 self.cell_ids_executor,
                 partial(
                     pgoapi_utils.get_cell_ids, latitude, longitude, radius=1500
                 )
             )
-        cell_ids = CELL_IDS[i]
+        cell_ids = CELL_IDS[rounded_coords]
         response_dict = await loop.run_in_executor(
             self.network_executor,
             self.call_api(
@@ -372,9 +394,11 @@ class Slave:
         pokemons = []
         ls_seen = []
         forts = []
+        pokemon_seen = 0
         if map_objects.get('status') == 1:
             for map_cell in map_objects['map_cells']:
                 for pokemon in map_cell.get('wild_pokemons', []):
+                    pokemon_seen += 1
                     # Store spawns outside of the 15 minute range in a
                     # different table until they fall under 15 minutes,
                     # and notify about them differently.
@@ -388,10 +412,11 @@ class Slave:
                         pokemon,
                         map_cell['current_timestamp_ms']
                     )
-                    pokemons.append(normalized)
+                    if not long_spawn:
+                        pokemons.append(normalized)
 
                     if normalized['pokemon_id'] in config.NOTIFY_IDS:
-                        self.error_code = 'Notifying'
+                        self.error_code = '*'
                         notified, explanation = notifier.notify(pokemon)
                         if notified:
                             self.logger.info(explanation)
@@ -411,29 +436,43 @@ class Slave:
                     if fort.get('type') == 1:  # probably pokestops
                         continue
                     forts.append(self.normalize_fort(fort))
-            self.db_processor.add(pokemons)
-            self.db_processor.add(forts)
+
+            if pokemons:
+                self.db_processor.add(pokemons)
+            if forts:
+                self.db_processor.add(forts)
             if ls_seen:
                 self.db_processor.add(ls_seen)
-            self.seen_per_cycle += len(pokemons)
-            self.total_seen += len(pokemons)
-            global GLOBAL_SEEN
+
+            if pokemon_seen > 0:
+                self.error_code = ':'
+                self.total_seen += pokemon_seen
+                self.seen_per_cycle += pokemon_seen
+                global GLOBAL_SEEN
+                GLOBAL_SEEN += pokemon_seen
+                self.empty_visits = 0
+                if CIRCUIT_FAILURES:
+                    CIRCUIT_FAILURES[self.proxy] = 0
+            else:
+                self.error_code = ','
+                self.empty_visits += 1
+                if self.empty_visits > 20:
+                    reason = str(self.empty_visits) + ' empty visits'
+                    await self.swap_account(reason)
+                if CIRCUIT_FAILURES:
+                    CIRCUIT_FAILURES[self.proxy] += 1
+                    if CIRCUIT_FAILURES[self.proxy] > 20:
+                        reason = str(CIRCUIT_FAILURES[self.proxy]) + ' empty visits'
+                        self.swap_circuit(reason)
+
             global GLOBAL_VISITS
-            GLOBAL_SEEN += len(pokemons)
             GLOBAL_VISITS += 1
             self.visits += 1
             self.logger.info(
                 'Point processed, %d Pokemons and %d forts seen!',
-                len(pokemons),
+                pokemon_seen,
                 len(forts),
             )
-            #print(len(pokemons), 'seen at', i)
-            # Clear error code and let know that there are Pokemon
-            self.last_step_run_time = (
-                time.time() - start - self.last_api_latency
-            )
-            if self.total_seen:
-                self.error_code = ':'
             if self.seen_per_cycle == 0:
                 self.error_code = 'NO POKEMON'
             return True
@@ -531,6 +570,7 @@ class Overseer:
         self.status_bar = status_bar
         self.things_count = []
         self.killed = False
+        self.last_proxy = 0
         self.loop = loop
         self.db_processor = DatabaseProcessor()
         if config.COMPUTE_THREADS:
@@ -553,11 +593,15 @@ class Overseer:
             return
 
         if isinstance(config.PROXIES, (tuple, list)):
-            proxies = random.choice(config.PROXIES)
-        elif isinstance(config.PROXIES, dict):
-            proxies = config.PROXIES
+            if self.last_proxy >= len(config.PROXIES) - 1:
+                self.last_proxy = 0
+            else:
+                self.last_proxy += 1
+            proxy = config.PROXIES[self.last_proxy]
+        elif isinstance(config.PROXIES, str):
+            proxy = config.PROXIES
         else:
-            proxies = None
+            proxy = None
 
         worker = Slave(
             worker_no=worker_no,
@@ -565,7 +609,7 @@ class Overseer:
             cell_ids_executor=self.cell_ids_executor,
             network_executor=self.network_executor,
             device_info=utils.get_worker_device(worker_no),
-            proxies=proxies
+            proxy=proxy
         )
         self.workers[worker_no] = worker
 
@@ -687,7 +731,7 @@ class Overseer:
 
     def get_status_message(self):
         workers_count = len(self.workers)
-        
+
         api_stats = self.get_api_stats()
         running_for = datetime.now() - self.start_date
         seen_stats, visit_stats, delay_stats, speed_stats = self.get_visit_stats()
@@ -838,7 +882,7 @@ class Launcher():
             self.spawns = utils.add_spawn_altitudes(spawns)
         self.set_time()
         #self.visitor = ThreadPoolExecutor(max_workers=10)
-    
+
     def set_time(self):
         self.now = time.time()
         current_seconds = self.now % 3600
@@ -864,7 +908,7 @@ class Launcher():
                 #print('Over speed limit:', lowest_speed)
                 await asyncio.sleep(2)
             if worker.last_visit + 10 > time.time():
-                worker = None 
+                worker = None
         return worker, lowest_speed
 
     def launch(self):
@@ -892,7 +936,7 @@ class Launcher():
                     continue
                 point = spawn['point']
                 #asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, x), self.loop)
-                
+
                 #await self.loop.run_in_executor(
                 #    self.visitor,
                 #    partial(self.try_point, point, spawn_time, x)
@@ -902,7 +946,7 @@ class Launcher():
                     time.sleep(1)
                 asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, x), self.loop)
                 visited += 1
-    
+
     async def wrapper(self, worker, point, x):
         #asyncio.set_event_loop(self.loop)
         #asyncio.get_event_loop()
@@ -942,7 +986,7 @@ class Launcher():
         #asyncio.run_coroutine_threadsafe(self.wrapper(worker, point, x), self.loop)
         #asyncio.run_coroutine_threadsafe(self.loop.run_in_executor(self.visitor, partial(worker.visit, point, x)), self.loop)
         #loop.call_soon(bound_visit(worker, point, x, sem))
-        
+
         #asyncio.ensure_future(self.wrapper(worker, point, x, spawn_seconds))
         #
         #asyncio.ensure_future(self.loop.run_in_executor(self.visitor, partial(worker.visit, point, x)))

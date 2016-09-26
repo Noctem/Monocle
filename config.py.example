@@ -16,9 +16,9 @@ SCAN_DELAY = (10, 12, 10.5)  # varies between these values, favoring the third
 ALT_RANGE = (1450, 1550)  # Fall back to altitudes in this range if generation fails
 LONGSPAWNS = False  # Store sightings with invalid times in another DB table
 
-PROXIES = []  # Dict or tuple/list of dicts with 'http' and 'https' keys
-for proxy in ('127.0.0.1:9050', '127.0.0.1:9051', '127.0.0.1:9052'):
-    PROXIES.append({'http': 'socks5://' + proxy, 'https': 'socks5://' + proxy})
+# proxy address and port or tuple of proxy addresses and ports.
+PROXIES = ('socks5://127.0.0.1:9050',
+           'socks5://127.0.0.1:9051')
 
 # location of control sockets for Tor instances (if applicable)
 CONTROL_SOCKS = {
