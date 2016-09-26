@@ -7,5 +7,7 @@ templates/footer.html
 *.so
 *.dll
 *.dylib
+*pickle_landmarks.py
 account_failures.txt
 banned_ips.txt
+*.pickle
