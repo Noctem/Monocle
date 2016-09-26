@@ -92,7 +92,7 @@ def chunks(l, n):
         yield l[i:i + n]
 
 
-def get_altitude_key(point, precision=2):
+def round_coords(point, precision=2):
     return (round(point[0], precision), round(point[1], precision))
 
 
@@ -130,7 +130,7 @@ def get_altitudes(coords, precision=2):
 
             for result in r['results']:
                 point = (result['location']['lat'], result['location']['lng'])
-                key = get_altitude_key(point, precision)
+                key = round_coords(point, precision)
                 altitudes[key] = result['elevation']
         except Exception:
             pass
@@ -140,7 +140,7 @@ def get_altitudes(coords, precision=2):
 def get_spawn_altitudes(spawns, precision=2):
     rounded_coords = set()
     for spawn in spawns:
-        key = get_altitude_key(spawn['point'], precision)
+        key = round_coords(spawn['point'], precision)
         rounded_coords.add(key)
     rounded_coords = tuple(rounded_coords)
     altitudes = get_altitudes(rounded_coords, precision)
@@ -150,7 +150,7 @@ def get_spawn_altitudes(spawns, precision=2):
 def add_spawn_altitudes(spawns, precision=2):
     altitudes = get_spawn_altitudes(spawns, precision)
     for spawn in spawns:
-        key = get_altitude_key(spawn['point'], precision)
+        key = round_coords(spawn['point'], precision)
         altitude = altitudes.get(key, random_altitude())
         spawn['point'] = (*spawn['point'], altitude)
     return spawns
@@ -169,7 +169,7 @@ def get_point_altitudes(precision=2):
         for map_col, lon in enumerate(
             float_range(row_start_lon, config.MAP_END[1], lon_gain)
         ):
-            key = get_altitude_key((lat, lon), precision)
+            key = round_coords((lat, lon), precision)
             rounded_coords.add(key)
     rounded_coords = tuple(rounded_coords)
     altitudes = get_altitudes(rounded_coords, precision)
@@ -209,7 +209,7 @@ def get_points_per_worker(gen_alts=False):
             if map_col >= total_columns:  # should happen only once per 2 rows
                 grid_col -= 1
             worker_no = grid_row * config.GRID[1] + grid_col
-            key = get_altitude_key((lat, lon))
+            key = round_coords((lat, lon))
             if gen_alts:
                 alt = altitudes.get(key, random_altitude())
                 points[worker_no].append((lat, lon, alt))
