@@ -630,7 +630,7 @@ class Overseer:
         while not self.killed:
             now = time.time()
             # Clean cache
-            if now - last_cleaned_cache > 900:  # clean cache
+            if now - last_cleaned_cache > 900:  # clean cache after 15min
                 self.db_processor.clean_cache()
                 last_cleaned_cache = now
             # Check up on workers
@@ -837,6 +837,10 @@ class DatabaseProcessor(threading.Thread):
                     session.rollback()
                     self.logger.info(
                         'Tried and failed to add a duplicate to DB.')
+                except Exception:
+                    session.rollback()
+                    self.logger.exception('A wild exception appeared!')
+                    self.logger.warning('Tried and failed to add to DB.')
         session.close()
 
     def clean_cache(self):

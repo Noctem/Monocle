@@ -99,8 +99,9 @@ TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
 TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'
 
 
-# It is recommended to store the LANDMARKS object in a pickle to reduce startup 
-# time if you are using queries.
+# It is recommended to store the LANDMARKS object in a pickle to reduce startup
+# time if you are using queries. An example script for this is available at:
+# scripts/pickle_landmarks.example.py
 LANDMARKS = Landmarks(query_suffix=AREA_NAME)
 
 # Landmarks to reference when Pokémon are nearby
