@@ -3,7 +3,7 @@ from collections import deque
 
 import time
 
-from db import Session, get_pokemon_ranking
+from db import Session, get_pokemon_ranking, get_despawn_time
 from names import POKEMON_NAMES
 
 import config

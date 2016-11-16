@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
+import utils
 
 try:
     import config
@@ -201,6 +202,20 @@ class Longspawn(Base):
     )
 
 
+class Spawnpoint(Base):
+    __tablename__ = 'spawnpoints'
+
+    id = Column(Integer, primary_key=True)
+    if config.SPAWN_ID_INT:
+        spawn_id = Column(BigInteger, unique=True)
+    else:
+        spawn_id = Column(String(11), unique=True)
+    despawn_time = Column(SmallInteger, index=True)
+    lat = Column(Float)
+    lon = Column(Float)
+    alt = Column(SmallInteger)
+
+
 class Fort(Base):
     __tablename__ = 'forts'
 
@@ -237,20 +252,24 @@ class FortSighting(Base):
 
 Session = sessionmaker(bind=get_engine())
 
+
 def get_spawn_locations(session):
-    query = session.execute('''
-        SELECT DISTINCT ON (spawn_id) lat, lon, expire_timestamp
-        FROM sightings
-    ''')
+    spawns = session.query(Spawnpoint)
     spawn_points = []
-    for spawn_point in query.fetchall():
+    for spawn in spawns:
         spawn_points.append({
-            'point': (spawn_point[0], spawn_point[1]),
-            'time': (spawn_point[2] + 2700) % 3600
+            'point': (spawn.lat, spawn.lon, spawn.alt),
+            'time': (spawn.despawn_time + 1800) % 3600
         })
-    #print(len(result))
     spawn_points = sorted(spawn_points, key=lambda k: k['time'])
     return spawn_points
+
+
+def get_spawn_ids(session):
+    query = session.query(Sighting.spawn_id)
+    spawn_ids = [i[0] for i in query]
+    return spawn_ids
+
 
 def normalize_timestamp(timestamp):
     return int(float(timestamp) / 120.0) * 120
@@ -300,6 +319,31 @@ def add_sighting(session, pokemon):
     )
     session.add(obj)
     SIGHTING_CACHE.add(pokemon)
+
+
+def add_spawnpoint(session, pokemon):
+    # Check if there isn't the same entry already
+    spawn_id = pokemon['spawn_id']
+    new_time = pokemon['expire_timestamp'] % 3600
+    existing = session.query(Spawnpoint) \
+        .filter(Spawnpoint.spawn_id == pokemon['spawn_id']) \
+        .first()
+    if existing:
+        existing_time = existing.despawn_time
+        if abs(new_time - existing_time) < 2:
+            return
+        existing.despawn_time = new_time
+        session.commit()
+    else:
+        altitude = utils.get_altitude((pokemon['lat'], pokemon['lon']))
+        obj = Spawnpoint(
+            spawn_id=pokemon['spawn_id'],
+            despawn_time=new_time,
+            lat=pokemon['lat'],
+            lon=pokemon['lon'],
+            alt=altitude
+        )
+        session.add(obj)
 
 
 def add_longspawn(session, pokemon):
@@ -428,6 +472,16 @@ def get_session_stats(session):
         'length_hours': length_hours,
         'per_hour': min_max_result[2] / length_hours,
     }
+
+
+def get_despawn_time(session, spawn_id):
+    spawn = session.query(Spawnpoint) \
+        .filter(Spawnpoint.spawn_id == spawn_id) \
+        .first()
+    if spawn:
+        return spawn.despawn_time
+    else:
+        return None
 
 
 def get_punch_card(session):
