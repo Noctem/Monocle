@@ -484,6 +484,30 @@ def get_despawn_time(session, spawn_id):
         return None
 
 
+def estimate_remaining_time(session, spawn_id):
+    query = session.execute('''
+        SELECT min((last_modified_timestamp_ms / 1000) % 3600) as min, max((last_modified_timestamp_ms / 1000) % 3600) as max
+        FROM longspawns
+        WHERE spawn_id = {spawn_id} AND last_modified_timestamp_ms > 1477958400000
+    '''.format(spawn_id=spawn_id))
+
+    result = query.first()
+    first_sight, last_sight = result
+    val_range = last_sight - first_sight
+    if val_range > 1710:
+        return 90, 3600
+
+    if (last_sight + 89) > (first_sight + 1801):
+        return 90, 1800
+
+    earliest_estimate = (last_sight + 89) % 3600
+    latest_estimate = (first_sight + 1801) % 3600
+
+    soonest = utils.time_until_time(earliest_estimate)
+    latest = utils.time_until_time(latest_estimate)
+
+    return soonest, latest
+
 def get_punch_card(session):
     if get_engine_name(session) in ('sqlite', 'postgresql'):
         bigint = 'BIGINT'
