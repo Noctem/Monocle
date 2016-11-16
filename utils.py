@@ -2,6 +2,7 @@ import math
 import random
 import requests
 import polyline
+import time
 
 from geopy import distance, Point
 from pgoapi import utilities as pgoapi_utils
@@ -261,3 +262,10 @@ def get_cell_ids_for_points(points):
     for point in points:
         cell_ids.append(pgoapi_utils.get_cell_ids(point[0], point[1]))
     return cell_ids
+
+def time_until_time(seconds):
+    current_seconds = time.time() % 3600
+    if current_seconds > seconds:
+        return seconds + 3600 - current_seconds
+    else:
+        return seconds - current_seconds

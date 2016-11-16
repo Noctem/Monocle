@@ -3,8 +3,9 @@ from collections import deque
 
 import time
 
-from db import Session, get_pokemon_ranking, get_despawn_time
+from db import Session, get_pokemon_ranking, get_despawn_time, estimate_remaining_time
 from names import POKEMON_NAMES
+from utils import time_until_time
 
 import config
 
@@ -52,10 +53,28 @@ class Notification:
         else:
             self.hashtags = set()
 
-        self.longspawn = bool(time_till_hidden == 901)
 
-        self.delta = timedelta(seconds=time_till_hidden)
-        self.expire_time = (now + self.delta).strftime('%I:%M %p').lstrip('0')
+        if isinstance(time_till_hidden, (tuple, list)):
+            soonest, latest = time_till_hidden
+            self.min_delta = timedelta(seconds=soonest)
+            self.max_delta = timedelta(seconds=latest)
+            if ((now + self.min_delta).strftime('%I:%M') ==
+                    (now + self.max_delta).strftime('%I:%M')):
+                average = (soonest + latest) / 2
+                time_till_hidden = average
+                self.delta = timedelta(seconds=average)
+                self.expire_time = (now + self.delta).strftime('%I:%M %p').lstrip('0')
+            else:
+                self.delta = None
+                self.expire_time = None
+                self.min_expire_time = (now + self.min_delta).strftime('%I:%M').lstrip('0')
+                self.max_expire_time = (now + self.max_delta).strftime('%I:%M %p').lstrip('0')
+        else:
+            self.delta = timedelta(seconds=time_till_hidden)
+            self.expire_time = (now + self.delta).strftime('%I:%M %p').lstrip('0')
+            self.min_delta = None
+
+
         self.map_link = ('https://maps.google.com/maps?q=' +
                          str(round(self.coordinates[0], 5)) + ',' +
                          str(round(self.coordinates[1], 5)))
@@ -103,28 +122,23 @@ class Notification:
         from pushbullet import Pushbullet
         pb = Pushbullet(config.PB_API_KEY)
 
-        minutes, seconds = divmod(self.delta.total_seconds(), 60)
-        time_remaining = str(int(minutes)) + 'm' + str(round(seconds)) + 's.'
-
-        if config.AREA_NAME:
-            if self.longspawn:
-                title = ('A wild ' + self.name + ' will be in ' +
-                         config.AREA_NAME + ' until at least ' +
-                         self.expire_time + '!')
-            else:
-                title = ('A wild ' + self.name + ' will be in ' +
-                         config.AREA_NAME + ' until ' + self.expire_time + '!')
-        elif self.longspawn:
-            title = ('A wild ' + self.name +
-                     ' will expire within 45 minutes of ' +
-                     self.expire_time + '!')
+        if self.delta:
+            title = ('A wild ' + self.name + ' will be in ' +
+                     config.AREA_NAME + ' until ' + self.expire_time + '!')
         else:
-            title = ('A wild ' + self.name + ' will expire at ' +
-                     self.expire_time + '!')
+            title = ('A wild ' + self.name + ' will be in ' + config.AREA_NAME
+                     + ' until between ' + self.min_expire_time +  ' and ' +
+                     self.max_expire_time + '!')
 
-        if self.longspawn:
-            body = 'It will be ' + self.place + ' for 15-60 minutes.'
+        if self.min_delta:
+            min_minutes, min_seconds = divmod(self.min_delta.total_seconds(), 60)
+            max_minutes, max_seconds = divmod(self.max_delta.total_seconds(), 60)
+            min_remaining = str(int(min_minutes)) + 'm' + str(round(min_seconds)) + 's'
+            max_remaining = str(int(max_minutes)) + 'm' + str(round(max_seconds)) + 's.'
+            body = 'It will be ' + self.place + ' for between ' + min_remaining + ' and ' + max_remaining
         else:
+            minutes, seconds = divmod(self.delta.total_seconds(), 60)
+            time_remaining = str(int(minutes)) + 'm' + str(round(seconds)) + 's.'
             body = 'It will be ' + self.place + ' for ' + time_remaining
 
         try:
@@ -149,14 +163,15 @@ class Notification:
             return tag_string
         tag_string = generate_tag_string(self.hashtags)
 
-        if self.longspawn:
-            tweet_text = ('A wild ' + self.name + ' appeared ' +
-                          self.place + '! It will expire within 45min of '
-                          + self.expire_time + '. ' + tag_string)
-        else:
+        if self.expire_time:
             tweet_text = ('A wild ' + self.name + ' appeared! It will be ' +
                           self.place + ' until ' + self.expire_time + '. ' +
                           tag_string)
+        else:
+            tweet_text = ('A wild ' + self.name + ' appeared ' +
+                          self.place + '! It will expire sometime between '
+                          + self.min_expire_time + ' and ' +
+                          self.max_expire_time + '. ' + tag_string)
 
         while len(tweet_text) > 116:
             if self.hashtags:
@@ -165,15 +180,16 @@ class Notification:
             else:
                 break
 
-        if (len(tweet_text) > 116) and self.longspawn:
-            self.expire_time = "at least " + self.expire_time
-            tweet_text = ('A wild ' + self.name + ' appeared! It will be ' +
-                          self.place + ' until ' + self.expire_time + '. ')
-        if (len(tweet_text) > 116) and config.AREA_NAME:
-            tweet_text = ('A wild ' + self.name + ' will be in ' +
-                          config.AREA_NAME + ' until ' +
-                          self.expire_time + '. ')
-        if len(tweet_text) > 116:
+        if (len(tweet_text) > 116):
+            if self.expire_time:
+                tweet_text = ('A wild ' + self.name + ' will be in ' +
+                              config.AREA_NAME + ' until ' +
+                              self.expire_time + '. ')
+            else:
+                tweet_text = ('A wild ' + self.name + ' appeared! It will be '
+                              + self.place + ' for 2-30 minutes. ')
+
+        if len(tweet_text) > 116 and self.expire_time:
             tweet_text = ('A wild ' + self.name + ' will be around until '
                           + self.expire_time + '. ')
 
@@ -197,9 +213,11 @@ class Notifier:
     def __init__(self):
         self.recent_notifications = deque(maxlen=100)
         self.notify_ranking = config.INITIAL_RANKING
+        self.session = Session()
         self.set_pokemon_ranking()
         self.differences = deque(maxlen=10)
         self.last_notification = None
+        self.always_notify = []
         if self.notify_ranking:
             setattr(config, 'NOTIFY_IDS', [])
             for pokemon_id in self.pokemon_ranking[0:config.NOTIFY_RANKING]:
@@ -210,33 +228,20 @@ class Notifier:
         self.notify_ids = []
         for pokemon_id in self.pokemon_ranking[0:self.notify_ranking]:
             self.notify_ids.append(pokemon_id)
+        for pokemon_id in self.pokemon_ranking[0:config.ALWAYS_NOTIFY]:
+            self.always_notify.append(pokemon_id)
 
     def set_pokemon_ranking(self):
         if self.notify_ranking:
-            session = Session()
-            self.pokemon_ranking = get_pokemon_ranking(session)
-            session.close()
-            self.set_required_times()
+            self.pokemon_ranking = get_pokemon_ranking(self.session)
         else:
             raise ValueError('Must configure NOTIFY_RANKING.')
 
-    def set_required_times(self):
-        self.time_required = dict()
-
-        for pokemon_id in self.pokemon_ranking[0:config.ALWAYS_NOTIFY]:
-            self.time_required[pokemon_id] = 0
-        required_time = config.MIN_TIME
-        if config.MAX_TIME and (config.NOTIFY_RANKING > config.ALWAYS_NOTIFY):
-            increment = (config.MAX_TIME /
-                         (config.NOTIFY_RANKING - config.ALWAYS_NOTIFY))
-            for pokemon_id in self.pokemon_ranking[
-                    config.ALWAYS_NOTIFY:config.NOTIFY_RANKING]:
-                required_time += increment
-                self.time_required[pokemon_id] = int(required_time)
-        else:
-            for pokemon_id in self.pokemon_ranking[
-                    config.ALWAYS_NOTIFY:config.NOTIFY_RANKING]:
-                self.time_required[pokemon_id] = int(required_time)
+    def get_time_till_hidden(self, spawn_id):
+        despawn_seconds = get_despawn_time(self.session, spawn_id)
+        if not despawn_seconds:
+            return None
+        return time_until_time(despawn_seconds)
 
     def notify(self, pokemon):
         """Send a PushBullet notification and/or a Tweet, depending on if their
@@ -247,9 +252,10 @@ class Notifier:
         if not (config.PB_API_KEY or config.TWITTER_CONSUMER_KEY):
             return (False, 'Did not notify, no Twitter/PushBullet keys set.')
 
-        time_till_hidden = pokemon['time_till_hidden_ms'] / 1000
-        if time_till_hidden < 0 or time_till_hidden > 3600:
-            time_till_hidden = 901
+        if config.SPAWN_ID_INT:
+            spawn_id = int(pokemon['spawn_point_id'], 16)
+        else:
+            spawn_id = pokemon['spawn_point_id']
         coordinates = (pokemon['latitude'], pokemon['longitude'])
         pokeid = pokemon['pokemon_data']['pokemon_id']
         encounter_id = pokemon['encounter_id']
@@ -268,16 +274,19 @@ class Notifier:
             dynamic_range = config.NOTIFY_RANKING - config.ALWAYS_ELIGIBLE
             self.notify_ranking = round(config.ALWAYS_ELIGIBLE + (dynamic_range * fraction))
             self.set_notify_ids()
-            with open('range_log.txt', 'at') as f:
-                f.write(str(round(time_passed)) + ' seconds passed, so using range of ' + str(self.notify_ranking) + '\n')
 
         if pokeid not in self.notify_ids:
             return (False, name + ' is not in the top ' + str(self.notify_ranking))
 
-        if time_till_hidden < self.time_required[pokeid]:
-            return (False, name + ' was expiring too soon to notify. '
-                    + str(time_till_hidden) + 's/'
-                    + str(self.time_required[pokeid]) + 's')
+        time_till_hidden = pokemon['time_till_hidden_ms'] / 1000
+        if time_till_hidden < 0 or time_till_hidden > 90:
+            time_till_hidden = self.get_time_till_hidden(spawn_id)
+
+        if pokeid not in self.always_notify and time_till_hidden and time_till_hidden < 88:
+            return (False, name + ' has only ' + str(time_till_hidden) + ' seconds remaining.')
+
+        if not time_till_hidden:
+            time_till_hidden = estimate_remaining_time(self.session, spawn_id)
 
         code, explanation = Notification(name, coordinates, time_till_hidden).notify()
         if code:
