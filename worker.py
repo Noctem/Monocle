@@ -15,6 +15,11 @@ import threading
 import time
 import pickle
 
+from selenium import webdriver
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+
 from pgoapi import (
     exceptions as pgoapi_exceptions,
     PGoApi,
@@ -158,6 +163,7 @@ class Slave:
         self.api.activate_signature(config.ENCRYPT_PATH)
         self.api.set_position(*self.location)
         self.api.set_logger(self.logger)
+        self.need_captcha = False
         if proxy:
             self.set_proxy(proxy)
         else:
@@ -390,6 +396,7 @@ class Slave:
         if not responses:
             self.logger.warning('Response: %s', response_dict)
             raise MalformedResponse
+        await self.check_captcha(responses)
         map_objects = responses.get('GET_MAP_OBJECTS', {})
         pokemons = []
         ls_seen = []
@@ -478,6 +485,10 @@ class Slave:
             return True
 
     def travel_speed(self, point, spawn_time):
+        if self.busy or self.need_captcha:
+            return None
+        if self.last_visit == 0:
+            return 1
         now = time.time()
         if spawn_time < now:
             spawn_time = now
@@ -490,6 +501,45 @@ class Slave:
         speed = (distance / time_diff) * 3600
         #print('Worker', self.worker_no, 'speed:', speed)
         return speed
+
+    async def check_captcha(self, responses):
+        challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
+        if challenge_url != ' ':
+            self.logger.error('CAPTCHA required: ' + challenge_url)
+            loop = asyncio.get_event_loop()
+            resolved = False
+            while not resolved:
+                resolved = await loop.run_in_executor(
+                    self.cell_ids_executor,
+                    partial(
+                        self.resolve_captcha, challenge_url
+                    )
+                )
+                if not resolved:
+                    await asyncio.sleep(10)
+                    response_dict = self.api.check_challenge()
+                    responses = response_dict.get('responses')
+                    challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
+                    if challenge_url == ' ':
+                        resolved = True
+        return
+
+    def resolve_captcha(self, url):
+        self.need_captcha = True
+        self.error_code = 'C'
+        self.logger.warning('Resolving CAPTCHA: ' + url)
+        driver = webdriver.Chrome()
+        driver.set_window_size(803, 807)
+        driver.get(url)
+        WebDriverWait(driver, 86400).until(EC.text_to_be_present_in_element_value((By.NAME, "g-recaptcha-response"), ""))
+        driver.switch_to.frame(driver.find_element_by_xpath("//*/iframe[@title='recaptcha challenge']"))
+        token = driver.find_element_by_id("recaptcha-token").get_attribute("value")
+        driver.close()
+        response = self.api.verify_challenge(token=token)
+        success = response.get('responses').get('VERIFY_CHALLENGE').get('success', False)
+        if success:
+            self.need_captcha = False
+        return success
 
     @staticmethod
     def normalize_pokemon(raw, now):
