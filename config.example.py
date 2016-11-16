@@ -3,15 +3,14 @@ from datetime import datetime
 from landmarks import Landmarks
 
 DB_ENGINE = 'sqlite:///db.sqlite'
-ENCRYPT_PATH = './libencrypt.so'
+#ENCRYPT_PATH = './libpcrypt.so'
+#HASH_PATH = './libniahash.so'
 
 AREA_NAME = 'Salt Lake City'
 LANGUAGE = 'EN'  # ISO 639-1 codes EN, DE, FR, and ZH currently supported.
 MAP_START = (12.3456, 34.5678)
 MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
-CYCLES_PER_WORKER = 3
-SCAN_DELAY = (10, 12, 10.5)  # varies between these values, favoring the third
 
 ALT_RANGE = (1450, 1550)  # Fall back to altitudes in this range if generation fails
 LONGSPAWNS = False  # Store sightings with invalid times in another DB table

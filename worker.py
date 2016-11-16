@@ -41,7 +41,6 @@ LAST_LOGIN = 0
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
     'DB_ENGINE',
-    'ENCRYPT_PATH',
     'MAP_START',
     'MAP_END',
     'GRID',
@@ -61,7 +60,9 @@ OPTIONAL_SETTINGS = {
     'SCAN_DELAY': (10, 12, 11),
     'NOTIFY_IDS': None,
     'NOTIFY_RANKING': None,
-    'CONTROL_SOCKS': None
+    'CONTROL_SOCKS': None,
+    'ENCRYPT_PATH': None,
+    'HASH_PATH': None
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -79,6 +80,10 @@ if config.CONTROL_SOCKS:
         CIRCUIT_TIME[proxy] = time.time()
         CIRCUIT_FAILURES[proxy] = 0
         CIRCUIT_LATENCIES[proxy] = deque(maxlen=30)
+else:
+    CIRCUIT_TIME = None
+    CIRCUIT_FAILURES = None
+    CIRCUIT_LATENCIES = None
 
 BAD_STATUSES = (
     'LOGIN FAIL',
@@ -115,8 +120,9 @@ def configure_logger(filename='worker.log'):
 try:
     with open('cells.pickle', 'rb') as f:
         CELL_IDS = pickle.load(f)
-    config.NETWORK_THREADS += config.COMPUTE_THREADS
-    config.COMPUTE_THREADS = None
+    if config.COMPUTE_THREADS > 2:
+        config.NETWORK_THREADS += config.COMPUTE_THREADS - 2
+        config.COMPUTE_THREADS = 2
 except Exception:
     CELL_IDS = dict()
 
@@ -141,14 +147,11 @@ class Slave:
         self.cell_ids_executor = cell_ids_executor
         self.network_executor = network_executor
         # Some handy counters
-        self.cycle = 0
-        self.seen_per_cycle = 0
         self.total_seen = 0
         # State variables
-        self.running = True
+        self.busy = False
         self.killed = False  # killed worker will stay killed
         self.logged_in = False
-        self.ever_authenticated = False
         # Other variables
         self.last_visit = 0
         self.last_api_latency = 0
@@ -161,7 +164,10 @@ class Slave:
         self.after_spawn = None
         self.speed = 0
         self.api = PGoApi(device_info=device_info)
-        self.api.activate_signature(config.ENCRYPT_PATH)
+        if config.ENCRYPT_PATH:
+            self.api.set_signature_lib(config.ENCRYPT_PATH)
+        if config.HASH_PATH:
+            self.api.set_hash_lib(config.HASH_PATH)
         self.api.set_position(*self.location)
         self.api.set_logger(self.logger)
         self.need_captcha = False
@@ -199,17 +205,20 @@ class Slave:
 
     async def swap_account(self, reason=''):
         self.logged_in = False
-        self.ever_authenticated = False
         self.error_code = 'SWAPPING'
-        #self.last_visit = time.time() - 180
         self.empty_visits = 0
         self.logger.warning('Swapping out ' +
                             config.ACCOUNTS[self.worker_no][0] +
-                            ' for ' + config.EXTRA_ACCOUNTS[0][0])
+                            ' for ' + config.EXTRA_ACCOUNTS[0][0] + ' because '
+                            + reason + '.')
         config.EXTRA_ACCOUNTS.append(config.ACCOUNTS[self.worker_no])
         config.ACCOUNTS[self.worker_no] = config.EXTRA_ACCOUNTS.pop(0)
-        await asyncio.sleep(10)
         return
+
+    def swap_proxy(self, reason=''):
+        self.set_proxy(random.choice(config.PROXIES))
+        self.logger.warning('Swapped out ' + self.proxy +
+                            ' due to ' + reason)
 
     def swap_circuit(self, reason=''):
         if not config.CONTROL_SOCKS:
@@ -255,17 +264,19 @@ class Slave:
                 self.error_code = 'READY'
                 return
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
-                self.logger.error('Banned IP.')
+                self.logger.error('Banned IP: ' + self.proxy)
                 self.error_code = 'IP BANNED'
                 self.swap_circuit(reason='ban')
                 await self.random_sleep(sleep_min=15, sleep_max=20)
             except pgoapi_exceptions.AuthException:
-                self.logger.warning('Login failed!')
+                self.logger.warning('Login failed: ' + config.ACCOUNTS[self.worker_no][0])
                 self.error_code = 'LOGIN FAIL'
+                await self.swap_account(reason='login failed')
                 await self.random_sleep()
             except pgoapi_exceptions.NotLoggedInException:
-                self.logger.error('Invalid credentials')
+                self.logger.error('Invalid credentials: ' + config.ACCOUNTS[self.worker_no][0])
                 self.error_code = 'BAD LOGIN'
+                await self.swap_account(reason='bad login')
                 await self.random_sleep()
             except pgoapi_exceptions.ServerBusyOrOfflineException:
                 self.logger.info('Server too busy - restarting')
@@ -279,7 +290,7 @@ class Slave:
                 self.kill()
                 return
             except Exception as err:
-                self.logger.exception('A wild exception appeared! ' + err)
+                self.logger.exception('A wild exception appeared! ' + str(err))
                 self.error_code = 'EXCEPTION'
                 await self.random_sleep()
         return False
@@ -302,12 +313,13 @@ class Slave:
                 self.swap_circuit(reason='ban')
                 await self.random_sleep(sleep_min=15, sleep_max=20)
             except pgoapi_exceptions.AuthException:
-                self.logger.warning('Login failed!')
+                self.logger.warning('Login failed: ' + config.ACCOUNTS[self.worker_no][0])
                 self.error_code = 'LOGIN FAIL'
                 self.logged_in = False
+                await self.swap_account(reason='failed login')
                 await self.random_sleep()
             except pgoapi_exceptions.NotLoggedInException:
-                self.logger.error('Invalid credentials')
+                self.logger.error('Invalid credentials: ' + config.ACCOUNTS[self.worker_no][0])
                 self.error_code = 'BAD LOGIN'
                 await self.swap_account(reason='bad login')
                 self.logged_in = False
@@ -339,7 +351,6 @@ class Slave:
         return False
 
     async def visit_point(self, point, i):
-        #print('Worker', self.worker_no, 'visiting', i)
         loop = asyncio.get_event_loop()
         latitude = random.uniform(point[0] - 0.00001, point[0] + 0.00001)
         longitude = random.uniform(point[1] - 0.00001, point[1] + 0.00001)
@@ -355,13 +366,12 @@ class Slave:
         )
         start = time.time()
         self.api.set_position(latitude, longitude, altitude)
-        self.last_visit = start
         self.location = point
         if rounded_coords not in CELL_IDS:
             CELL_IDS[rounded_coords] = await loop.run_in_executor(
                 self.cell_ids_executor,
                 partial(
-                    pgoapi_utils.get_cell_ids, latitude, longitude, radius=1500
+                    pgoapi_utils.get_cell_ids, latitude, longitude
                 )
             )
         cell_ids = CELL_IDS[rounded_coords]
@@ -374,6 +384,7 @@ class Slave:
                 cell_id=cell_ids
             )
         )
+        self.last_visit = time.time()
         if not isinstance(response_dict, dict):
             self.logger.warning('Response: %s', response_dict)
             raise MalformedResponse
@@ -399,7 +410,7 @@ class Slave:
                     # and notify about them differently.
                     long_spawn = (
                         pokemon['time_till_hidden_ms'] < 0 or
-                        pokemon['time_till_hidden_ms'] > 3600000
+                        pokemon['time_till_hidden_ms'] > 90000
                     )
                     if long_spawn and not config.LONGSPAWNS:
                         continue
@@ -442,7 +453,6 @@ class Slave:
             if pokemon_seen > 0:
                 self.error_code = ':'
                 self.total_seen += pokemon_seen
-                self.seen_per_cycle += pokemon_seen
                 global GLOBAL_SEEN
                 GLOBAL_SEEN += pokemon_seen
                 self.empty_visits = 0
@@ -451,7 +461,7 @@ class Slave:
             else:
                 self.error_code = ','
                 self.empty_visits += 1
-                if self.empty_visits > 20:
+                if self.empty_visits > 3:
                     reason = str(self.empty_visits) + ' empty visits'
                     await self.swap_account(reason)
                 if CIRCUIT_FAILURES:
@@ -468,8 +478,6 @@ class Slave:
                 pokemon_seen,
                 len(forts),
             )
-            if self.seen_per_cycle == 0:
-                self.error_code = 'NO POKEMON'
             return True
 
     def travel_speed(self, point, spawn_time):
@@ -481,13 +489,12 @@ class Slave:
         if spawn_time < now:
             spawn_time = now
         time_diff = spawn_time - self.last_visit
-        if time_diff < 10:
+        if time_diff < 15:
             return None
-        elif time_diff > 30:
+        elif time_diff > 60:
             self.error_code = None
         distance = great_circle(self.location, point).miles
         speed = (distance / time_diff) * 3600
-        #print('Worker', self.worker_no, 'speed:', speed)
         return speed
 
     async def check_captcha(self, responses):
@@ -586,7 +593,7 @@ class Slave:
 
     async def random_sleep(self, sleep_min=8, sleep_max=12):
         """Sleeps for a bit, then restarts"""
-        await self.sleep(random.uniform(sleep_min, sleep_max))
+        await asyncio.sleep(random.uniform(sleep_min, sleep_max))
 
     def kill(self):
         """Marks worker as killed
@@ -594,7 +601,6 @@ class Slave:
         Killed worker won't be restarted.
         """
         self.error_code = 'KILLED'
-        self.running = False
         self.killed = True
 
 
@@ -663,7 +669,6 @@ class Overseer:
         workers_check = [
             (worker, worker.total_seen)
             for worker in self.workers.values()
-            if worker.running
         ]
         while not self.killed:
             now = time.time()
