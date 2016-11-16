@@ -35,6 +35,7 @@ START_TIME = time.time()
 GLOBAL_VISITS = 0
 GLOBAL_SEEN = 0
 NOTIFICATIONS_SENT = 0
+LAST_LOGIN = 0
 
 
 # Check whether config has all necessary attributes
@@ -234,38 +235,25 @@ class Slave:
         self.error_code = 'LOGIN'
         loop = asyncio.get_event_loop()
         self.logger.info('Trying to log in')
+        global LAST_LOGIN
+        time_required = random.uniform(3, 6)
+        while (time.time() - LAST_LOGIN) < time_required:
+            await asyncio.sleep(1.5)
+        LAST_LOGIN = time.time()
         for attempts in range(0,5):
             try:
-                if self.ever_authenticated:
-                    await loop.run_in_executor(
-                        self.network_executor,
-                        self.call_api(
-                            self.api.set_authentication,
-                            username=config.ACCOUNTS[self.worker_no][0],
-                            password=config.ACCOUNTS[self.worker_no][1],
-                            provider=config.ACCOUNTS[self.worker_no][2],
-                        )
+                await loop.run_in_executor(
+                    self.network_executor,
+                    self.call_api(
+                        self.api.set_authentication,
+                        username=config.ACCOUNTS[self.worker_no][0],
+                        password=config.ACCOUNTS[self.worker_no][1],
+                        provider=config.ACCOUNTS[self.worker_no][2],
                     )
-                    loginsuccess = True
-                else:
-                    loginsuccess = await loop.run_in_executor(
-                        self.network_executor,
-                        self.call_api(
-                            self.api.login,
-                            username=config.ACCOUNTS[self.worker_no][0],
-                            password=config.ACCOUNTS[self.worker_no][1],
-                            provider=config.ACCOUNTS[self.worker_no][2],
-                        )
-                    )
-                if loginsuccess:
-                    self.ever_authenticated = True
-                    self.logged_in = True
-                    self.error_code = 'READY'
-                    await asyncio.sleep(3)
-                    return
-                else:
-                    self.error_code = 'LOGIN FAIL'
-                    await self.random_sleep()
+                )
+                self.logged_in = True
+                self.error_code = 'READY'
+                return
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 self.logger.error('Banned IP.')
                 self.error_code = 'IP BANNED'
