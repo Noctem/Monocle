@@ -222,6 +222,8 @@ class Slave:
 
     def swap_circuit(self, reason=''):
         if not config.CONTROL_SOCKS:
+            if config.PROXIES:
+                swap_proxy(self, reason=reason)
             return
         time_passed = time.time() - CIRCUIT_TIME[self.proxy]
         if time_passed > 180:
@@ -584,13 +586,6 @@ class Slave:
             msg=msg
         )
 
-    async def sleep(self, duration):
-        """Sleeps and interrupts if detects that worker was killed"""
-        try:
-            await asyncio.sleep(duration)
-        except CancelledError:
-            self.kill()
-
     async def random_sleep(self, sleep_min=8, sleep_max=12):
         """Sleeps for a bit, then restarts"""
         await asyncio.sleep(random.uniform(sleep_min, sleep_max))
@@ -846,6 +841,9 @@ class DatabaseProcessor(threading.Thread):
         self._clean_cache = False
         self.count = 0
 
+    def set_spawn_ids(self):
+        self.spawn_ids = db.get_spawn_ids(db.Session())
+
     def stop(self):
         self.running = False
 
@@ -868,10 +866,13 @@ class DatabaseProcessor(threading.Thread):
                 try:
                     if item['type'] == 'pokemon':
                         db.add_sighting(session, item)
+                        if item['spawn_id'] not in self.spawn_ids:
+                            db.add_spawnpoint(session, item)
                         session.commit()
                         self.count += 1
                     elif item['type'] == 'longspawn':
                         db.add_longspawn(session, item)
+                        self.count += 1
                     elif item['type'] == 'fort':
                         db.add_fort_sighting(session, item)
                         # No need to commit here - db takes care of it
@@ -916,19 +917,10 @@ class Launcher():
     def __init__(self, overseer, loop):
         self.loop = loop
         self.overseer = overseer
-        self.assignments = dict()
-        self.workers = self.overseer.workers.values()
+        self.workers = list(self.overseer.workers.values())
         count = len(self.workers)
-        self.coroutine_limit = int(count * .8)
-        self.coroutines = 0
-        try:
-            with open('spawns.pickle', 'rb') as f:
-                self.spawns = pickle.load(f)
-        except Exception:
-            spawns = db.get_spawn_locations(db.Session())
-            self.spawns = utils.add_spawn_altitudes(spawns)
+        self.coroutine_limit = int(count / 2.2) + 1
         self.set_time()
-        #self.visitor = ThreadPoolExecutor(max_workers=10)
 
     def set_time(self):
         self.now = time.time()
@@ -947,15 +939,15 @@ class Launcher():
                 if speed is not None and speed < lowest_speed:
                     lowest_speed = speed
                     worker = w
+                    if speed < 7:
+                        break
             #lowest_speed = round(lowest_speed)
             if worker is None:
                 #print('No eligible workers')
-                await asyncio.sleep(10)
+                await asyncio.sleep(5)
             elif lowest_speed > config.SPEED_LIMIT:
                 #print('Over speed limit:', lowest_speed)
                 await asyncio.sleep(2)
-            if worker.last_visit + 10 > time.time():
-                worker = None
         return worker, lowest_speed
 
     def launch(self):
@@ -964,88 +956,45 @@ class Launcher():
         cycle = 0
         while True:
             self.set_time()
+            self.spawns = db.get_spawn_locations(db.Session())
+            self.overseer.db_processor.set_spawn_ids()
+            if os.path.isfile('cells.pickle'):
+                with open('cells.pickle', 'wb') as f:
+                    pickle.dump(CELL_IDS, f, pickle.HIGHEST_PROTOCOL)
             for spawn in self.spawns:
                 spawn_seconds = spawn['time']
                 spawn['spawn_time'] = spawn_seconds + self.current_hour
             cycle += 1
-            for worker in self.workers:
-                worker.cycle = cycle
-                worker.seen_per_cycle = 0
+            random.shuffle(self.workers)
             for x, spawn in enumerate(self.spawns):
+                coroutines_count = len(asyncio.Task.all_tasks(self.loop))
+                while coroutines_count > self.coroutine_limit:
+                    time.sleep(1)
+                    coroutines_count = len(asyncio.Task.all_tasks(self.loop))
                 spawn_time = spawn['spawn_time']
                 self.now = time.time()
                 time_diff = spawn_time - self.now
-                if visited == 0 and time_diff < -60:
+                if visited == 0 and (time_diff < -10 or time_diff > 10):
                     continue
-                elif time_diff < -450:
-                    #print('Skipping', x)
+                elif time_diff < -60:
                     skipped += 1
                     continue
                 point = spawn['point']
-                #asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, x), self.loop)
-
-                #await self.loop.run_in_executor(
-                #    self.visitor,
-                #    partial(self.try_point, point, spawn_time, x)
-                #)
-                self.coroutines += 1
-                while self.coroutines > self.coroutine_limit:
-                    time.sleep(1)
                 asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, x), self.loop)
                 visited += 1
 
-    async def wrapper(self, worker, point, x):
-        #asyncio.set_event_loop(self.loop)
-        #asyncio.get_event_loop()
-        await self.loop.run_in_executor(
-            self.visitor,
-            partial(
-                worker.visit, point, x
-            )
-        )
-
     async def try_point(self, point, spawn_time, x):
-        #asyncio.set_event_loop(self.loop)
-        #asyncio.get_event_loop()
         self.now = time.time()
         time_diff = spawn_time - self.now
         if time_diff > -2:
-            #print('Waiting', round(time_diff + 2, 1), 'seconds for', x)
             await asyncio.sleep(time_diff + 2)
 
-        if x in self.assignments:
-            worker_number = self.assignments[x]
-            worker = self.overseer.workers[worker_number]
-            speed = worker.travel_speed(point, spawn_time)
-            if speed is None or speed > config.SPEED_LIMIT:
-                worker, speed = await self.best_worker(point, spawn_time)
-                self.assignments[x] = worker.worker_no
-        else:
-            worker, speed = await self.best_worker(point, spawn_time)
-            self.assignments[x] = worker.worker_no
-
-        self.now = time.time()
-        worker.last_visit = self.now
+        worker, speed = await self.best_worker(point, spawn_time)
+        worker.busy = True
         worker.after_spawn = abs(spawn_time - time.time())
         worker.speed = speed
         await worker.visit(point, x)
-        self.coroutines -= 1
-        #asyncio.run_coroutine_threadsafe(self.wrapper(worker, point, x), self.loop)
-        #asyncio.run_coroutine_threadsafe(self.loop.run_in_executor(self.visitor, partial(worker.visit, point, x)), self.loop)
-        #loop.call_soon(bound_visit(worker, point, x, sem))
-
-        #asyncio.ensure_future(self.wrapper(worker, point, x, spawn_seconds))
-        #
-        #asyncio.ensure_future(self.loop.run_in_executor(self.visitor, partial(worker.visit, point, x)))
-        #worker.future = worker.visit(point, x))
-        #worker.future.add_done_callback(return)
-        #self.loop.run_in_executor(self.visitor, partial(worker.visit, point, x, spawn_seconds, parent=self))
-        #tasks.append(task)
-        #asyncio.ensure_future(bound_visit(worker, point, x, sem))
-        #await worker.visit(point, x)
-        #asyncio.ensure_future(bound_visit(worker, point, x, sem))
-        #asyncio.ensure_future(bound_fetch(sem, url.format(i), session))
-        # await bound_visit(worker, point, x, sem)
+        worker.busy = False
 
 
 if __name__ == '__main__':
