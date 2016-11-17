@@ -5,7 +5,6 @@ import time
 
 from db import Session, get_pokemon_ranking, get_despawn_time, estimate_remaining_time
 from names import POKEMON_NAMES
-from utils import time_until_time
 
 import config
 
@@ -210,7 +209,8 @@ class Notification:
 
 class Notifier:
 
-    def __init__(self):
+    def __init__(self, spawns):
+        self.spawns = spawns
         self.recent_notifications = deque(maxlen=100)
         self.notify_ranking = config.INITIAL_RANKING
         self.session = Session()
@@ -237,12 +237,6 @@ class Notifier:
         else:
             raise ValueError('Must configure NOTIFY_RANKING.')
 
-    def get_time_till_hidden(self, spawn_id):
-        despawn_seconds = get_despawn_time(self.session, spawn_id)
-        if not despawn_seconds:
-            return None
-        return time_until_time(despawn_seconds)
-
     def notify(self, pokemon):
         """Send a PushBullet notification and/or a Tweet, depending on if their
         respective API keys have been set in config.
@@ -252,14 +246,11 @@ class Notifier:
         if not (config.PB_API_KEY or config.TWITTER_CONSUMER_KEY):
             return (False, 'Did not notify, no Twitter/PushBullet keys set.')
 
-        if config.SPAWN_ID_INT:
-            spawn_id = int(pokemon['spawn_point_id'], 16)
-        else:
-            spawn_id = pokemon['spawn_point_id']
-        coordinates = (pokemon['latitude'], pokemon['longitude'])
-        pokeid = pokemon['pokemon_data']['pokemon_id']
+        spawn_id = pokemon['spawn_id']
+        coordinates = (pokemon['lat'], pokemon['lon'])
+        pokemon_id = pokemon['pokemon_id']
         encounter_id = pokemon['encounter_id']
-        name = POKEMON_NAMES[pokeid]
+        name = POKEMON_NAMES[pokemon_id]
 
         if encounter_id in self.recent_notifications:
             # skip duplicate
@@ -275,14 +266,15 @@ class Notifier:
             self.notify_ranking = round(config.ALWAYS_ELIGIBLE + (dynamic_range * fraction))
             self.set_notify_ids()
 
-        if pokeid not in self.notify_ids:
+        if pokemon_id not in self.notify_ids:
             return (False, name + ' is not in the top ' + str(self.notify_ranking))
 
-        time_till_hidden = pokemon['time_till_hidden_ms'] / 1000
-        if time_till_hidden < 0 or time_till_hidden > 90:
-            time_till_hidden = self.get_time_till_hidden(spawn_id)
+        if pokemon['valid']:
+            time_till_hidden = pokemon['time_till_hidden_ms'] / 1000
+        else:
+            time_till_hidden = self.spawns.get_time_till_hidden(spawn_id)
 
-        if pokeid not in self.always_notify and time_till_hidden and time_till_hidden < 88:
+        if pokemon_id not in self.always_notify and time_till_hidden and time_till_hidden < 150:
             return (False, name + ' has only ' + str(time_till_hidden) + ' seconds remaining.')
 
         if not time_till_hidden:

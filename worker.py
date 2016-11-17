@@ -93,10 +93,6 @@ BAD_STATUSES = (
     'THROTTLE',
 )
 
-if config.NOTIFY_IDS or config.NOTIFY_RANKING:
-    import notification
-    notifier = notification.Notifier()
-
 
 class MalformedResponse(Exception):
     """Raised when server response is malformed"""
@@ -126,6 +122,43 @@ try:
 except Exception:
     CELL_IDS = dict()
 
+
+class Spawns:
+    def __init__(self):
+        self.spawns = None
+        self.session = db.Session()
+
+    def update_spawns(self):
+        self.spawns = db.get_spawns(self.session)
+
+    def have_id(self, spawn_id):
+        return spawn_id in self.spawns
+
+    def get_despawn_seconds(self, spawn_id):
+        if self.have_id(spawn_id):
+            return self.spawns[spawn_id][2]
+        else:
+            return None
+
+    def get_despawn_time(self, spawn_id):
+        if self.have_id(spawn_id):
+            current_hour = utils.get_current_hour()
+            despawn_time = self.get_despawn_seconds(spawn_id) + current_hour
+            return despawn_time
+        else:
+            return None
+
+    def get_time_till_hidden(self, spawn_id):
+        if not self.have_id(spawn_id):
+            return None
+        despawn_seconds = self.spawns[spawn_id][2]
+        return utils.time_until_time(despawn_seconds)
+
+SPAWNS = Spawns()
+
+if config.NOTIFY_IDS or config.NOTIFY_RANKING:
+    import notification
+    notifier = notification.Notifier(SPAWNS)
 
 class Slave:
     """Single worker walking on the map"""
@@ -403,84 +436,101 @@ class Slave:
         ls_seen = []
         forts = []
         pokemon_seen = 0
-        if map_objects.get('status') == 1:
-            for map_cell in map_objects['map_cells']:
-                for pokemon in map_cell.get('wild_pokemons', []):
-                    pokemon_seen += 1
-                    # Store spawns outside of the 15 minute range in a
-                    # different table until they fall under 15 minutes,
-                    # and notify about them differently.
-                    long_spawn = (
-                        pokemon['time_till_hidden_ms'] < 0 or
-                        pokemon['time_till_hidden_ms'] > 90000
-                    )
-                    if long_spawn and not config.LONGSPAWNS:
-                        continue
-                    normalized = self.normalize_pokemon(
-                        pokemon,
-                        map_cell['current_timestamp_ms']
-                    )
-                    if not long_spawn:
-                        pokemons.append(normalized)
+        global SPAWNS
+        if map_objects.get('status') != 1:
+            self.error_code = 'UNKNOWNRESPONSE'
+            self.logger.warning('Response code : ' + str(map_objects.get('status')))
+            self.empty_visits += 1
+            if self.empty_visits > 3:
+                reason = str(self.empty_visits) + ' empty visits'
+                await self.swap_account(reason)
+            return False
+        for map_cell in map_objects['map_cells']:
+            request_time_ms = map_cell['current_timestamp_ms']
+            for pokemon in map_cell.get('wild_pokemons', []):
+                pokemon_seen += 1
+                # Store spawns outside of the 15 minute range in a
+                # different table until they fall under 15 minutes,
+                # and notify about them differently.
+                invalid_tth = (
+                    pokemon['time_till_hidden_ms'] < 0 or
+                    pokemon['time_till_hidden_ms'] > 90000
+                )
+                normalized = self.normalize_pokemon(
+                    pokemon,
+                    request_time_ms
+                )
+                if invalid_tth:
+                    despawn_time = SPAWNS.get_despawn_time(normalized['spawn_id'])
+                    if despawn_time:
+                        normalized['expire_timestamp'] = despawn_time
+                        normalized['time_till_hidden_ms'] = (despawn_time * 1000) - request_time_ms
+                        normalized['valid'] = 'fixed'
+                    else:
+                        normalized['valid'] = False
+                else:
+                    normalized['valid'] = True
 
-                    if normalized['pokemon_id'] in config.NOTIFY_IDS:
-                        self.error_code = '*'
-                        notified, explanation = notifier.notify(pokemon)
-                        if notified:
-                            self.logger.info(explanation)
-                            global NOTIFICATIONS_SENT
-                            NOTIFICATIONS_SENT += 1
-                        else:
-                            self.logger.warning(explanation)
-                    key = db.combine_key(normalized)
-                    if config.LONGSPAWNS and (long_spawn
-                            or key in db.LONGSPAWN_CACHE.store):
-                        normalized = normalized.copy()
-                        normalized['type'] = 'longspawn'
-                        ls_seen.append(normalized)
-                for fort in map_cell.get('forts', []):
-                    if not fort.get('enabled'):
-                        continue
-                    if fort.get('type') == 1:  # probably pokestops
-                        continue
-                    forts.append(self.normalize_fort(fort))
+                if normalized['valid']:
+                    pokemons.append(normalized)
 
-            if pokemons:
-                self.db_processor.add(pokemons)
-            if forts:
-                self.db_processor.add(forts)
-            if ls_seen:
-                self.db_processor.add(ls_seen)
+                if normalized['pokemon_id'] in config.NOTIFY_IDS:
+                    self.error_code = '*'
+                    notified, explanation = notifier.notify(normalized)
+                    if notified:
+                        self.logger.info(explanation)
+                        global NOTIFICATIONS_SENT
+                        NOTIFICATIONS_SENT += 1
+                    else:
+                        self.logger.warning(explanation)
+                key = db.combine_key(normalized)
+                if not normalized['valid'] or key in db.LONGSPAWN_CACHE.store:
+                    normalized = normalized.copy()
+                    normalized['type'] = 'longspawn'
+                    ls_seen.append(normalized)
+            for fort in map_cell.get('forts', []):
+                if not fort.get('enabled'):
+                    continue
+                if fort.get('type') == 1:  # probably pokestops
+                    continue
+                forts.append(self.normalize_fort(fort))
 
-            if pokemon_seen > 0:
-                self.error_code = ':'
-                self.total_seen += pokemon_seen
-                global GLOBAL_SEEN
-                GLOBAL_SEEN += pokemon_seen
-                self.empty_visits = 0
-                if CIRCUIT_FAILURES:
-                    CIRCUIT_FAILURES[self.proxy] = 0
-            else:
-                self.error_code = ','
-                self.empty_visits += 1
-                if self.empty_visits > 3:
-                    reason = str(self.empty_visits) + ' empty visits'
-                    await self.swap_account(reason)
-                if CIRCUIT_FAILURES:
-                    CIRCUIT_FAILURES[self.proxy] += 1
-                    if CIRCUIT_FAILURES[self.proxy] > 20:
-                        reason = str(CIRCUIT_FAILURES[self.proxy]) + ' empty visits'
-                        self.swap_circuit(reason)
+        if pokemons:
+            self.db_processor.add(pokemons)
+        if forts:
+            self.db_processor.add(forts)
+        if ls_seen:
+            self.db_processor.add(ls_seen)
 
-            global GLOBAL_VISITS
-            GLOBAL_VISITS += 1
-            self.visits += 1
-            self.logger.info(
-                'Point processed, %d Pokemons and %d forts seen!',
-                pokemon_seen,
-                len(forts),
-            )
-            return True
+        if pokemon_seen > 0:
+            self.error_code = ':'
+            self.total_seen += pokemon_seen
+            global GLOBAL_SEEN
+            GLOBAL_SEEN += pokemon_seen
+            self.empty_visits = 0
+            if CIRCUIT_FAILURES:
+                CIRCUIT_FAILURES[self.proxy] = 0
+        else:
+            self.error_code = ','
+            self.empty_visits += 1
+            if self.empty_visits > 3:
+                reason = str(self.empty_visits) + ' empty visits'
+                await self.swap_account(reason)
+            if CIRCUIT_FAILURES:
+                CIRCUIT_FAILURES[self.proxy] += 1
+                if CIRCUIT_FAILURES[self.proxy] > 20:
+                    reason = str(CIRCUIT_FAILURES[self.proxy]) + ' empty visits'
+                    self.swap_circuit(reason)
+
+        global GLOBAL_VISITS
+        GLOBAL_VISITS += 1
+        self.visits += 1
+        self.logger.info(
+            'Point processed, %d Pokemons and %d forts seen!',
+            pokemon_seen,
+            len(forts),
+        )
+        return True
 
     def travel_speed(self, point, spawn_time):
         if self.busy or self.need_captcha:
@@ -491,7 +541,7 @@ class Slave:
         if spawn_time < now:
             spawn_time = now
         time_diff = spawn_time - self.last_visit
-        if time_diff < 15:
+        if time_diff < 12:
             return None
         elif time_diff > 60:
             self.error_code = None
@@ -549,14 +599,10 @@ class Slave:
                 (now + raw['time_till_hidden_ms']) / 1000),
             'lat': raw['latitude'],
             'lon': raw['longitude'],
+            'spawn_id': utils.get_spawn_id(raw),
+            'time_till_hidden_ms': raw['time_till_hidden_ms'],
+            'last_modified_timestamp_ms': raw['last_modified_timestamp_ms']
         }
-        if config.SPAWN_ID_INT:
-            normalized['spawn_id'] = int(raw['spawn_point_id'], 16)
-        else:
-            normalized['spawn_id'] = raw['spawn_point_id']
-        if config.LONGSPAWNS:
-            normalized['time_till_hidden_ms'] = raw['time_till_hidden_ms']
-            normalized['last_modified_timestamp_ms'] = raw['last_modified_timestamp_ms']
         return normalized
 
     @staticmethod
@@ -571,6 +617,7 @@ class Slave:
             'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
             'last_modified': round(raw['last_modified_timestamp_ms'] / 1000),
         }
+
 
     @property
     def status(self):
@@ -841,9 +888,6 @@ class DatabaseProcessor(threading.Thread):
         self._clean_cache = False
         self.count = 0
 
-    def set_spawn_ids(self):
-        self.spawn_ids = db.get_spawn_ids(db.Session())
-
     def stop(self):
         self.running = False
 
@@ -852,6 +896,7 @@ class DatabaseProcessor(threading.Thread):
 
     def run(self):
         session = db.Session()
+        global SPAWNS
         while self.running or self.queue:
             if self._clean_cache:
                 db.SIGHTING_CACHE.clean_expired()
@@ -866,8 +911,8 @@ class DatabaseProcessor(threading.Thread):
                 try:
                     if item['type'] == 'pokemon':
                         db.add_sighting(session, item)
-                        if item['spawn_id'] not in self.spawn_ids:
-                            db.add_spawnpoint(session, item)
+                        if item['valid'] == True:
+                            db.add_spawnpoint(session, item, SPAWNS)
                         session.commit()
                         self.count += 1
                     elif item['type'] == 'longspawn':
@@ -920,12 +965,6 @@ class Launcher():
         self.workers = list(self.overseer.workers.values())
         count = len(self.workers)
         self.coroutine_limit = int(count / 2.2) + 1
-        self.set_time()
-
-    def set_time(self):
-        self.now = time.time()
-        current_seconds = self.now % 3600
-        self.current_hour = round(self.now - current_seconds)
 
     async def best_worker(self, point, spawn_time):
         worker = None
@@ -941,59 +980,51 @@ class Launcher():
                     worker = w
                     if speed < 7:
                         break
-            #lowest_speed = round(lowest_speed)
             if worker is None:
-                #print('No eligible workers')
                 await asyncio.sleep(5)
             elif lowest_speed > config.SPEED_LIMIT:
-                #print('Over speed limit:', lowest_speed)
                 await asyncio.sleep(2)
         return worker, lowest_speed
 
     def launch(self):
         visited = 0
         skipped = 0
-        cycle = 0
+        global SPAWNS
         while True:
-            self.set_time()
-            self.spawns = db.get_spawn_locations(db.Session())
-            self.overseer.db_processor.set_spawn_ids()
             if os.path.isfile('cells.pickle'):
                 with open('cells.pickle', 'wb') as f:
                     pickle.dump(CELL_IDS, f, pickle.HIGHEST_PROTOCOL)
-            for spawn in self.spawns:
-                spawn_seconds = spawn['time']
-                spawn['spawn_time'] = spawn_seconds + self.current_hour
-            cycle += 1
+            SPAWNS.update_spawns()
+            current_hour = utils.get_current_hour()
             random.shuffle(self.workers)
-            for x, spawn in enumerate(self.spawns):
+            for spawn_id, spawn in SPAWNS.spawns.items():
                 coroutines_count = len(asyncio.Task.all_tasks(self.loop))
                 while coroutines_count > self.coroutine_limit:
                     time.sleep(1)
                     coroutines_count = len(asyncio.Task.all_tasks(self.loop))
-                spawn_time = spawn['spawn_time']
-                self.now = time.time()
-                time_diff = spawn_time - self.now
+                spawn_time = spawn[1] + current_hour
+                # negative = already happened
+                # positive = hasn't happened yet
+                time_diff = spawn_time - time.time()
                 if visited == 0 and (time_diff < -10 or time_diff > 10):
                     continue
                 elif time_diff < -60:
                     skipped += 1
                     continue
-                point = spawn['point']
-                asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, x), self.loop)
+                point = spawn[0]
+                asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, spawn_id), self.loop)
                 visited += 1
 
-    async def try_point(self, point, spawn_time, x):
-        self.now = time.time()
-        time_diff = spawn_time - self.now
+    async def try_point(self, point, spawn_time, spawn_id):
+        time_diff = spawn_time - time.time()
         if time_diff > -2:
             await asyncio.sleep(time_diff + 2)
 
         worker, speed = await self.best_worker(point, spawn_time)
         worker.busy = True
-        worker.after_spawn = abs(spawn_time - time.time())
+        worker.after_spawn = time.time() - spawn_time
         worker.speed = speed
-        await worker.visit(point, x)
+        await worker.visit(point, spawn_id)
         worker.busy = False
 
 

@@ -1,4 +1,5 @@
 from datetime import datetime
+from collections import OrderedDict
 import enum
 import time
 
@@ -55,15 +56,10 @@ class SightingCache(object):
         self.store = {}
 
     def add(self, sighting):
-        dictionary = {
-            'expire_timestamp': sighting['expire_timestamp'],
-            'last_modified_timestamp_ms': sighting['last_modified_timestamp_ms'],
-            'time_till_hidden_ms': sighting['time_till_hidden_ms']
-        }
-        self.store[combine_key(sighting)] = dictionary
+        self.store[combine_key(sighting)] = sighting['expire_timestamp']
 
     def __contains__(self, raw_sighting):
-        expire_timestamp = self.store.get(combine_key(raw_sighting)).get('expire_timestamp')
+        expire_timestamp = self.store.get(combine_key(raw_sighting))
         if not expire_timestamp:
             return False
         within_range = (
@@ -74,9 +70,8 @@ class SightingCache(object):
 
     def clean_expired(self):
         to_remove = []
-        for key, dictionary in self.store.items():
-            timestamp = dictionary.get('expire_timestamp')
-            if timestamp < time.time() - 2700:
+        for key, timestamp in self.store.items():
+            if time.time() > timestamp:
                 to_remove.append(key)
         for key in to_remove:
             del self.store[key]
@@ -92,24 +87,23 @@ class LongspawnCache(object):
         self.store = {}
 
     def add(self, sighting):
-        self.store[combine_key(sighting)] = (sighting['expire_timestamp'], round(sighting['last_modified_timestamp_ms'] / 1000))
+        self.store[combine_key(sighting)] = sighting['last_modified_timestamp_ms'] / 1000
 
     def __contains__(self, raw_sighting):
-        timestamps = self.store.get(combine_key(raw_sighting))
-        if not timestamps:
+        sighting_time = self.store.get(combine_key(raw_sighting))
+        if not sighting_time:
             return False
-        sighting_time = timestamps[1]
-        raw_sighting_time = round(raw_sighting['last_modified_timestamp_ms'] / 1000)
+        raw_sighting_time = raw_sighting['last_modified_timestamp_ms'] / 1000
         timestamp_in_range = (
-            sighting_time > raw_sighting_time - 5 and
-            sighting_time < raw_sighting_time + 5
+            sighting_time > raw_sighting_time - 30 and
+            sighting_time < raw_sighting_time + 30
         )
         return timestamp_in_range
 
     def clean_expired(self):
         to_remove = []
-        for key, timestamps in self.store.items():
-            if timestamps[0] < time.time() - 3600:
+        for key, timestamp in self.store.items():
+            if timestamp < time.time() - 3600:
                 to_remove.append(key)
         for key in to_remove:
             del self.store[key]
@@ -253,6 +247,23 @@ class FortSighting(Base):
 Session = sessionmaker(bind=get_engine())
 
 
+def get_spawns(session):
+    spawns = session.query(Spawnpoint)
+    spawn_points = []
+    for spawn in spawns:
+        spawn_points.append({
+            'id': spawn.spawn_id,
+            'point': (spawn.lat, spawn.lon, spawn.alt),
+            'despawn_time': spawn.despawn_time,
+            'spawn_time': (spawn.despawn_time + 1800) % 3600
+        })
+    spawn_points = sorted(spawn_points, key=lambda k: k['spawn_time'])
+    spawns = OrderedDict()
+    for spawn in spawn_points:
+        spawns[spawn['id']] = (spawn['point'], spawn['spawn_time'], spawn['despawn_time'])
+    return spawns
+
+
 def get_spawn_locations(session):
     spawns = session.query(Spawnpoint)
     spawn_points = []
@@ -292,14 +303,7 @@ def get_since_query_part(where=True):
 
 def add_sighting(session, pokemon):
     # Check if there isn't the same entry already
-    key = combine_key(pokemon)
-    if key in SIGHTING_CACHE.store:
-        if pokemon in SIGHTING_CACHE:
-            return
-        previous_pokemon = pokemon.copy()
-        previous_pokemon.update(SIGHTING_CACHE.store.get(key))
-        add_longspawn(session, previous_pokemon)
-        add_longspawn(session, pokemon)
+    if pokemon in SIGHTING_CACHE:
         return
     if get_engine_name(session) not in ('mysql', 'postgresql'):
         existing = session.query(Sighting) \
@@ -321,10 +325,14 @@ def add_sighting(session, pokemon):
     SIGHTING_CACHE.add(pokemon)
 
 
-def add_spawnpoint(session, pokemon):
+def add_spawnpoint(session, pokemon, spawns=None):
     # Check if there isn't the same entry already
     spawn_id = pokemon['spawn_id']
     new_time = pokemon['expire_timestamp'] % 3600
+    if spawns:
+        existing_time = spawns.get_despawn_seconds(spawn_id)
+        if existing_time and abs(new_time - existing_time) < 2:
+            return
     existing = session.query(Spawnpoint) \
         .filter(Spawnpoint.spawn_id == pokemon['spawn_id']) \
         .first()

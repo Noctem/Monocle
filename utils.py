@@ -253,6 +253,18 @@ def sort_points_for_worker(points, worker_no):
     return sorted(points, key=lambda p: get_distance(p, center))
 
 
+def get_spawn_id(pokemon):
+    if config.SPAWN_ID_INT:
+        return int(pokemon['spawn_point_id'], 16)
+    else:
+        return pokemon['spawn_point_id']
+
+
+def get_current_hour():
+    now = time.time()
+    return round(now - (now % 3600))
+
+
 def get_distance(p1, p2):
     return math.sqrt(pow(p1[0] - p2[0], 2) + pow(p1[1] - p2[1], 2))
 
