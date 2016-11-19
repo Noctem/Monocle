@@ -168,6 +168,7 @@ class Slave:
             network_executor,
             extra_queue,
             captcha_queue,
+            worker_dict,
             device_info=None,
             proxy=None
     ):
@@ -204,6 +205,7 @@ class Slave:
         self.api.set_logger(self.logger)
         self.extra_queue = extra_queue
         self.captcha_queue = captcha_queue
+        self.worker_dict = worker_dict
         if proxy:
             self.set_proxy(proxy)
         else:
@@ -451,6 +453,7 @@ class Slave:
         ls_seen = []
         forts = []
         pokemon_seen = 0
+        sent_notification = False
         global SPAWNS
         if map_objects.get('status') != 1:
             self.error_code = 'UNKNOWNRESPONSE'
@@ -493,6 +496,7 @@ class Slave:
                     self.error_code = '*'
                     notified, explanation = notifier.notify(normalized)
                     if notified:
+                        sent_notification = True
                         self.logger.info(explanation)
                         global NOTIFICATIONS_SENT
                         NOTIFICATIONS_SENT += 1
@@ -540,6 +544,7 @@ class Slave:
         global GLOBAL_VISITS
         GLOBAL_VISITS += 1
         self.visits += 1
+        self.worker_dict.update([(self.worker_no, ((latitude, longitude), start, self.speed, self.total_seen, self.visits, pokemon_seen, sent_notification))])
         self.logger.info(
             'Point processed, %d Pokemons and %d forts seen!',
             pokemon_seen,
@@ -662,15 +667,18 @@ class Overseer:
                 worker.future.cancel()
 
     def launch_queue_manager(self):
-        queue = Queue()
-        queue2 = Queue()
+        captcha = Queue()
+        extra = Queue()
+        workers = {}
         class QueueManager(SyncManager): pass
-        QueueManager.register('captcha_queue', callable=lambda:queue)
-        QueueManager.register('extra_queue', callable=lambda:queue2)
+        QueueManager.register('captcha_queue', callable=lambda:captcha)
+        QueueManager.register('extra_queue', callable=lambda:extra)
+        QueueManager.register('worker_dict', callable=lambda:workers)
         manager = QueueManager(address='queue.sock', authkey=b'monkeys')
         manager.start()
         self.captcha_queue = manager.captcha_queue()
         self.extra_queue = manager.extra_queue()
+        self.worker_dict = manager.worker_dict()
         for account in config.EXTRA_ACCOUNTS:
             self.extra_queue.put(account)
 
@@ -696,6 +704,7 @@ class Overseer:
             network_executor=self.network_executor,
             extra_queue=self.extra_queue,
             captcha_queue=self.captcha_queue,
+            worker_dict=self.worker_dict,
             device_info=utils.get_worker_device(worker_no),
             proxy=proxy
         )

@@ -6,6 +6,7 @@ import json
 import requests
 from flask import Flask, request, render_template
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
+from multiprocessing.managers import SyncManager
 
 import config
 import db
@@ -63,10 +64,7 @@ def pokemon_data():
 
 @app.route('/workers_data')
 def workers_data():
-    return json.dumps({
-        'points': get_worker_markers(),
-        'scan_radius': config.SCAN_RADIUS,
-    })
+    return json.dumps(get_worker_markers())
 
 
 @app.route('/')
@@ -80,6 +78,22 @@ def fullmap():
         map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION,
     )
 
+@app.route('/workers')
+def workers_map():
+    map_center = utils.get_map_center()
+    return render_template(
+        'workersmap.html',
+        area_name=config.AREA_NAME,
+        map_center=map_center,
+        map_provider_url=config.MAP_PROVIDER_URL,
+        map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION
+    )
+
+class QueueManager(SyncManager): pass
+workers = {}
+QueueManager.register('worker_dict', callable=lambda:workers)
+manager = QueueManager(address='queue.sock', authkey=b'monkeys')
+manager.connect()
 
 def get_pokemarkers():
     markers = []
@@ -115,31 +129,47 @@ def get_pokemarkers():
             'lat': fort['lat'],
             'lon': fort['lon'],
         })
-
-    return markers
-
-
-def get_worker_markers():
-    markers = []
-    points = utils.get_points_per_worker()
+    worker_dict = manager.worker_dict()
     # Worker start points
-    for worker_no, worker_points in enumerate(points):
-        coords = utils.get_start_coords(worker_no)
+    for worker_no, data in worker_dict.items():
+        coords = data[0]
+        unix_time = data[1]
+        time = datetime.fromtimestamp(unix_time).strftime('%I:%M %p').lstrip('0')
         markers.append({
             'lat': coords[0],
             'lon': coords[1],
             'type': 'worker',
             'worker_no': worker_no,
+            'time': time
         })
-        # Circles
-        for i, point in enumerate(worker_points):
-            markers.append({
-                'lat': point[0],
-                'lon': point[1],
-                'type': 'worker_point',
-                'worker_no': worker_no,
-                'point_no': i,
-            })
+    return markers
+
+def get_worker_markers():
+    markers = []
+
+    worker_dict = manager.worker_dict()
+    # Worker start points
+    for worker_no, data in worker_dict.items():
+        coords = data[0]
+        unix_time = data[1]
+        speed = str(round(data[2], 1)) + 'mph'
+        total_seen = data[3]
+        visits = data[4]
+        seen_here = data[5]
+        sent_notification = data[6]
+        time = datetime.fromtimestamp(unix_time).strftime('%I:%M:%S %p').lstrip('0')
+        markers.append({
+            'lat': coords[0],
+            'lon': coords[1],
+            'type': 'worker',
+            'worker_no': worker_no,
+            'time': time,
+            'speed': speed,
+            'total_seen': total_seen,
+            'visits': visits,
+            'seen_here': seen_here,
+            'sent_notification': sent_notification
+        })
     return markers
 
 

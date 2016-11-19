@@ -69,6 +69,13 @@
                 className: 'fort-icon'
             }
         });
+        var WorkerIcon = L.Icon.extend({
+            options: {
+                iconSize: [20, 20],
+                className: 'worker-icon',
+                iconUrl: '/static/img/pokeball.png'
+            }
+        });
 
         function getMarkers () {
             return new Promise(function (resolve, reject) {
@@ -153,6 +160,24 @@
             return marker;
         }
 
+        function WorkerMarker (raw) {
+            var icon = new WorkerIcon();
+            var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: .7});
+            marker.raw = raw;
+            markers[raw.worker_no] = marker;
+            marker.bindPopup('Worker ' + raw.worker_no + ', time: ' + raw.time);
+            return marker;
+        }
+
+
+        function getMarkers () {
+            return new Promise(function (resolve, reject) {
+                $.get('/data', function (response) {
+                    resolve($.parseJSON(response));
+                });
+            });
+        }
+
         function addMarkersToMap (data, map) {
             // Pokemons
             data.forEach(function (item) {
@@ -168,7 +193,7 @@
                     } else {
                         marker.addTo(overlays.Pokemon);
                     }
-                } else {
+                } else if (item.type === 'fort') {
                     // No change since last time? Then don't do anything
                     var existing = markers[item.id];
                     if (typeof existing !== 'undefined') {
@@ -180,6 +205,17 @@
                     }
                     marker = FortMarker(item);
                     marker.addTo(overlays.Gyms);
+                } else if (item.type === 'worker') {
+                    var existing = markers[item.worker_no];
+                    if (typeof existing !== 'undefined') {
+                        existing.removeFrom(overlays.Workers);
+                        markers[item.worker_no + 'c'].removeFrom(overlays.Workers);
+                    }
+                    circle = L.circle([item.lat, item.lon], 70, {weight: 2})
+                    markers[item.worker_no + 'c'] = circle;
+                    marker = WorkerMarker(item);
+                    marker.addTo(overlays.Workers);
+                    circle.addTo(overlays.Workers);
                 }
             });
         }
@@ -190,32 +226,9 @@
             });
         }
 
-        var workersLoaded = false;
-        function loadWorkersLayer () {
-            $.get('/workers_data', function (response) {
-                var data = $.parseJSON(response);
-                var points = [];
-                data.points.forEach(function (raw) {
-                    var point;
-                    if (raw.type == 'worker') {
-                        point = L.marker([raw.lat, raw.lon], {icon: L.icon({iconUrl: '/static/img/marker-icon.png', iconAnchor: [13, 41]})}).bindPopup('Worker ' + raw.worker_no);
-                    } else if (raw.type == 'worker_point') {
-                        point = L.circle([raw.lat, raw.lon], data.scan_radius, {weight: 2}).bindPopup('Worker ' + raw.worker_no + ', point '+ raw.point_no);
-                    }
-                    point.addTo(overlays.Workers);
-                });
-                workersLoaded = true;
-            });
-        }
-
         var map = L.map('main-map').setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
         overlays.Pokemon.addTo(map);
         var control = L.control.layers(null, overlays).addTo(map);
-        map.on('overlayadd', function (event) {
-            if (event.name === 'Workers' && !workersLoaded) {
-                loadWorkersLayer();
-            }
-        });
         L.tileLayer('{{ map_provider_url }}', {
             opacity: 0.5,
             attribution: '{{ map_provider_attribution|safe }}'
