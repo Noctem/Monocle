@@ -174,6 +174,7 @@ class Slave:
     ):
         self.worker_no = worker_no
         self.visits = 0
+        self.account = config.ACCOUNTS[self.worker_no]
         # asyncio/thread references
         self.future = None  # worker's own future
         self.db_processor = db_processor
@@ -243,11 +244,10 @@ class Slave:
         self.error_code = 'BENCHING'
         self.empty_visits = 0
         new_account = self.extra_queue.get()
-        self.logger.warning('Swapping ' +
-                            config.ACCOUNTS[self.worker_no][0] +
-                            ' due to CAPTCHA.')
-        self.captcha_queue.put(config.ACCOUNTS[self.worker_no])
-        config.ACCOUNTS[self.worker_no] = new_account
+        self.logger.warning('Swapping ' + self.account[0] + ' for ' +
+                            new_account[0] + ' due to CAPTCHA.')
+        self.captcha_queue.put(self.account)
+        self.account = new_account
         self.device_info = utils.get_worker_device(self.worker_no)
 
 
@@ -256,12 +256,10 @@ class Slave:
         self.error_code = 'SWAPPING'
         self.empty_visits = 0
         new_account = self.extra_queue.get()
-        self.logger.warning(new_account)
-        self.logger.warning('Swapping out ' +
-                            config.ACCOUNTS[self.worker_no][0] +
-                            ' because ' + reason + '.')
-        self.extra_queue.put(config.ACCOUNTS[self.worker_no])
-        config.ACCOUNTS[self.worker_no] = new_account
+        self.logger.warning('Swapping out ' + self.account[0] + ' for ' +
+                            new_account[0] + ' because ' + reason + '.')
+        self.extra_queue.put(self.account)
+        self.account = new_account
         self.device_info = utils.get_worker_device(self.worker_no)
 
     def swap_proxy(self, reason=''):
@@ -306,9 +304,9 @@ class Slave:
                     self.network_executor,
                     self.call_api(
                         self.api.set_authentication,
-                        username=config.ACCOUNTS[self.worker_no][0],
-                        password=config.ACCOUNTS[self.worker_no][1],
-                        provider=config.ACCOUNTS[self.worker_no][2],
+                        username=self.account[0],
+                        password=self.account[1],
+                        provider=self.account[2],
                     )
                 )
                 self.logged_in = True
@@ -320,12 +318,12 @@ class Slave:
                 self.swap_circuit(reason='ban')
                 await self.random_sleep(sleep_min=15, sleep_max=20)
             except pgoapi_exceptions.AuthException:
-                self.logger.warning('Login failed: ' + config.ACCOUNTS[self.worker_no][0])
+                self.logger.warning('Login failed: ' + self.account[0])
                 self.error_code = 'LOGIN FAIL'
                 await self.swap_account(reason='login failed')
                 await self.random_sleep()
             except pgoapi_exceptions.NotLoggedInException:
-                self.logger.error('Invalid credentials: ' + config.ACCOUNTS[self.worker_no][0])
+                self.logger.error('Invalid credentials: ' + self.account[0])
                 self.error_code = 'BAD LOGIN'
                 await self.swap_account(reason='bad login')
                 await self.random_sleep()
@@ -364,13 +362,13 @@ class Slave:
                 self.swap_circuit(reason='ban')
                 await self.random_sleep(sleep_min=15, sleep_max=20)
             except pgoapi_exceptions.AuthException:
-                self.logger.warning('Login failed: ' + config.ACCOUNTS[self.worker_no][0])
+                self.logger.warning('Login failed: ' + self.account[0])
                 self.error_code = 'LOGIN FAIL'
                 self.logged_in = False
                 await self.swap_account(reason='failed login')
                 await self.random_sleep()
             except pgoapi_exceptions.NotLoggedInException:
-                self.logger.error('Invalid credentials: ' + config.ACCOUNTS[self.worker_no][0])
+                self.logger.error('Invalid credentials: ' + self.account[0])
                 self.error_code = 'BAD LOGIN'
                 await self.swap_account(reason='bad login')
                 self.logged_in = False
