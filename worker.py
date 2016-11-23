@@ -54,7 +54,7 @@ OPTIONAL_SETTINGS = {
     'LONGSPAWNS': False,
     'PROXIES': None,
     'SCAN_RADIUS': 70,
-    'SCAN_DELAY': (10, 12, 11),
+    'SCAN_DELAY': 15,
     'NOTIFY_IDS': None,
     'NOTIFY_RANKING': None,
     'CONTROL_SOCKS': None,
@@ -141,6 +141,8 @@ class Spawns:
         if self.have_id(spawn_id):
             current_hour = utils.get_current_hour()
             despawn_time = self.get_despawn_seconds(spawn_id) + current_hour
+            if time.time() > despawn_time + 1:
+                despawn_time += 3600
             return despawn_time
         else:
             return None
@@ -262,6 +264,16 @@ class Slave:
         self.account = new_account
         self.device_info = utils.get_worker_device(self.worker_no)
 
+    async def remove_account(self):
+        self.logged_in = False
+        self.error_code = 'REMOVING'
+        self.empty_visits = 0
+        new_account = self.extra_queue.get()
+        self.logger.warning('Removing ' + self.account[0] + ' for ' +
+                            new_account[0] + ' due to ban.')
+        self.account = new_account
+        self.device_info = utils.get_worker_device(self.worker_no)
+
     def swap_proxy(self, reason=''):
         self.set_proxy(random.choice(config.PROXIES))
         self.logger.warning('Swapped out ' + self.proxy +
@@ -294,7 +306,7 @@ class Slave:
         loop = asyncio.get_event_loop()
         self.logger.info('Trying to log in')
         global LAST_LOGIN
-        time_required = random.uniform(3, 5)
+        time_required = random.uniform(3, 6)
         while (time.time() - LAST_LOGIN) < time_required:
             await asyncio.sleep(1.5)
         LAST_LOGIN = time.time()
@@ -387,7 +399,7 @@ class Slave:
                 await self.random_sleep()
             except BannedAccount:
                 self.error_code = 'BANNED?'
-                await self.swap_account(reason='code 3')
+                await self.remove_account()
             except Exception as err:
                 self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
@@ -401,8 +413,9 @@ class Slave:
 
     async def visit_point(self, point, i):
         loop = asyncio.get_event_loop()
-        latitude = random.uniform(point[0] - 0.00001, point[0] + 0.00001)
-        longitude = random.uniform(point[1] - 0.00001, point[1] + 0.00001)
+
+        latitude = point[0]
+        longitude = point[1]
         try:
             altitude = random.uniform(point[2] - 1, point[2] + 1)
         except KeyError:
@@ -416,7 +429,7 @@ class Slave:
         start = time.time()
         self.api.set_position(latitude, longitude, altitude)
         self.location = point
-        if rounded_coords not in CELL_IDS:
+        if rounded_coords not in CELL_IDS or len(CELL_IDS[rounded_coords]) > 25:
             CELL_IDS[rounded_coords] = await loop.run_in_executor(
                 self.cell_ids_executor,
                 partial(
@@ -559,7 +572,7 @@ class Slave:
         if spawn_time < now:
             spawn_time = now
         time_diff = spawn_time - self.last_visit
-        if time_diff < 12:
+        if time_diff < config.SCAN_DELAY:
             return None
         elif time_diff > 60:
             self.error_code = None
@@ -1028,11 +1041,13 @@ class Launcher():
                     continue
                 elif time_diff > 90:
                     time.sleep(30)
-                point = spawn[0]
+                point = list(spawn[0])
                 asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, spawn_id), self.loop)
                 visited += 1
 
     async def try_point(self, point, spawn_time, spawn_id):
+        point[0] = random.uniform(point[0] - 0.0004, point[0] + 0.0004)
+        point[1] = random.uniform(point[1] - 0.0004, point[1] + 0.0004)
         time_diff = spawn_time - time.time()
         if time_diff > -2:
             await asyncio.sleep(time_diff + 2)
