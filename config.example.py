@@ -11,6 +11,8 @@ LANGUAGE = 'EN'  # ISO 639-1 codes EN, DE, FR, and ZH currently supported.
 MAP_START = (12.3456, 34.5678)
 MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
+MAX_CAPTCHAS = 100  # stop launching new visits if this many CAPTCHAs are pending
+SCAN_DELAY = 10  # do not visit within this many seconds of the last visit
 
 ALT_RANGE = (1450, 1550)  # Fall back to altitudes in this range if generation fails
 LONGSPAWNS = False  # Store sightings with invalid times in another DB table

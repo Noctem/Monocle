@@ -230,8 +230,8 @@ def find_within(landmark_list, coordinates):
         smallest = None
         for landmark in within:
             if landmark.size < smallest_size:
-                smallest.size = landmark.size
                 smallest = landmark
+                smallest_size = landmark.size
         return smallest
     return None
 

@@ -59,7 +59,8 @@ OPTIONAL_SETTINGS = {
     'NOTIFY_RANKING': None,
     'CONTROL_SOCKS': None,
     'ENCRYPT_PATH': None,
-    'HASH_PATH': None
+    'HASH_PATH': None,
+    'MAX_CAPTCHAS': 100
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -93,10 +94,6 @@ BAD_STATUSES = (
 
 class MalformedResponse(Exception):
     """Raised when server response is malformed"""
-
-
-class BannedAccount(Exception):
-    """Raised when account is banned"""
 
 
 def configure_logger(filename='worker.log'):
@@ -154,6 +151,7 @@ class Spawns:
         return utils.time_until_time(despawn_seconds)
 
 SPAWNS = Spawns()
+DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
 
 if config.NOTIFY_IDS or config.NOTIFY_RANKING:
     import notification
@@ -188,6 +186,7 @@ class Slave:
         self.busy = False
         self.killed = False  # killed worker will stay killed
         self.logged_in = False
+        self.ever_authenticated = False
         # Other variables
         self.last_visit = 0
         self.last_api_latency = 0
@@ -196,10 +195,10 @@ class Slave:
         self.location = utils.get_start_coords(self.worker_no, altitude=True)
         # And now, configure logger and PGoApi
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
-        self.device_info = device_info
+        self.device_info = utils.get_device_info(self.account)
         self.after_spawn = None
         self.speed = 0
-        self.api = PGoApi(device_info=device_info)
+        self.api = PGoApi(device_info=self.device_info)
         if config.ENCRYPT_PATH:
             self.api.set_signature_lib(config.ENCRYPT_PATH)
         if config.HASH_PATH:
@@ -241,38 +240,37 @@ class Slave:
         self.api.set_proxy({'http': proxy, 'https': proxy})
 
 
-    async def bench_account(self):
+    async def new_account(self):
+        while self.extra_queue.empty():
+            await asyncio.sleep(60)
+        self.account = self.extra_queue.get()
         self.logged_in = False
-        self.error_code = 'BENCHING'
+        self.ever_authenticated = False
         self.empty_visits = 0
-        new_account = self.extra_queue.get()
-        self.logger.warning('Swapping ' + self.account[0] + ' for ' +
-                            new_account[0] + ' due to CAPTCHA.')
-        self.captcha_queue.put(self.account)
-        self.account = new_account
-        self.device_info = utils.get_worker_device(self.worker_no)
+        self.device_info = utils.get_device_info(self.account)
+        self.api = PGoApi(device_info=self.device_info)
+        self.api.set_position(*self.location)
+        self.api.set_logger(self.logger)
 
+    async def bench_account(self):
+        self.error_code = 'BENCHING'
+        self.logger.warning('Swapping ' + self.account[0] + ' due to CAPTCHA.')
+        self.captcha_queue.put(self.account)
+        await self.new_account()
 
     async def swap_account(self, reason=''):
-        self.logged_in = False
         self.error_code = 'SWAPPING'
-        self.empty_visits = 0
-        new_account = self.extra_queue.get()
-        self.logger.warning('Swapping out ' + self.account[0] + ' for ' +
-                            new_account[0] + ' because ' + reason + '.')
+        self.logger.warning('Swapping out ' + self.account[0] + ' because ' +
+                            reason + '.')
+        while self.extra_queue.empty():
+            await asyncio.sleep(60)
         self.extra_queue.put(self.account)
-        self.account = new_account
-        self.device_info = utils.get_worker_device(self.worker_no)
+        await self.new_account()
 
     async def remove_account(self):
-        self.logged_in = False
         self.error_code = 'REMOVING'
-        self.empty_visits = 0
-        new_account = self.extra_queue.get()
-        self.logger.warning('Removing ' + self.account[0] + ' for ' +
-                            new_account[0] + ' due to ban.')
-        self.account = new_account
-        self.device_info = utils.get_worker_device(self.worker_no)
+        self.logger.warning('Removing ' + self.account[0] + ' due to ban.')
+        await self.new_account()
 
     def swap_proxy(self, reason=''):
         self.set_proxy(random.choice(config.PROXIES))
@@ -300,60 +298,190 @@ class Slave:
                              ' because it was changed ' + str(time_passed)
                              + ' seconds ago.')
 
+    def get_auth_expiration(self, response):
+        auth_expiration = response.get('auth_ticket', {}).get('expire_timestamp_ms')
+        if auth_expiration:
+            self.auth_expiration = (auth_expiration / 1000) - 5
+
+    def get_inventory_timestamp(self, response):
+        timestamp = response.get('responses', {}).get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
+        if timestamp:
+            self.inventory_timestamp = timestamp
+        elif not self.timestamp:
+            self.inventory_timestamp = (time.time() - 2) * 1000
+
+    async def app_simulation_login(self):
+        self.error_code = 'APP SIMULATION'
+        self.logger.info('Starting RPC login sequence (iOS app simulation)')
+
+        # Send empty initial request
+        request = self.api.create_request()
+        response = await loop.run_in_executor(
+            self.network_executor,
+            self.call_api(request.call)
+        )
+        self.get_auth_expiration(response)
+        await asyncio.sleep(1.172)
+
+        request = self.api.create_request()
+        response = await loop.run_in_executor(
+            self.network_executor,
+            self.call_api(request.call)
+        )
+        await asyncio.sleep(1.304)
+
+
+        # Send GET_PLAYER only
+        request = self.api.create_request()
+        request.get_player(player_locale = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'})
+        response = await loop.run_in_executor(
+            self.network_executor,
+            self.call_api(request.call)
+        )
+
+        if response.get('responses', {}).get('GET_PLAYER', {}).get('banned', False):
+            raise pgoapi_exceptions.BannedAccount
+
+        await asyncio.sleep(1.356)
+
+        request = self.api.create_request()
+        request.download_remote_config_version(platform=1, app_version=4500)
+        request.check_challenge()
+        request.get_hatched_eggs()
+        request.get_inventory()
+        request.check_awarded_badges()
+        request.download_settings()
+        response = await loop.run_in_executor(
+            self.network_executor,
+            self.call_api(request.call)
+        )
+        responses = response.get('responses', {})
+        if await self.check_captcha(responses):
+            return False
+        await asyncio.sleep(1.072)
+
+        self.get_inventory_timestamp(response)
+        responses = response.get('responses', {})
+        download_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
+        if download_hash:
+            global DOWNLOAD_HASH
+            DOWNLOAD_HASH = download_hash
+        inventory = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
+        player_level = None
+        for item in inventory.get('inventory_items', []):
+            player_stats = item.get('inventory_item_data', {}).get('player_stats', {})
+            if player_stats:
+                player_level = player_stats.get('level')
+                break
+
+        request = self.api.create_request()
+        request.get_asset_digest(platform=1, app_version=4500)
+        request.check_challenge()
+        request.get_hatched_eggs()
+        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
+        request.check_awarded_badges()
+        request.download_settings(hash=DOWNLOAD_HASH)
+        response = await loop.run_in_executor(
+            self.network_executor,
+            self.call_api(request.call)
+        )
+        await asyncio.sleep(1.709)
+
+        self.get_inventory_timestamp(response)
+        request = self.api.create_request()
+        request.get_player_profile()
+        request.check_challenge()
+        request.get_hatched_eggs()
+        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
+        request.check_awarded_badges()
+        request.download_settings(hash=DOWNLOAD_HASH)
+        request.get_buddy_walked()
+        response = await loop.run_in_executor(
+            self.network_executor,
+            self.call_api(request.call)
+        )
+        await asyncio.sleep(1.326)
+
+        self.get_inventory_timestamp(response)
+        request = self.api.create_request()
+        request.level_up_rewards(level=player_level)
+        request.check_challenge()
+        request.get_hatched_eggs()
+        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
+        request.check_awarded_badges()
+        request.download_settings(hash=DOWNLOAD_HASH)
+        request.get_buddy_walked()
+        response = await loop.run_in_executor(
+            self.network_executor,
+            self.call_api(request.call)
+        )
+        await asyncio.sleep(1.184)
+
+        self.logger.info('Finished RPC login sequence (iOS app simulation)')
+
+        return response
+
     async def login(self, initial=True):
         """Logs worker in and prepares for scanning"""
-        self.error_code = 'LOGIN'
         loop = asyncio.get_event_loop()
         self.logger.info('Trying to log in')
         global LAST_LOGIN
-        time_required = random.uniform(3, 6)
+        time_required = random.uniform(4, 7)
         while (time.time() - LAST_LOGIN) < time_required:
-            await asyncio.sleep(1.5)
+            self.error_code = 'WAITING'
+            await asyncio.sleep(2)
+        self.error_code = 'LOGIN'
         LAST_LOGIN = time.time()
-        for attempts in range(0,5):
-            try:
-                await loop.run_in_executor(
-                    self.network_executor,
-                    self.call_api(
-                        self.api.set_authentication,
-                        username=self.account[0],
-                        password=self.account[1],
-                        provider=self.account[2],
-                    )
+        try:
+            await loop.run_in_executor(
+                self.network_executor,
+                self.call_api(
+                    self.api.set_authentication,
+                    username=self.account[0],
+                    password=self.account[1],
+                    provider=self.account[2],
                 )
-                self.logged_in = True
-                self.error_code = 'READY'
-                return
-            except pgoapi_exceptions.ServerSideAccessForbiddenException:
-                self.logger.error('Banned IP: ' + self.proxy)
-                self.error_code = 'IP BANNED'
-                self.swap_circuit(reason='ban')
-                await self.random_sleep(sleep_min=15, sleep_max=20)
-            except pgoapi_exceptions.AuthException:
-                self.logger.warning('Login failed: ' + self.account[0])
-                self.error_code = 'LOGIN FAIL'
-                await self.swap_account(reason='login failed')
-                await self.random_sleep()
-            except pgoapi_exceptions.NotLoggedInException:
-                self.logger.error('Invalid credentials: ' + self.account[0])
-                self.error_code = 'BAD LOGIN'
-                await self.swap_account(reason='bad login')
-                await self.random_sleep()
-            except pgoapi_exceptions.ServerBusyOrOfflineException:
-                self.logger.info('Server too busy - restarting')
-                self.error_code = 'RETRYING'
-                await self.random_sleep()
-            except pgoapi_exceptions.ServerSideRequestThrottlingException:
-                self.logger.info('Server throttling - sleeping for a bit')
-                self.error_code = 'THROTTLE'
-                await self.random_sleep(sleep_min=10)
-            except CancelledError:
-                self.kill()
-                return
-            except Exception as err:
-                self.logger.exception('A wild exception appeared! ' + str(err))
-                self.error_code = 'EXCEPTION'
-                await self.random_sleep()
+            )
+            if not self.ever_authenticated:
+                if not await self.app_simulation_login():
+                    return False
+        except pgoapi_exceptions.ServerSideAccessForbiddenException:
+            self.logger.error('Banned IP: ' + self.proxy)
+            self.error_code = 'IP BANNED'
+            self.swap_circuit(reason='ban')
+            await self.random_sleep(sleep_min=15, sleep_max=20)
+        except pgoapi_exceptions.AuthException:
+            self.logger.warning('Login failed: ' + self.account[0])
+            self.error_code = 'FAILED LOGIN'
+            await self.swap_account(reason='login failed')
+            await self.random_sleep()
+        except pgoapi_exceptions.NotLoggedInException:
+            self.logger.error('Invalid credentials: ' + self.account[0])
+            self.error_code = 'BAD LOGIN'
+            await self.swap_account(reason='bad login')
+            await self.random_sleep()
+        except pgoapi_exceptions.ServerBusyOrOfflineException:
+            self.logger.info('Server too busy - restarting')
+            self.error_code = 'RETRYING'
+            await self.random_sleep()
+        except pgoapi_exceptions.ServerSideRequestThrottlingException:
+            self.logger.info('Server throttling - sleeping for a bit')
+            self.error_code = 'THROTTLE'
+            await self.random_sleep(sleep_min=10)
+        except pgoapi_exceptions.BannedAccount:
+            self.error_code = 'BANNED?'
+            await self.remove_account()
+        except CancelledError:
+            self.kill()
+        except Exception as err:
+            self.logger.exception('A wild exception appeared! ' + str(err))
+            self.error_code = 'EXCEPTION'
+            await self.random_sleep()
+        else:
+            self.ever_authenticated = True
+            self.logged_in = True
+            self.error_code = '@'
+            return True
         return False
 
 
@@ -365,24 +493,20 @@ class Slave:
         visited = False
         for attempts in range(0,5):
             try:
-                if not self.logged_in:
-                    await self.login()
+                if not self.logged_in or time.time() > self.auth_expiration:
+                    if not await self.login():
+                        await asyncio.sleep(2)
+                        continue
                 visited = await self.visit_point(point, i)
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 self.logger.error('Banned IP.')
                 self.error_code = 'IP BANNED'
                 self.swap_circuit(reason='ban')
                 await self.random_sleep(sleep_min=15, sleep_max=20)
-            except pgoapi_exceptions.AuthException:
-                self.logger.warning('Login failed: ' + self.account[0])
-                self.error_code = 'LOGIN FAIL'
-                self.logged_in = False
-                await self.swap_account(reason='failed login')
-                await self.random_sleep()
             except pgoapi_exceptions.NotLoggedInException:
                 self.logger.error('Invalid credentials: ' + self.account[0])
-                self.error_code = 'BAD LOGIN'
-                await self.swap_account(reason='bad login')
+                self.error_code = 'NOT AUTHENTICATED'
+                await self.swap_account(reason='not logged in')
                 self.logged_in = False
                 await self.random_sleep()
             except pgoapi_exceptions.ServerBusyOrOfflineException:
@@ -397,7 +521,7 @@ class Slave:
                 self.logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
                 await self.random_sleep()
-            except BannedAccount:
+            except pgoapi_exceptions.BannedAccount:
                 self.error_code = 'BANNED?'
                 await self.remove_account()
             except Exception as err:
@@ -437,14 +561,26 @@ class Slave:
                 )
             )
         cell_ids = CELL_IDS[rounded_coords]
+        since_timestamp_ms = [0] * len(cell_ids)
+        if self.last_visit:
+            last_timestamp = round(self.last_visit * 1000)
+        else:
+            last_timestamp = round((time.time() - 16) * 1000)
+        request = self.api.create_request()
+        request.get_map_objects(cell_id=cell_ids,
+                                since_timestamp_ms=since_timestamp_ms,
+                                latitude=pgoapi_utils.f2i(latitude),
+                                longitude=pgoapi_utils.f2i(longitude))
+        request.check_challenge()
+        request.get_hatched_eggs()
+        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
+        request.check_awarded_badges()
+        request.download_settings(hash=DOWNLOAD_HASH)
+        request.get_buddy_walked()
+
         response_dict = await loop.run_in_executor(
             self.network_executor,
-            self.call_api(
-                self.api.get_map_objects,
-                latitude=pgoapi_utils.f2i(latitude),
-                longitude=pgoapi_utils.f2i(longitude),
-                cell_id=cell_ids
-            )
+            self.call_api(request.call)
         )
         self.last_visit = time.time()
         if not isinstance(response_dict, dict):
@@ -452,13 +588,15 @@ class Slave:
             raise MalformedResponse
         if response_dict['status_code'] == 3:
             logger.warning('Account banned')
-            raise BannedAccount
+            raise pgoapi_exceptions.BannedAccount
         responses = response_dict.get('responses')
         if not responses:
             self.logger.warning('Response: %s', response_dict)
             raise MalformedResponse
         if await self.check_captcha(responses):
             return False
+        self.get_auth_expiration(response_dict)
+        self.get_inventory_timestamp(response_dict)
         map_objects = responses.get('GET_MAP_OBJECTS', {})
         pokemons = []
         ls_seen = []
@@ -584,7 +722,6 @@ class Slave:
     async def check_captcha(self, responses):
         challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
         if challenge_url != ' ':
-            self.logger.error('CAPTCHA required: ' + challenge_url)
             await self.bench_account()
             return True
         return False
@@ -716,7 +853,6 @@ class Overseer:
             extra_queue=self.extra_queue,
             captcha_queue=self.captcha_queue,
             worker_dict=self.worker_dict,
-            device_info=utils.get_worker_device(worker_no),
             proxy=proxy
         )
         self.workers[worker_no] = worker
@@ -990,8 +1126,10 @@ class Launcher():
         self.workers = list(self.overseer.workers.values())
         count = len(self.workers)
         self.coroutine_limit = int(count / 2.2) + 1
+        self.skipped = 0
+        self.visited = 0
 
-    async def best_worker(self, point, spawn_time):
+    async def best_worker(self, point, spawn_time, give_up=False):
         worker = None
         lowest_speed = float('inf')
         while worker is None or lowest_speed > config.SPEED_LIMIT:
@@ -1006,14 +1144,15 @@ class Launcher():
                     if speed < 7:
                         break
             if worker is None:
+                time_diff = spawn_time - time.time()
+                if time_diff < -60:
+                    return False, False
                 await asyncio.sleep(5)
             elif lowest_speed > config.SPEED_LIMIT:
                 await asyncio.sleep(2)
         return worker, lowest_speed
 
     def launch(self):
-        visited = 0
-        skipped = 0
         global SPAWNS
         while True:
             if os.path.isfile('cells.pickle'):
@@ -1023,6 +1162,8 @@ class Launcher():
             current_hour = utils.get_current_hour()
             random.shuffle(self.workers)
             for spawn_id, spawn in SPAWNS.spawns.items():
+                while len(self.overseer.captcha_queue > config.MAX_CAPTCHAS):
+                    time.sleep(30)
                 try:
                     coroutines_count = len(asyncio.Task.all_tasks(self.loop))
                     while coroutines_count > self.coroutine_limit or not isinstance(coroutines_count, int):
@@ -1034,16 +1175,15 @@ class Launcher():
                 # negative = already happened
                 # positive = hasn't happened yet
                 time_diff = spawn_time - time.time()
-                if visited == 0 and (time_diff < -10 or time_diff > 10):
+                if self.visited == 0 and (time_diff < -10 or time_diff > 10):
                     continue
-                elif time_diff < -60:
-                    skipped += 1
+                elif time_diff < -300:
+                    self.skipped += 1
                     continue
                 elif time_diff > 90:
                     time.sleep(30)
                 point = list(spawn[0])
                 asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, spawn_id), self.loop)
-                visited += 1
 
     async def try_point(self, point, spawn_time, spawn_id):
         point[0] = random.uniform(point[0] - 0.0004, point[0] + 0.0004)
@@ -1053,10 +1193,14 @@ class Launcher():
             await asyncio.sleep(time_diff + 2)
 
         worker, speed = await self.best_worker(point, spawn_time)
+        if not worker:
+            self.skipped += 1
+            return False
         worker.busy = True
         worker.after_spawn = time.time() - spawn_time
         worker.speed = speed
-        await worker.visit(point, spawn_id)
+        if await worker.visit(point, spawn_id):
+            self.visited += 1
         worker.busy = False
 
 

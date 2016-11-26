@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from queue import Queue
 from multiprocessing.managers import SyncManager
@@ -8,7 +8,7 @@ from pgoapi import (
     utilities as pgoapi_utils,
 )
 from random import uniform
-from utils import get_altitude
+from utils import get_altitude, get_device_info
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -16,39 +16,29 @@ from selenium.webdriver.common.by import By
 from config import MAP_START, MAP_END
 from sys import exit
 
-def get_device_info(account):
-    hardware = {'iPhone5,1': 'N41AP',
-                'iPhone5,2': 'N42AP',
-                'iPhone5,3': 'N48AP',
-                'iPhone5,4': 'N49AP',
-                'iPhone6,1': 'N51AP',
-                'iPhone6,2': 'N53AP',
-                'iPhone7,1': 'N56AP',
-                'iPhone7,2': 'N61AP',
-                'iPhone8,1': 'N71AP',
-                'iPhone8,2': 'N66AP',
-                'iPhone8,4': 'N69AP'}
-    device_info = {'device_brand': 'Apple',
-                   'device_model': 'iPhone',
-                   'hardware_manufacturer': 'Apple',
-                   'firmware_brand': 'iPhone OS'
-                   }
-    device_info['device_comms_model'] = account[3]
-    device_info['hardware_model'] = hardware[account[3]]
-    device_info['firmware_type'] = account[4]
-    device_info['device_id'] = account[5]
-    return device_info
+DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
 
-def resolve_captcha(url, api, driver):
+def resolve_captcha(url, api, driver, timestamp):
     try:
         driver.get(url)
         WebDriverWait(driver, 86400).until(EC.text_to_be_present_in_element_value((By.NAME, "g-recaptcha-response"), ""))
         driver.switch_to.frame(driver.find_element_by_xpath("//*/iframe[@title='recaptcha challenge']"))
         token = driver.find_element_by_id("recaptcha-token").get_attribute("value")
-        response = api.verify_challenge(token=token)
+        request = api.create_request()
+        request.verify_challenge(token=token)
+        request.check_challenge()
+        request.get_hatched_eggs()
+        request.get_inventory(last_timestamp_ms = timestamp)
+        request.check_awarded_badges()
+        request.download_settings(hash=DOWNLOAD_HASH)
+        request.get_buddy_walked()
+
+        response = request.call()
+        print(response)
         success = response.get('responses', {}).get('VERIFY_CHALLENGE', {}).get('success', False)
         return success
-    except Exception:
+    except Exception as e:
+        print(e)
         return False
 
 
@@ -74,24 +64,41 @@ while not captcha_queue.empty():
     lon = uniform(middle_lon - 0.001, middle_lon + 0.001)
     alt = uniform(middle_alt - 10, middle_alt + 10)
     account = captcha_queue.get()
+    print(account[0])
 
     try:
         device_info = get_device_info(account)
         api = PGoApi(device_info=device_info)
         api.set_position(lat, lon, alt)
         api.set_authentication(username=account[0], password=account[1], provider=account[2])
-        response_dict = api.check_challenge()
-        challenge_url = response_dict.get('responses', {}).get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
+        request = api.create_request()
+        request.download_remote_config_version(platform=1, app_version=4500)
+        request.check_challenge()
+        request.get_hatched_eggs()
+        request.get_inventory()
+        request.check_awarded_badges()
+        request.download_settings()
+        response = request.call()
+
+        responses = response.get('responses', {})
+        challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
+        download_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
+        if download_hash and download_hash != DOWNLOAD_HASH:
+            DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
+        timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
         if challenge_url != ' ':
-            if resolve_captcha(challenge_url, api, driver):
+            if resolve_captcha(challenge_url, api, driver, timestamp):
                 extra_queue.put(account)
+                print('success')
             else:
+                print('failure')
                 captcha_queue.put(account)
     except KeyboardInterrupt:
         captcha_queue.put(account)
         driver.close()
         exit(0)
-    except Exception:
+    except Exception as e:
+        print(e)
         captcha_queue.put(account)
 
 driver.close()

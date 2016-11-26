@@ -223,7 +223,7 @@ def get_points_per_worker(gen_alts=False):
     return points
 
 
-def get_worker_device(worker_number):
+def get_device_info(account):
     hardware = {'iPhone5,1': 'N41AP',
                 'iPhone5,2': 'N42AP',
                 'iPhone5,3': 'N48AP',
@@ -234,16 +234,18 @@ def get_worker_device(worker_number):
                 'iPhone7,2': 'N61AP',
                 'iPhone8,1': 'N71AP',
                 'iPhone8,2': 'N66AP',
-                'iPhone8,4': 'N69AP'}
-    account = config.ACCOUNTS[worker_number]
-    device_info = {'device_brand': 'Apple',
-                   'device_model': 'iPhone',
-                   'hardware_manufacturer': 'Apple',
-                   'firmware_brand': 'iPhone OS'
+                'iPhone8,4': 'N69AP',
+                'iPhone9,1': 'D10AP',
+                'iPhone9,2': 'D11AP',
+                'iPhone9,4': 'D111AP'}
+    device_info = {'brand': 'Apple',
+                   'device': 'iPhone',
+                   'manufacturer': 'Apple',
+                   'product': 'iPhone OS'
                    }
-    device_info['device_comms_model'] = account[3]
-    device_info['hardware_model'] = hardware[account[3]]
-    device_info['firmware_type'] = account[4]
+    device_info['hardware'] = account[3]
+    device_info['model'] = hardware[account[3]]
+    device_info['type'] = account[4]
     device_info['device_id'] = account[5]
     return device_info
 
