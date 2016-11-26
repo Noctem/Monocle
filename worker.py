@@ -33,7 +33,7 @@ GLOBAL_VISITS = 0
 GLOBAL_SEEN = 0
 NOTIFICATIONS_SENT = 0
 LAST_LOGIN = 0
-
+DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
 
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
@@ -91,7 +91,6 @@ BAD_STATUSES = (
     'THROTTLE',
 )
 
-
 class MalformedResponse(Exception):
     """Raised when server response is malformed"""
 
@@ -107,15 +106,6 @@ def configure_logger(filename='worker.log'):
         level=logging.INFO,
     )
 
-try:
-    with open('cells.pickle', 'rb') as f:
-        CELL_IDS = pickle.load(f)
-    if config.COMPUTE_THREADS > 2:
-        config.NETWORK_THREADS += config.COMPUTE_THREADS - 2
-        config.COMPUTE_THREADS = 2
-except Exception:
-    CELL_IDS = dict()
-
 
 class Spawns:
     def __init__(self):
@@ -123,7 +113,11 @@ class Spawns:
         self.session = db.Session()
 
     def update_spawns(self):
-        self.spawns = db.get_spawns(self.session)
+        if DEBUG:
+            with open('spawns.pickle', 'rb') as f:
+                self.spawns = pickle.load(f)
+        else:
+            self.spawns = db.get_spawns(self.session)
 
     def have_id(self, spawn_id):
         return spawn_id in self.spawns
@@ -150,12 +144,6 @@ class Spawns:
         despawn_seconds = self.spawns[spawn_id][2]
         return utils.time_until_time(despawn_seconds)
 
-SPAWNS = Spawns()
-DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
-
-if config.NOTIFY_IDS or config.NOTIFY_RANKING:
-    import notification
-    notifier = notification.Notifier(SPAWNS)
 
 class Slave:
     """Single worker walking on the map"""
@@ -169,6 +157,7 @@ class Slave:
             extra_queue,
             captcha_queue,
             worker_dict,
+            loop,
             device_info=None,
             proxy=None
     ):
@@ -176,7 +165,7 @@ class Slave:
         self.visits = 0
         self.account = config.ACCOUNTS[self.worker_no]
         # asyncio/thread references
-        self.future = None  # worker's own future
+        self.loop = loop
         self.db_processor = db_processor
         self.cell_ids_executor = cell_ids_executor
         self.network_executor = network_executor
@@ -184,34 +173,37 @@ class Slave:
         self.total_seen = 0
         # State variables
         self.busy = False
-        self.killed = False  # killed worker will stay killed
-        self.logged_in = False
-        self.ever_authenticated = False
+        self.killed = False
         # Other variables
         self.last_visit = 0
         self.last_api_latency = 0
-        self.error_code = 'INIT'
-        self.empty_visits = 0
-        self.location = utils.get_start_coords(self.worker_no, altitude=True)
-        # And now, configure logger and PGoApi
-        self.logger = logging.getLogger('worker-{}'.format(worker_no))
-        self.device_info = utils.get_device_info(self.account)
         self.after_spawn = None
         self.speed = 0
-        self.api = PGoApi(device_info=self.device_info)
-        if config.ENCRYPT_PATH:
-            self.api.set_signature_lib(config.ENCRYPT_PATH)
-        if config.HASH_PATH:
-            self.api.set_hash_lib(config.HASH_PATH)
-        self.api.set_position(*self.location)
-        self.api.set_logger(self.logger)
+        self.error_code = 'INIT'
+        self.location = utils.get_start_coords(self.worker_no)
+        # And now, configure logger and PGoApi
+        self.logger = logging.getLogger('worker-{}'.format(worker_no))
+        self.initialize_api()
+
         self.extra_queue = extra_queue
         self.captcha_queue = captcha_queue
         self.worker_dict = worker_dict
         if proxy:
             self.set_proxy(proxy)
-        else:
-            self.proxy = None
+
+    def initialize_api(self):
+        device_info = utils.get_device_info(self.account)
+        self.logged_in = False
+        self.ever_authenticated = False
+        self.empty_visits = 0
+        if not DEBUG:
+            self.api = PGoApi(device_info=device_info)
+            if config.ENCRYPT_PATH:
+                self.api.set_signature_lib(config.ENCRYPT_PATH)
+            if config.HASH_PATH:
+                self.api.set_hash_lib(config.HASH_PATH)
+            self.api.set_position(*self.location)
+            self.api.set_logger(self.logger)
 
     def call_api(self, method, *args, **kwargs):
         """Returns decorated function that measures execution time
@@ -239,18 +231,13 @@ class Slave:
         self.proxy = proxy
         self.api.set_proxy({'http': proxy, 'https': proxy})
 
-
     async def new_account(self):
         while self.extra_queue.empty():
-            await asyncio.sleep(60)
+            if self.killed:
+                return False
+            await asyncio.sleep(20)
         self.account = self.extra_queue.get()
-        self.logged_in = False
-        self.ever_authenticated = False
-        self.empty_visits = 0
-        self.device_info = utils.get_device_info(self.account)
-        self.api = PGoApi(device_info=self.device_info)
-        self.api.set_position(*self.location)
-        self.api.set_logger(self.logger)
+        self.initialize_api()
 
     async def bench_account(self):
         self.error_code = 'BENCHING'
@@ -263,7 +250,9 @@ class Slave:
         self.logger.warning('Swapping out ' + self.account[0] + ' because ' +
                             reason + '.')
         while self.extra_queue.empty():
-            await asyncio.sleep(60)
+            if self.killed:
+                return False
+            await asyncio.sleep(20)
         self.extra_queue.put(self.account)
         await self.new_account()
 
@@ -298,11 +287,6 @@ class Slave:
                              ' because it was changed ' + str(time_passed)
                              + ' seconds ago.')
 
-    def get_auth_expiration(self, response):
-        auth_expiration = response.get('auth_ticket', {}).get('expire_timestamp_ms')
-        if auth_expiration:
-            self.auth_expiration = (auth_expiration / 1000) - 5
-
     def get_inventory_timestamp(self, response):
         timestamp = response.get('responses', {}).get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
         if timestamp:
@@ -316,15 +300,14 @@ class Slave:
 
         # Send empty initial request
         request = self.api.create_request()
-        response = await loop.run_in_executor(
+        response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
-        self.get_auth_expiration(response)
         await asyncio.sleep(1.172)
 
         request = self.api.create_request()
-        response = await loop.run_in_executor(
+        response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
@@ -334,7 +317,7 @@ class Slave:
         # Send GET_PLAYER only
         request = self.api.create_request()
         request.get_player(player_locale = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'})
-        response = await loop.run_in_executor(
+        response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
@@ -351,7 +334,7 @@ class Slave:
         request.get_inventory()
         request.check_awarded_badges()
         request.download_settings()
-        response = await loop.run_in_executor(
+        response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
@@ -381,7 +364,7 @@ class Slave:
         request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
         request.check_awarded_badges()
         request.download_settings(hash=DOWNLOAD_HASH)
-        response = await loop.run_in_executor(
+        response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
@@ -396,7 +379,7 @@ class Slave:
         request.check_awarded_badges()
         request.download_settings(hash=DOWNLOAD_HASH)
         request.get_buddy_walked()
-        response = await loop.run_in_executor(
+        response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
@@ -411,7 +394,7 @@ class Slave:
         request.check_awarded_badges()
         request.download_settings(hash=DOWNLOAD_HASH)
         request.get_buddy_walked()
-        response = await loop.run_in_executor(
+        response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
@@ -423,17 +406,20 @@ class Slave:
 
     async def login(self, initial=True):
         """Logs worker in and prepares for scanning"""
-        loop = asyncio.get_event_loop()
+        if DEBUG:
+            return True
         self.logger.info('Trying to log in')
         global LAST_LOGIN
         time_required = random.uniform(4, 7)
         while (time.time() - LAST_LOGIN) < time_required:
             self.error_code = 'WAITING'
+            if self.killed:
+                return False
             await asyncio.sleep(2)
         self.error_code = 'LOGIN'
         LAST_LOGIN = time.time()
         try:
-            await loop.run_in_executor(
+            await self.loop.run_in_executor(
                 self.network_executor,
                 self.call_api(
                     self.api.set_authentication,
@@ -484,7 +470,6 @@ class Slave:
             return True
         return False
 
-
     async def visit(self, point, i):
         """Wrapper for self.visit_point - runs it a few times before giving up
 
@@ -493,7 +478,10 @@ class Slave:
         visited = False
         for attempts in range(0,5):
             try:
-                if not self.logged_in or time.time() > self.auth_expiration:
+                if self.killed:
+                    return False
+                if not self.logged_in:
+                    self.api.set_position(*point)
                     if not await self.login():
                         await asyncio.sleep(2)
                         continue
@@ -536,7 +524,8 @@ class Slave:
         return False
 
     async def visit_point(self, point, i):
-        loop = asyncio.get_event_loop()
+        global GLOBAL_SEEN
+        global GLOBAL_VISITS
 
         latitude = point[0]
         longitude = point[1]
@@ -551,10 +540,25 @@ class Slave:
             rounded_coords[1], round(altitude)
         )
         start = time.time()
-        self.api.set_position(latitude, longitude, altitude)
         self.location = point
+
+        if DEBUG:
+            self.last_visit = start
+            sent_notification = False
+            self.error_code = ':'
+            pokemon_seen = random.randint(2,9)
+            self.total_seen += pokemon_seen
+            GLOBAL_SEEN += pokemon_seen
+            GLOBAL_VISITS += 1
+            self.visits += 1
+            if not self.killed:
+                self.worker_dict.update([(self.worker_no, ((latitude, longitude), start, self.speed, self.total_seen, self.visits, pokemon_seen, sent_notification))])
+            self.db_processor.count += pokemon_seen
+            return True
+        self.api.set_position(latitude, longitude, altitude)
+
         if rounded_coords not in CELL_IDS or len(CELL_IDS[rounded_coords]) > 25:
-            CELL_IDS[rounded_coords] = await loop.run_in_executor(
+            CELL_IDS[rounded_coords] = await self.loop.run_in_executor(
                 self.cell_ids_executor,
                 partial(
                     pgoapi_utils.get_cell_ids, latitude, longitude
@@ -562,10 +566,7 @@ class Slave:
             )
         cell_ids = CELL_IDS[rounded_coords]
         since_timestamp_ms = [0] * len(cell_ids)
-        if self.last_visit:
-            last_timestamp = round(self.last_visit * 1000)
-        else:
-            last_timestamp = round((time.time() - 16) * 1000)
+
         request = self.api.create_request()
         request.get_map_objects(cell_id=cell_ids,
                                 since_timestamp_ms=since_timestamp_ms,
@@ -578,7 +579,7 @@ class Slave:
         request.download_settings(hash=DOWNLOAD_HASH)
         request.get_buddy_walked()
 
-        response_dict = await loop.run_in_executor(
+        response_dict = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
@@ -595,7 +596,6 @@ class Slave:
             raise MalformedResponse
         if await self.check_captcha(responses):
             return False
-        self.get_auth_expiration(response_dict)
         self.get_inventory_timestamp(response_dict)
         map_objects = responses.get('GET_MAP_OBJECTS', {})
         pokemons = []
@@ -673,7 +673,6 @@ class Slave:
         if pokemon_seen > 0:
             self.error_code = ':'
             self.total_seen += pokemon_seen
-            global GLOBAL_SEEN
             GLOBAL_SEEN += pokemon_seen
             self.empty_visits = 0
             if CIRCUIT_FAILURES:
@@ -690,10 +689,10 @@ class Slave:
                     reason = str(CIRCUIT_FAILURES[self.proxy]) + ' empty visits'
                     self.swap_circuit(reason)
 
-        global GLOBAL_VISITS
         GLOBAL_VISITS += 1
         self.visits += 1
-        self.worker_dict.update([(self.worker_no, ((latitude, longitude), start, self.speed, self.total_seen, self.visits, pokemon_seen, sent_notification))])
+        if not self.killed:
+            self.worker_dict.update([(self.worker_no, ((latitude, longitude), start, self.speed, self.total_seen, self.visits, pokemon_seen, sent_notification))])
         self.logger.info(
             'Point processed, %d Pokemons and %d forts seen!',
             pokemon_seen,
@@ -702,7 +701,7 @@ class Slave:
         return True
 
     def travel_speed(self, point, spawn_time):
-        if self.busy:
+        if self.busy or self.killed:
             return None
         if self.last_visit == 0:
             return 1
@@ -798,21 +797,16 @@ class Overseer:
         self.last_proxy = 0
         self.loop = loop
         self.db_processor = DatabaseProcessor()
-        if config.COMPUTE_THREADS:
-            self.cell_ids_executor = ThreadPoolExecutor(config.COMPUTE_THREADS)
-        else:
-            self.cell_ids_executor = None
+        self.cell_ids_executor = ThreadPoolExecutor(config.COMPUTE_THREADS)
         self.network_executor = ThreadPoolExecutor(config.NETWORK_THREADS)
-        self.launch_queue_manager()
         self.logger.info('Overseer initialized')
 
     def kill(self):
         self.killed = True
-        self.db_processor.stop()
         for worker in self.workers.values():
             worker.kill()
-            if worker.future:
-                worker.future.cancel()
+        self.manager.shutdown()
+        self.db_processor.stop()
 
     def launch_queue_manager(self):
         captcha = Queue()
@@ -822,11 +816,11 @@ class Overseer:
         QueueManager.register('captcha_queue', callable=lambda:captcha)
         QueueManager.register('extra_queue', callable=lambda:extra)
         QueueManager.register('worker_dict', callable=lambda:workers)
-        manager = QueueManager(address='queue.sock', authkey=b'monkeys')
-        manager.start()
-        self.captcha_queue = manager.captcha_queue()
-        self.extra_queue = manager.extra_queue()
-        self.worker_dict = manager.worker_dict()
+        self.manager = QueueManager(address='queue.sock', authkey=b'monkeys')
+        self.manager.start()
+        self.captcha_queue = self.manager.captcha_queue()
+        self.extra_queue = self.manager.extra_queue()
+        self.worker_dict = self.manager.worker_dict()
         for account in config.EXTRA_ACCOUNTS:
             self.extra_queue.put(account)
 
@@ -853,6 +847,7 @@ class Overseer:
             extra_queue=self.extra_queue,
             captcha_queue=self.captcha_queue,
             worker_dict=self.worker_dict,
+            loop=self.loop,
             proxy=proxy
         )
         self.workers[worker_no] = worker
@@ -861,6 +856,7 @@ class Overseer:
         for worker_no in range(self.count):
             self.start_worker(worker_no, first_run=True)
         self.db_processor.start()
+        self.launch_queue_manager()
 
     def check(self):
         last_cleaned_cache = time.time()
@@ -894,7 +890,7 @@ class Overseer:
         # OK, now we're killed
         while True:
             try:
-                tasks = sum(not t.done() for t in asyncio.Task.all_tasks(loop))
+                tasks = sum(not t.done() for t in asyncio.Task.all_tasks(self.loop))
             except RuntimeError:
                 # Set changed size during iteration
                 tasks = '?'
@@ -906,7 +902,6 @@ class Overseer:
             )
             if tasks == 0:
                 break
-            time.sleep(0.5)
         print()
 
 
@@ -1056,6 +1051,8 @@ class DatabaseProcessor(threading.Thread):
         self.queue.extend(obj_list)
 
     def run(self):
+        if DEBUG:
+            return True
         session = db.Session()
         global SPAWNS
         while self.running or self.queue:
@@ -1110,6 +1107,12 @@ def parse_args():
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         default=logging.WARNING
     )
+    parser.add_argument(
+        '--debug',
+        dest='debug',
+        help="For testing, skip actually making requests.",
+        action='store_true',
+    )
     return parser.parse_args()
 
 
@@ -1123,6 +1126,7 @@ class Launcher():
     def __init__(self, overseer, loop):
         self.loop = loop
         self.overseer = overseer
+        self.running = True
         self.workers = list(self.overseer.workers.values())
         count = len(self.workers)
         self.coroutine_limit = int(count / 2.2) + 1
@@ -1137,6 +1141,8 @@ class Launcher():
             lowest_speed = float('inf')
             worker = None
             for w in self.workers:
+                if not self.running:
+                    return False, False
                 speed = w.travel_speed(point, spawn_time)
                 if speed is not None and speed < lowest_speed:
                     lowest_speed = speed
@@ -1154,7 +1160,7 @@ class Launcher():
 
     def launch(self):
         global SPAWNS
-        while True:
+        while self.running:
             if os.path.isfile('cells.pickle'):
                 with open('cells.pickle', 'wb') as f:
                     pickle.dump(CELL_IDS, f, pickle.HIGHEST_PROTOCOL)
@@ -1162,7 +1168,9 @@ class Launcher():
             current_hour = utils.get_current_hour()
             random.shuffle(self.workers)
             for spawn_id, spawn in SPAWNS.spawns.items():
-                while len(self.overseer.captcha_queue > config.MAX_CAPTCHAS):
+                if not self.running:
+                    return
+                while self.overseer.captcha_queue.qsize() > config.MAX_CAPTCHAS:
                     time.sleep(30)
                 try:
                     coroutines_count = len(asyncio.Task.all_tasks(self.loop))
@@ -1203,16 +1211,40 @@ class Launcher():
             self.visited += 1
         worker.busy = False
 
+    def stop(self):
+        self.running = False
+
 
 if __name__ == '__main__':
+    try:
+        with open('cells.pickle', 'rb') as f:
+            CELL_IDS = pickle.load(f)
+        if config.COMPUTE_THREADS > 2:
+            config.NETWORK_THREADS += config.COMPUTE_THREADS - 2
+            config.COMPUTE_THREADS = 2
+    except Exception:
+        CELL_IDS = dict()
+
     args = parse_args()
     logger = logging.getLogger()
+
     if args.status_bar:
         configure_logger(filename='worker.log')
         logger.info('-' * 30)
         logger.info('Starting up!')
     else:
         configure_logger(filename=None)
+    global DEBUG
+    if args.debug:
+        DEBUG = True
+    else:
+        if config.NOTIFY_IDS or config.NOTIFY_RANKING:
+            import notification
+            notifier = notification.Notifier(SPAWNS)
+        DEBUG = False
+
+    SPAWNS = Spawns()
+
     logger.setLevel(args.log_level)
     loop = asyncio.get_event_loop()
     overseer = Overseer(status_bar=args.status_bar, loop=loop)
@@ -1230,14 +1262,8 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
         overseer.kill()  # also cancels all workers' futures
-        time.sleep(1)
-        all_futures = [
-            w.future for w in overseer.workers.values()
-            if w.future and not isinstance(w.future, Future)
-        ]
-        time.sleep(1)
-        loop.run_until_complete(asyncio.gather(*all_futures))
-        time.sleep(1)
+        launcher.stop()
+        pending = asyncio.Task.all_tasks()
+        loop.run_until_complete(asyncio.gather(*pending))
         loop.stop()
-        time.sleep(1)
         loop.close()

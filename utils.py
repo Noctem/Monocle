@@ -55,9 +55,9 @@ def get_start_coords(worker_no, altitude=False):
     start_lon = config.MAP_START[1] + part_lon * column + part_lon / 2
     if altitude:
         start_alt = get_altitude((start_lat, start_lon))
-        return start_lat, start_lon, start_alt
     else:
-        return start_lat, start_lon
+        start_alt = random.uniform(*config.ALT_RANGE)
+    return start_lat, start_lon, start_alt
 
 
 def float_range(start, end, step):
