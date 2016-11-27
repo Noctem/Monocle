@@ -243,10 +243,10 @@ def get_device_info(account):
                    'manufacturer': 'Apple',
                    'product': 'iPhone OS'
                    }
-    device_info['hardware'] = account[3]
-    device_info['model'] = hardware[account[3]]
-    device_info['type'] = account[4]
-    device_info['device_id'] = account[5]
+    device_info['hardware'] = account.get('model')
+    device_info['model'] = hardware[account.get('model')]
+    device_info['version'] = account.get('iOS')
+    device_info['device_id'] = account.get('id')
     return device_info
 
 

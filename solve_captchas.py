@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import pickle
 from queue import Queue
 from multiprocessing.managers import SyncManager
 from pgoapi import (
@@ -8,7 +9,7 @@ from pgoapi import (
     utilities as pgoapi_utils,
 )
 from random import uniform
-from utils import get_altitude, get_device_info
+from utils import random_altitude, get_device_info
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -34,43 +35,58 @@ def resolve_captcha(url, api, driver, timestamp):
         request.get_buddy_walked()
 
         response = request.call()
-        print(response)
         success = response.get('responses', {}).get('VERIFY_CHALLENGE', {}).get('success', False)
         return success
     except Exception as e:
         print(e)
         return False
 
+with open('accounts.pickle', 'rb') as f:
+    ACCOUNTS = pickle.load(f)
 
 captcha = Queue()
 extra = Queue()
+fixed = Queue()
 class QueueManager(SyncManager): pass
 QueueManager.register('captcha_queue', callable=lambda:captcha)
 QueueManager.register('extra_queue', callable=lambda:extra)
+QueueManager.register('fixed_queue', callable=lambda:fixed)
 manager = QueueManager(address='queue.sock', authkey=b'monkeys')
 manager.connect()
 captcha_queue = manager.captcha_queue()
 extra_queue = manager.extra_queue()
+fixed_queue = manager.fixed_queue()
+
 
 middle_lat = (MAP_START[0] + MAP_END[0]) / 2
 middle_lon = (MAP_START[1] + MAP_END[1]) / 2
-middle_alt = get_altitude((middle_lat, middle_lon))
+middle_alt = random_altitude()
 
 driver = webdriver.Chrome()
 driver.set_window_size(803, 807)
 
 while not captcha_queue.empty():
-    lat = uniform(middle_lat - 0.001, middle_lat + 0.001)
-    lon = uniform(middle_lon - 0.001, middle_lon + 0.001)
-    alt = uniform(middle_alt - 10, middle_alt + 10)
-    account = captcha_queue.get()
-    print(account[0])
+    username = captcha_queue.get()
+    account = ACCOUNTS[username]
+    location = account.get('location')
+    if location and location != (0,0,0):
+        lat = location[0]
+        lon = location[1]
+        alt = location[2]
+    else:
+        lat = uniform(middle_lat - 0.001, middle_lat + 0.001)
+        lon = uniform(middle_lon - 0.001, middle_lon + 0.001)
+        alt = uniform(middle_alt - 10, middle_alt + 10)
+
+    print(username)
 
     try:
         device_info = get_device_info(account)
         api = PGoApi(device_info=device_info)
         api.set_position(lat, lon, alt)
-        api.set_authentication(username=account[0], password=account[1], provider=account[2])
+        api.set_authentication(username=username,
+                               password=account.get('password'),
+                               provider=account.get('provider'))
         request = api.create_request()
         request.download_remote_config_version(platform=1, app_version=4500)
         request.check_challenge()
@@ -86,19 +102,22 @@ while not captcha_queue.empty():
         if download_hash and download_hash != DOWNLOAD_HASH:
             DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
         timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
-        if challenge_url != ' ':
+        if challenge_url == ' ':
+            extra_queue.put(username)
+            fixed_queue.put(username)
+        else:
             if resolve_captcha(challenge_url, api, driver, timestamp):
-                extra_queue.put(account)
-                print('success')
+                extra_queue.put(username)
+                fixed_queue.put(username)
             else:
                 print('failure')
-                captcha_queue.put(account)
+                captcha_queue.put(username)
     except KeyboardInterrupt:
-        captcha_queue.put(account)
+        captcha_queue.put(username)
         driver.close()
         exit(0)
     except Exception as e:
         print(e)
-        captcha_queue.put(account)
+        captcha_queue.put(username)
 
 driver.close()
