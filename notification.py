@@ -12,14 +12,11 @@ import config
 for variable_name in ['PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
                       'TWITTER_CONSUMER_SECRET', 'TWITTER_ACCESS_KEY',
                       'TWITTER_ACCESS_SECRET', 'LANDMARKS', 'AREA_NAME',
-                      'HASHTAGS', 'TZ_OFFSET', 'MAX_TIME', 'NOTIFY_RANKING',
-                      'NOTIFY_IDS']:
+                      'HASHTAGS', 'TZ_OFFSET', 'NOTIFY_RANKING', 'NOTIFY_IDS']:
     if not hasattr(config, variable_name):
         setattr(config, variable_name, None)
 
 # set defaults for unset config options
-if not hasattr(config, 'MIN_TIME'):
-    setattr(config, 'MIN_TIME', 120)
 if not hasattr(config, 'ALWAYS_NOTIFY'):
     setattr(config, 'ALWAYS_NOTIFY', 0)
 if not hasattr(config, 'FULL_TIME'):

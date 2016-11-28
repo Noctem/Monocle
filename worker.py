@@ -93,6 +93,8 @@ BAD_STATUSES = (
 class MalformedResponse(Exception):
     """Raised when server response is malformed"""
 
+class CaptchaException(Exception):
+    """Raised when a CAPTCHA is needed."""
 
 def configure_logger(filename='worker.log'):
     logging.basicConfig(
@@ -202,6 +204,31 @@ class Slave:
             self.api.set_position(*self.location)
             self.api.set_logger(self.logger)
 
+    async def call_chain(self, request):
+        request.check_challenge()
+        request.get_hatched_eggs()
+        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
+        request.check_awarded_badges()
+        request.download_settings(hash=DOWNLOAD_HASH)
+        request.get_buddy_walked()
+
+        response = await self.loop.run_in_executor(
+            self.network_executor,
+            self.call_api(request.call)
+        )
+        try:
+            if response.get('status_code') == 3:
+                logger.warning(self.username + ' is banned.')
+                raise pgoapi_exceptions.BannedAccountException
+            responses = response.get('responses')
+            self.get_inventory_timestamp(responses)
+            self.check_captcha(responses)
+        except AttributeError:
+            self.logger.warning('Malformed response: %s', response)
+            raise MalformedResponse
+        return responses
+
+
     def call_api(self, method, *args, **kwargs):
         """Returns decorated function that measures execution time
 
@@ -302,8 +329,8 @@ class Slave:
                              ' because it was changed ' + str(time_passed)
                              + ' seconds ago.')
 
-    def get_inventory_timestamp(self, response):
-        timestamp = response.get('responses', {}).get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
+    def get_inventory_timestamp(self, responses):
+        timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
         if timestamp:
             self.inventory_timestamp = timestamp
         elif not self.timestamp:
@@ -313,15 +340,18 @@ class Slave:
         self.error_code = 'APP SIMULATION'
         self.logger.info('Starting RPC login sequence (iOS app simulation)')
 
-        # Send empty initial request
+        # empty request 1
         request = self.api.create_request()
+
         response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
         await asyncio.sleep(1.172)
 
+        # empty request 2
         request = self.api.create_request()
+
         response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
@@ -329,19 +359,21 @@ class Slave:
         await asyncio.sleep(1.304)
 
 
-        # Send GET_PLAYER only
+        # request 1: get_player
         request = self.api.create_request()
         request.get_player(player_locale = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'})
+
         response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
 
         if response.get('responses', {}).get('GET_PLAYER', {}).get('banned', False):
-            raise pgoapi_exceptions.BannedAccount
+            raise pgoapi_exceptions.BannedAccountException
 
         await asyncio.sleep(1.356)
 
+        # request 2: download_remote_config_version
         request = self.api.create_request()
         request.download_remote_config_version(platform=1, app_version=4500)
         request.check_challenge()
@@ -349,21 +381,21 @@ class Slave:
         request.get_inventory()
         request.check_awarded_badges()
         request.download_settings()
+
         response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
-        responses = response.get('responses', {})
-        if await self.check_captcha(responses):
-            return False
-        await asyncio.sleep(1.072)
 
-        self.get_inventory_timestamp(response)
         responses = response.get('responses', {})
+        self.check_captcha(responses):
+        self.get_inventory_timestamp(responses)
+
         download_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
         if download_hash:
             global DOWNLOAD_HASH
             DOWNLOAD_HASH = download_hash
+
         inventory = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
         player_level = None
         for item in inventory.get('inventory_items', []):
@@ -372,6 +404,9 @@ class Slave:
                 player_level = player_stats.get('level')
                 break
 
+        await asyncio.sleep(1.072)
+
+        # request 3: get_asset_digest
         request = self.api.create_request()
         request.get_asset_digest(platform=1, app_version=4500)
         request.check_challenge()
@@ -379,45 +414,31 @@ class Slave:
         request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
         request.check_awarded_badges()
         request.download_settings(hash=DOWNLOAD_HASH)
+
         response = await self.loop.run_in_executor(
             self.network_executor,
             self.call_api(request.call)
         )
+
+        self.get_inventory_timestamp(response.get('responses', {}))
         await asyncio.sleep(1.709)
 
-        self.get_inventory_timestamp(response)
+        # request 4: get_player_profile
         request = self.api.create_request()
         request.get_player_profile()
-        request.check_challenge()
-        request.get_hatched_eggs()
-        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
-        request.check_awarded_badges()
-        request.download_settings(hash=DOWNLOAD_HASH)
-        request.get_buddy_walked()
-        response = await self.loop.run_in_executor(
-            self.network_executor,
-            self.call_api(request.call)
-        )
+
+        responses = await self.call_chain(request)
         await asyncio.sleep(1.326)
 
-        self.get_inventory_timestamp(response)
+        # requst 5: level_up_rewards
         request = self.api.create_request()
         request.level_up_rewards(level=player_level)
-        request.check_challenge()
-        request.get_hatched_eggs()
-        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
-        request.check_awarded_badges()
-        request.download_settings(hash=DOWNLOAD_HASH)
-        request.get_buddy_walked()
-        response = await self.loop.run_in_executor(
-            self.network_executor,
-            self.call_api(request.call)
-        )
+
+        responses = await self.call_chain(request)
         await asyncio.sleep(1.184)
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
-
-        return response
+        return responses
 
     async def login(self, initial=True):
         """Logs worker in and prepares for scanning"""
@@ -467,9 +488,13 @@ class Slave:
             self.logger.info('Server throttling - sleeping for a bit')
             self.error_code = 'THROTTLE'
             await self.random_sleep(sleep_min=10)
-        except pgoapi_exceptions.BannedAccount:
+        except pgoapi_exceptions.BannedAccountException:
             self.error_code = 'BANNED?'
             await self.remove_account()
+        except CaptchaException:
+            await self.bench_account()
+            self.error_code = 'CAPTCHA'
+            await self.random_sleep()
         except CancelledError:
             self.kill()
         except Exception as err:
@@ -508,7 +533,6 @@ class Slave:
                 self.logger.error('Invalid credentials: ' + self.username)
                 self.error_code = 'NOT AUTHENTICATED'
                 await self.swap_account(reason='not logged in')
-                self.logged_in = False
                 await self.random_sleep()
             except pgoapi_exceptions.ServerBusyOrOfflineException:
                 self.logger.info('Server too busy - restarting')
@@ -518,11 +542,15 @@ class Slave:
                 self.logger.info('Server throttling - sleeping for a bit')
                 self.error_code = 'THROTTLE'
                 await self.random_sleep(sleep_min=10)
+            except CaptchaException:
+                await self.bench_account()
+                self.error_code = 'CAPTCHA'
+                await self.random_sleep()
             except MalformedResponse:
                 self.logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
                 await self.random_sleep()
-            except pgoapi_exceptions.BannedAccount:
+            except pgoapi_exceptions.BannedAccountException:
                 self.error_code = 'BANNED?'
                 await self.remove_account()
             except Exception as err:
@@ -581,31 +609,10 @@ class Slave:
                                 since_timestamp_ms=since_timestamp_ms,
                                 latitude=pgoapi_utils.f2i(latitude),
                                 longitude=pgoapi_utils.f2i(longitude))
-        request.check_challenge()
-        request.get_hatched_eggs()
-        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
-        request.check_awarded_badges()
-        request.download_settings(hash=DOWNLOAD_HASH)
-        request.get_buddy_walked()
 
-        response_dict = await self.loop.run_in_executor(
-            self.network_executor,
-            self.call_api(request.call)
-        )
+        responses = await self.call_chain(request)
         self.last_visit = time.time()
-        if not isinstance(response_dict, dict):
-            self.logger.warning('Response: %s', response_dict)
-            raise MalformedResponse
-        if response_dict['status_code'] == 3:
-            logger.warning('Account banned')
-            raise pgoapi_exceptions.BannedAccount
-        responses = response_dict.get('responses')
-        if not responses:
-            self.logger.warning('Response: %s', response_dict)
-            raise MalformedResponse
-        if await self.check_captcha(responses):
-            return False
-        self.get_inventory_timestamp(response_dict)
+
         map_objects = responses.get('GET_MAP_OBJECTS', {})
         pokemons = []
         ls_seen = []
@@ -728,12 +735,12 @@ class Slave:
         return speed
 
 
-    async def check_captcha(self, responses):
+    def check_captcha(self, responses):
         challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
         if challenge_url != ' ':
-            await self.bench_account()
-            return True
-        return False
+            raise CaptchaException
+        else:
+            return False
 
 
     @staticmethod
@@ -1222,8 +1229,8 @@ class Launcher():
                     while coroutines_count > self.coroutine_limit or not isinstance(coroutines_count, int):
                         time.sleep(1)
                         coroutines_count = len(asyncio.Task.all_tasks(self.loop))
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(e)
                 if not self.running:
                     return
                 spawn_time = spawn[1] + current_hour
@@ -1271,6 +1278,7 @@ if __name__ == '__main__':
 
     with open('accounts.pickle', 'rb') as f:
         ACCOUNTS = pickle.load(f)
+
     SPAWNS = Spawns()
 
     args = parse_args()
