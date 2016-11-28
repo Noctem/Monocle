@@ -224,7 +224,6 @@ class Slave:
             self.get_inventory_timestamp(responses)
             self.check_captcha(responses)
         except AttributeError:
-            self.logger.warning('Malformed response: %s', response)
             raise MalformedResponse
         return responses
 
@@ -302,6 +301,44 @@ class Slave:
         self.logger.warning('Removing ' + self.username + ' due to ban.')
         self.update_accounts_dict(banned=True)
         await self.new_account()
+
+    def simulate_jitter(self):
+        self.location[0] = random.uniform(self.location[0] - 0.00001,
+                                          self.location[0] + 0.00001)
+        self.location[1] = random.uniform(self.location[1] - 0.00001,
+                                          self.location[1] + 0.00001)
+        self.location[2] = random.uniform(self.location[2] - 1,
+                                          self.location[2] + 1)
+        self.api.set_position(*self.location)
+
+    async def encounter(self, pokemon):
+        self.simulate_jitter()
+
+        delay_required = random.uniform(4, 7.5)
+        while time.time() - self.last_visit < delay_required:
+            await asyncio.sleep(1.5)
+
+        self.error_code = 'ENCOUNTERING'
+
+        request = self.api.create_request()
+        request = request.encounter(encounter_id=pokemon['encounter_id'],
+                                    spawn_point_id=pokemon['spawn_point_id'],
+                                    player_latitude=self.location[0],
+                                    player_longitude=self.location[1])
+
+        responses = await self.call_chain(request)
+        self.last_visit = time.time()
+
+        response = responses.get('ENCOUNTER', {})
+        pokemon_data = response.get('wild_pokemon', {}).get('pokemon_data', {})
+        if 'cp' in pokemon_data:
+            for iv in ('individual_attack', 'individual_defense', 'individual_stamina'):
+                if iv not in pokemon_data:
+                    pokemon_data[iv] = 0
+            pokemon_data['probability'] = response.get('capture_probability', {}).get('capture_probability')
+        self.error_code = '!'
+        return pokemon_data
+
 
     def swap_proxy(self, reason=''):
         self.set_proxy(random.choice(config.PROXIES))
@@ -388,7 +425,7 @@ class Slave:
         )
 
         responses = response.get('responses', {})
-        self.check_captcha(responses):
+        self.check_captcha(responses)
         self.get_inventory_timestamp(responses)
 
         download_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
@@ -592,6 +629,7 @@ class Slave:
                 self.worker_dict.update([(self.worker_no, ((latitude, longitude), start, self.speed, self.total_seen, self.visits, pokemon_seen, sent_notification))])
             self.db_processor.count += pokemon_seen
             return True
+
         self.api.set_position(latitude, longitude, altitude)
 
         if rounded_coords not in CELL_IDS or len(CELL_IDS[rounded_coords]) > 25:
@@ -631,10 +669,9 @@ class Slave:
         for map_cell in map_objects['map_cells']:
             request_time_ms = map_cell['current_timestamp_ms']
             for pokemon in map_cell.get('wild_pokemons', []):
+                pokemon_data = None
                 pokemon_seen += 1
-                # Store spawns outside of the 15 minute range in a
-                # different table until they fall under 15 minutes,
-                # and notify about them differently.
+                # Accurate times only provided in the last 90 seconds
                 invalid_tth = (
                     pokemon['time_till_hidden_ms'] < 0 or
                     pokemon['time_till_hidden_ms'] > 90000
@@ -654,10 +691,8 @@ class Slave:
                 else:
                     normalized['valid'] = True
 
-                if normalized['valid']:
-                    pokemons.append(normalized)
-
                 if normalized['pokemon_id'] in config.NOTIFY_IDS:
+                    normalized.update(await self.encounter(pokemon))
                     self.error_code = '*'
                     notified, explanation = notifier.notify(normalized)
                     if notified:
@@ -667,15 +702,20 @@ class Slave:
                         NOTIFICATIONS_SENT += 1
                     else:
                         self.logger.warning(explanation)
-                key = db.combine_key(normalized)
-                if not normalized['valid'] or key in db.LONGSPAWN_CACHE.store:
+
+                if normalized['valid'] and normalized not in db.SIGHTING_CACHE:
+                    if 'cp' not in normalized:
+                        normalized.update(await self.encounter(pokemon))
+                    pokemons.append(normalized)
+
+                if not normalized['valid'] or db.LONGSPAWN_CACHE.in_store(normalized):
                     normalized = normalized.copy()
                     normalized['type'] = 'longspawn'
                     ls_seen.append(normalized)
             for fort in map_cell.get('forts', []):
                 if not fort.get('enabled'):
                     continue
-                if fort.get('type') == 1:  # probably pokestops
+                if fort.get('type') == 1:  # pokestops
                     continue
                 forts.append(self.normalize_fort(fort))
 
@@ -1179,7 +1219,7 @@ class Launcher():
         self.running = True
         self.workers = list(self.overseer.workers.values())
         count = len(self.workers)
-        self.coroutine_limit = int(count / 2.2) + 1
+        self.coroutine_limit = int(count / 1.75) + 1
         self.skipped = 0
         self.visited = 0
         self.cell_ids_executor = self.overseer.cell_ids_executor

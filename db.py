@@ -95,10 +95,14 @@ class LongspawnCache(object):
             return False
         raw_sighting_time = raw_sighting['last_modified_timestamp_ms'] / 1000
         timestamp_in_range = (
-            sighting_time > raw_sighting_time - 30 and
-            sighting_time < raw_sighting_time + 30
+            sighting_time > raw_sighting_time - 60 and
+            sighting_time < raw_sighting_time + 60
         )
         return timestamp_in_range
+
+    def in_store(self, raw_sighting):
+        key = combine_key(raw_sighting)
+        return key in self.store
 
     def clean_expired(self):
         to_remove = []
@@ -158,6 +162,11 @@ class Sighting(Base):
     normalized_timestamp = Column(Integer)
     lat = Column(Float, index=True)
     lon = Column(Float, index=True)
+    atk_iv = Column(SmallInteger)
+    def_iv = Column(SmallInteger)
+    sta_iv = Column(SmallInteger)
+    move_1 = Column(SmallInteger)
+    move_2 = Column(SmallInteger)
 
     __table_args__ = (
         UniqueConstraint(
@@ -320,6 +329,11 @@ def add_sighting(session, pokemon):
         normalized_timestamp=normalize_timestamp(pokemon['expire_timestamp']),
         lat=pokemon['lat'],
         lon=pokemon['lon'],
+        atk_iv=pokemon.get('individual_attack'),
+        def_iv=pokemon.get('individual_defense'),
+        sta_iv=pokemon.get('individual_stamina'),
+        move_1=pokemon.get('move_1'),
+        move_2=pokemon.get('move_2')
     )
     session.add(obj)
     SIGHTING_CACHE.add(pokemon)
