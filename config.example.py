@@ -14,19 +14,11 @@ GRID = (2, 2)  # row, column
 MAX_CAPTCHAS = 100  # stop launching new visits if this many CAPTCHAs are pending
 SCAN_DELAY = 10  # do not visit within this many seconds of the last visit
 
-ALT_RANGE = (1450, 1550)  # Fall back to altitudes in this range if generation fails
-LONGSPAWNS = False  # Store sightings with invalid times in another DB table
+ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if generation fails
 
 # proxy address and port or tuple of proxy addresses and ports.
-PROXIES = ('socks5://127.0.0.1:9050',
-           'socks5://127.0.0.1:9051')
-
-# location of control sockets for Tor instances (if applicable)
-CONTROL_SOCKS = {
-    'socks5://127.0.0.1:9050': '/usr/local/var/run/tor/control',
-    'socks5://127.0.0.1:9051': '/usr/local/var/run/tor/control2',
-    'socks5://127.0.0.1:9052': '/usr/local/var/run/tor/control3',
-}
+#PROXIES = ('socks5://127.0.0.1:9050',
+#           'socks5://127.0.0.1:9051')
 
 # convert spawn_id to integer for more efficient DB storage, set to False if
 # using an existing database since the data types are incompatible.
@@ -38,27 +30,18 @@ _workers_count = GRID[0] * GRID[1]
 COMPUTE_THREADS = int(_workers_count / 10) + 1
 NETWORK_THREADS = int(_workers_count / 2) + 1
 
-ALL_ACCOUNTS = [
+# Optionally just set the username, account, and provider
+# and use scripts/generate_device_info.py to generate the device info
+ACCOUNTS = [
     ('ash_ketchum', 'pik4chu', 'ptc', 'iPhone6,1', '9.3.4', '67c51fda79104a5a87935992e15d2246'),
     ('ziemniak_kalafior', 'ogorek', 'google', 'iPhone5,4', '9.0', 'bf8d044125424678be8e6050aac205f6'),
     ('noideawhattoputhere', 's3cr3t', 'ptc', 'iPhone8,2', '9.3.3', '433a80e3168f488288ae587c3e67441c')
 ]
 
-ACCOUNTS = []
-EXTRA_ACCOUNTS = []
-# If you have more accounts than workers, this will add extras to
-# a separate list and swap them in if another account has problems or
-# gets banned.
-for account in ALL_ACCOUNTS:
-    if len(ACCOUNTS) < _workers_count:
-        ACCOUNTS.append(account)
-    else:
-        EXTRA_ACCOUNTS.append(account)
-
 TRASH_IDS = (13, 16, 19, 21, 41, 96)
 STAGE2 = (141, 142, 143, 144, 145, 146, 148, 149, 150, 151)
 
-REPORT_SINCE = datetime(2016, 7, 29)
+REPORT_SINCE = datetime(2016, 11, 1)
 GOOGLE_MAPS_KEY = 's3cr3t'
 
 MAP_PROVIDER_URL = '//{s}.tile.osm.org/{z}/{x}/{y}.png'

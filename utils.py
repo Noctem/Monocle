@@ -237,6 +237,7 @@ def get_device_info(account):
                 'iPhone8,4': 'N69AP',
                 'iPhone9,1': 'D10AP',
                 'iPhone9,2': 'D11AP',
+                'iPhone9,3': 'D101AP',
                 'iPhone9,4': 'D111AP'}
     device_info = {'brand': 'Apple',
                    'device': 'iPhone',
