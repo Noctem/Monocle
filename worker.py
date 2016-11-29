@@ -31,6 +31,7 @@ import utils
 START_TIME = time.time()
 GLOBAL_VISITS = 0
 GLOBAL_SEEN = 0
+CAPTCHAS = 0
 NOTIFICATIONS_SENT = 0
 LAST_LOGIN = 0
 DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
@@ -276,8 +277,6 @@ class Slave:
         self.error_code = 'BENCHING'
         self.logger.warning('Swapping ' + self.username + ' due to CAPTCHA.')
         self.update_accounts_dict(captcha=True)
-        if self.killed:
-            return False
         self.captcha_queue.put(self.username)
         await self.new_account()
 
@@ -313,10 +312,10 @@ class Slave:
     async def encounter(self, pokemon):
         self.simulate_jitter()
 
-        delay_required = random.uniform(2.5, 5)
+        delay_required = random.triangular(1, 4.5, 2)
         self.error_code = '~'
         while time.time() - self.last_visit < delay_required:
-            await asyncio.sleep(1.25)
+            await asyncio.sleep(1)
 
         self.error_code = 'ENCOUNTERING'
 
@@ -480,14 +479,14 @@ class Slave:
     async def login(self):
         """Logs worker in and prepares for scanning"""
         self.logger.info('Trying to log in')
+        self.error_code = 'LOGIN'
         global LAST_LOGIN
-        time_required = random.uniform(2, 6)
+        time_required = random.triangular(2, 4, 7)
         while (time.time() - LAST_LOGIN) < time_required:
             self.error_code = 'WAITING'
             if self.killed:
                 return False
             await asyncio.sleep(2)
-        self.error_code = 'LOGIN'
         LAST_LOGIN = time.time()
 
         await self.loop.run_in_executor(
@@ -499,6 +498,8 @@ class Slave:
                 provider=self.account.get('provider'),
             )
         )
+        if self.killed:
+            return False
         if not self.ever_authenticated:
             if not await self.app_simulation_login():
                 return False
@@ -523,6 +524,8 @@ class Slave:
                     if not await self.login():
                         await asyncio.sleep(2)
                         continue
+                if self.killed:
+                    return False
                 visited = await self.visit_point(point, i)
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 err = 'Banned IP.'
@@ -535,11 +538,15 @@ class Slave:
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed: ' + self.username)
                 self.error_code = 'FAILED LOGIN'
+                if self.killed:
+                    return False
                 await self.swap_account(reason='login failed')
                 await self.random_sleep()
             except pgoapi_exceptions.NotLoggedInException:
                 self.logger.error(self.username + ' is not logged in.')
                 self.error_code = 'NOT AUTHENTICATED'
+                if self.killed:
+                    return False
                 await self.swap_account(reason='not logged in')
                 await self.random_sleep()
             except pgoapi_exceptions.ServerBusyOrOfflineException:
@@ -552,8 +559,13 @@ class Slave:
                 await self.random_sleep(sleep_min=10)
             except pgoapi_exceptions.BannedAccountException:
                 self.error_code = 'BANNED?'
+                if self.killed:
+                    return False
                 await self.remove_account()
             except CaptchaException:
+                CAPTCHAS += 1
+                if self.killed:
+                    return False
                 await self.bench_account()
                 self.error_code = 'CAPTCHA'
             except MalformedResponse:
@@ -822,35 +834,38 @@ class Overseer:
         self.start_date = datetime.now()
         self.status_bar = status_bar
         self.things_count = []
+        self.paused = False
         self.killed = False
         self.last_proxy = 0
         self.loop = loop
         self.db_processor = DatabaseProcessor()
         self.cell_ids_executor = ThreadPoolExecutor(config.COMPUTE_THREADS)
         self.network_executor = ThreadPoolExecutor(config.NETWORK_THREADS)
+        self.coroutine_limit = self.count
+        self.coroutines_count = 0
         self.logger.info('Overseer initialized')
+        self.skipped = 0
+        self.visited = 0
+        self.searches_without_shuffle = 0
 
     def kill(self):
         self.killed = True
         try:
-            for worker in self.workers.values():
-                try:
-                    worker.kill()
-                except Exception as e:
-                    print(e)
-            try:
+            if self.captcha_queue.empty():
+                for account in ACCOUNTS.keys():
+                    ACCOUNTS[account]['captcha'] = False
+            else:
                 while not self.extra_queue.empty():
-                    username = self.extra_queue.get()
+                    username = overseer.extra_queue.get()
                     ACCOUNTS[username]['captcha'] = False
-            except Exception as e:
-                print(e)
-            notifier.session.close()
-            SPAWNS.session.close()
-            self.db_processor.stop()
-            self.manager.shutdown()
         except Exception as e:
             print(e)
 
+        for worker in self.workers.values():
+            try:
+                worker.kill()
+            except Exception as e:
+                print('worker', worker.worker_no, e)
 
     def launch_queue_manager(self):
         captcha = Queue()
@@ -905,6 +920,7 @@ class Overseer:
         self.launch_queue_manager()
         for worker_no in range(self.count):
             self.start_worker(worker_no, first_run=True)
+        self.workers_list = list(overseer.workers.values())
         self.db_processor.start()
 
     def check(self):
@@ -937,6 +953,10 @@ class Overseer:
                     _ = os.system('clear')
                 print(self.get_status_message())
             time.sleep(1)
+            while self.paused:
+                if self.killed:
+                    break
+                time.sleep(10)
         # OK, now we're killed
         while True:
             try:
@@ -1024,13 +1044,7 @@ class Overseer:
         api_stats = self.get_api_stats()
         running_for = datetime.now() - self.start_date
         seen_stats, visit_stats, delay_stats, speed_stats = self.get_visit_stats()
-        global GLOBAL_SEEN
-        global GLOBAL_VISITS
-        try:
-            coroutines_count = len(asyncio.Task.all_tasks(self.loop))
-        except RuntimeError:
-            # Set changed size during iteration
-            coroutines_count = '?'
+
         try:
             output = [
                 'PokeMiner\trunning for {}'.format(running_for),
@@ -1038,7 +1052,7 @@ class Overseer:
                 '',
                 '{} threads and {} coroutines active'.format(
                     threading.active_count(),
-                    coroutines_count,
+                    self.coroutines_count,
                 ),
                 'API latency: min {min:.2f}, max {max:.2f}, avg {avg:.2f}'.format(
                     **api_stats
@@ -1073,7 +1087,10 @@ class Overseer:
             pass
         seconds_since_start = time.time() - START_TIME
         visits_per_second = GLOBAL_VISITS / seconds_since_start
+        captchas_per_hour = CAPTCHAS * (3600 / seconds_since_start)
         output.append('Visits per second: ' + str(round(visits_per_second, 2)))
+        output.append('Spawns skipped: ' + str(self.skipped))
+        output.append('CAPTCHAs per hour: ' + str(round(captchas_per_hour, 2)))
         output.append('')
         no_sightings = ', '.join(str(w.worker_no)
                                  for w in self.workers.values()
@@ -1088,6 +1105,95 @@ class Overseer:
             previous = i
         return '\n'.join(output)
 
+    async def best_worker(self, point, spawn_time, give_up=False):
+        worker = None
+        lowest_speed = float('inf')
+        self.searches_without_shuffle += 1
+        if self.searches_without_shuffle > 19:
+            random.shuffle(self.workers_list)
+        workers = self.workers_list.copy()
+        while worker is None or lowest_speed > config.SPEED_LIMIT:
+            speed = None
+            lowest_speed = float('inf')
+            worker = None
+            for w in workers:
+                if self.killed:
+                    return False, False
+                speed = await self.loop.run_in_executor(
+                    self.cell_ids_executor,
+                    partial(w.travel_speed, point, spawn_time)
+                )
+                if speed is not None and speed < lowest_speed:
+                    lowest_speed = speed
+                    worker = w
+                    if speed < 7:
+                        break
+            if worker.busy:
+               worker = None
+            if worker is None:
+                time_diff = spawn_time - time.time()
+                if time_diff < -60:
+                    return False, False
+                await asyncio.sleep(5)
+            elif lowest_speed > config.SPEED_LIMIT:
+                await asyncio.sleep(2)
+        return worker, lowest_speed
+
+    def launch(self):
+        global SPAWNS
+        while not self.killed:
+            if self.visited > 0:
+                with open('accounts.pickle', 'wb') as f:
+                    pickle.dump(ACCOUNTS, f, pickle.HIGHEST_PROTOCOL)
+            SPAWNS.update_spawns()
+            current_hour = utils.get_current_hour()
+            for spawn_id, spawn in SPAWNS.spawns.items():
+                try:
+                    self.coroutines_count = len(asyncio.Task.all_tasks(self.loop))
+                    while self.coroutines_count > self.coroutine_limit or not isinstance(self.coroutines_count, int):
+                        time.sleep(1)
+                        self.coroutines_count = len(asyncio.Task.all_tasks(self.loop))
+                    while self.captcha_queue.qsize() > config.MAX_CAPTCHAS and not self.killed:
+                        self.paused = True
+                        time.sleep(10)
+                except IOError:
+                    pass
+                except Exception as e:
+                    print(e)
+                if self.killed:
+                    return
+                self.paused = False
+                spawn_time = spawn[1] + current_hour
+                # negative = already happened
+                # positive = hasn't happened yet
+                time_diff = spawn_time - time.time()
+                if self.visited == 0 and (time_diff < -10 or time_diff > 10):
+                    continue
+                elif time_diff < -180:
+                    self.skipped += 1
+                    continue
+                elif time_diff > 90:
+                    time.sleep(30)
+                point = list(spawn[0])
+                asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, spawn_id), loop=self.loop)
+
+    async def try_point(self, point, spawn_time, spawn_id):
+        point[0] = random.uniform(point[0] - 0.0004, point[0] + 0.0004)
+        point[1] = random.uniform(point[1] - 0.0004, point[1] + 0.0004)
+        time_diff = spawn_time - time.time()
+        if time_diff > -2:
+            await asyncio.sleep(time_diff + 2)
+
+        worker, speed = await self.best_worker(point, spawn_time)
+        if not worker:
+            self.skipped += 1
+            return False
+        worker.busy = True
+        worker.after_spawn = time.time() - spawn_time
+        worker.speed = speed
+        if await worker.visit(point, spawn_id):
+            self.visited += 1
+        worker.busy = False
 
 class DatabaseProcessor(threading.Thread):
     def __init__(self):
@@ -1176,107 +1282,6 @@ def exception_handler(loop, context):
     logger.error(context)
 
 
-class Launcher():
-    def __init__(self, overseer, loop):
-        self.loop = loop
-        self.running = True
-        self.workers = list(overseer.workers.values())
-        self.coroutine_limit = len(self.workers) - 2
-        self.skipped = 0
-        self.visited = 0
-        self.searches_without_shuffle = 0
-        self.cell_ids_executor = overseer.cell_ids_executor
-        self.captcha_queue = overseer.captcha_queue
-
-    async def best_worker(self, point, spawn_time, give_up=False):
-        worker = None
-        lowest_speed = float('inf')
-        self.searches_without_shuffle += 1
-        if self.searches_without_shuffle > 19:
-            random.shuffle(self.workers)
-        workers = self.workers.copy()
-        while worker is None or lowest_speed > config.SPEED_LIMIT:
-            speed = None
-            lowest_speed = float('inf')
-            worker = None
-            for w in workers:
-                if not self.running:
-                    return False, False
-                speed = await self.loop.run_in_executor(
-                    self.cell_ids_executor,
-                    partial(w.travel_speed, point, spawn_time)
-                )
-                if speed is not None and speed < lowest_speed:
-                    lowest_speed = speed
-                    worker = w
-                    if speed < 7:
-                        break
-            if worker.busy:
-               worker = None
-            if worker is None:
-                time_diff = spawn_time - time.time()
-                if time_diff < -60:
-                    return False, False
-                await asyncio.sleep(5)
-            elif lowest_speed > config.SPEED_LIMIT:
-                await asyncio.sleep(2)
-        return worker, lowest_speed
-
-    def launch(self):
-        global SPAWNS
-        while self.running:
-            if self.visited > 0:
-                with open('accounts.pickle', 'wb') as f:
-                    pickle.dump(ACCOUNTS, f, pickle.HIGHEST_PROTOCOL)
-            SPAWNS.update_spawns()
-            current_hour = utils.get_current_hour()
-            for spawn_id, spawn in SPAWNS.spawns.items():
-                try:
-                    while self.captcha_queue.qsize() > config.MAX_CAPTCHAS and self.running:
-                        time.sleep(30)
-                    coroutines_count = len(asyncio.Task.all_tasks(self.loop))
-                    while coroutines_count > self.coroutine_limit or not isinstance(coroutines_count, int):
-                        time.sleep(1)
-                        coroutines_count = len(asyncio.Task.all_tasks(self.loop))
-                except Exception as e:
-                    print(e)
-                if not self.running:
-                    return
-                spawn_time = spawn[1] + current_hour
-                # negative = already happened
-                # positive = hasn't happened yet
-                time_diff = spawn_time - time.time()
-                if self.visited == 0 and (time_diff < -10 or time_diff > 10):
-                    continue
-                elif time_diff < -180:
-                    self.skipped += 1
-                    continue
-                elif time_diff > 90:
-                    time.sleep(30)
-                point = list(spawn[0])
-                asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, spawn_id), self.loop)
-
-    async def try_point(self, point, spawn_time, spawn_id):
-        point[0] = random.uniform(point[0] - 0.0004, point[0] + 0.0004)
-        point[1] = random.uniform(point[1] - 0.0004, point[1] + 0.0004)
-        time_diff = spawn_time - time.time()
-        if time_diff > -2:
-            await asyncio.sleep(time_diff + 2)
-
-        worker, speed = await self.best_worker(point, spawn_time)
-        if not worker:
-            self.skipped += 1
-            return False
-        worker.busy = True
-        worker.after_spawn = time.time() - spawn_time
-        worker.speed = speed
-        if await worker.visit(point, spawn_id):
-            self.visited += 1
-        worker.busy = False
-
-    def stop(self):
-        self.running = False
-
 
 if __name__ == '__main__':
     try:
@@ -1324,24 +1329,30 @@ if __name__ == '__main__':
     overseer.start()
     overseer_thread = threading.Thread(target=overseer.check)
     overseer_thread.start()
-    launcher = Launcher(overseer, loop=loop)
-    launcher_thread = threading.Thread(target=launcher.launch)
+    launcher_thread = threading.Thread(target=overseer.launch)
     launcher_thread.start()
 
     try:
         loop.run_forever()
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
-        launcher.stop()
         overseer.kill()  # also cancels all workers' futures
 
         with open('cells.pickle', 'wb') as f:
             pickle.dump(CELL_IDS, f, pickle.HIGHEST_PROTOCOL)
         with open('accounts.pickle', 'wb') as f:
             pickle.dump(ACCOUNTS, f, pickle.HIGHEST_PROTOCOL)
-        pending = asyncio.Task.all_tasks(loop=loop)
 
-        loop.run_until_complete(asyncio.gather(*pending))
-
-        loop.stop()
-        loop.close()
+        try:
+            pending = asyncio.Task.all_tasks(loop=loop)
+            loop.run_until_complete(asyncio.gather(*pending))
+            overseer.cell_ids_executor.shutdown()
+            overseer.network_executor.shutdown()
+            overseer.db_processor.stop()
+            overseer.manager.shutdown()
+            notifier.session.close()
+            SPAWNS.session.close()
+            loop.stop()
+            loop.close()
+        except Exception as e:
+            print(e)
