@@ -12,7 +12,7 @@ MAP_START = (12.3456, 34.5678)
 MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
 MAX_CAPTCHAS = 100  # stop launching new visits if this many CAPTCHAs are pending
-SCAN_DELAY = 10  # do not visit within this many seconds of the last visit
+SCAN_DELAY = 11  # do not visit within this many seconds of the last visit
 
 ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if generation fails
 
@@ -24,18 +24,16 @@ ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if generation f
 # using an existing database since the data types are incompatible.
 SPAWN_ID_INT = True
 
-SCAN_RADIUS = 70  # meters
-
 _workers_count = GRID[0] * GRID[1]
-COMPUTE_THREADS = int(_workers_count / 10) + 1
-NETWORK_THREADS = int(_workers_count / 2) + 1
+COMPUTE_THREADS = round(_workers_count / 10) + 1
+NETWORK_THREADS = round(_workers_count / 2) + 1
 
-# Optionally just set the username, account, and provider
-# and use scripts/generate_device_info.py to generate the device info
+# Optionally also provide an iPhone model, iOS version, and device_id
+# otherwise these values will be generated for you and stored in a pickle
 ACCOUNTS = [
-    ('ash_ketchum', 'pik4chu', 'ptc', 'iPhone6,1', '9.3.4', '67c51fda79104a5a87935992e15d2246'),
-    ('ziemniak_kalafior', 'ogorek', 'google', 'iPhone5,4', '9.0', 'bf8d044125424678be8e6050aac205f6'),
-    ('noideawhattoputhere', 's3cr3t', 'ptc', 'iPhone8,2', '9.3.3', '433a80e3168f488288ae587c3e67441c')
+    ('ash_ketchum', 'pik4chu', 'ptc',),
+    ('ziemniak_kalafior', 'ogorek', 'google'),
+    ('noideawhattoputhere', 's3cr3t', 'ptc')
 ]
 
 TRASH_IDS = (13, 16, 19, 21, 41, 96)

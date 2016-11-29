@@ -50,16 +50,15 @@ for setting_name in REQUIRED_SETTINGS:
 
 # Set defaults for missing config options
 OPTIONAL_SETTINGS = {
-    'LONGSPAWNS': False,
     'PROXIES': None,
-    'SCAN_RADIUS': 70,
-    'SCAN_DELAY': 15,
+    'SCAN_DELAY': 11,
     'NOTIFY_IDS': None,
     'NOTIFY_RANKING': None,
     'CONTROL_SOCKS': None,
     'ENCRYPT_PATH': None,
     'HASH_PATH': None,
-    'MAX_CAPTCHAS': 100
+    'MAX_CAPTCHAS': 100,
+    'ACCOUNTS': ()
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -314,9 +313,10 @@ class Slave:
     async def encounter(self, pokemon):
         self.simulate_jitter()
 
-        delay_required = random.uniform(4, 7.5)
+        delay_required = random.uniform(2.5, 5)
+        self.error_code = '~'
         while time.time() - self.last_visit < delay_required:
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(1.25)
 
         self.error_code = 'ENCOUNTERING'
 
@@ -477,7 +477,7 @@ class Slave:
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
         return responses
 
-    async def login(self, initial=True):
+    async def login(self):
         """Logs worker in and prepares for scanning"""
         self.logger.info('Trying to log in')
         global LAST_LOGIN
@@ -489,61 +489,24 @@ class Slave:
             await asyncio.sleep(2)
         self.error_code = 'LOGIN'
         LAST_LOGIN = time.time()
-        try:
-            await self.loop.run_in_executor(
-                self.network_executor,
-                self.call_api(
-                    self.api.set_authentication,
-                    username=self.username,
-                    password=self.account.get('password'),
-                    provider=self.account.get('provider'),
-                )
+
+        await self.loop.run_in_executor(
+            self.network_executor,
+            self.call_api(
+                self.api.set_authentication,
+                username=self.username,
+                password=self.account.get('password'),
+                provider=self.account.get('provider'),
             )
-            if not self.ever_authenticated:
-                if not await self.app_simulation_login():
-                    return False
-        except pgoapi_exceptions.ServerSideAccessForbiddenException:
-            self.logger.error('Banned IP: ' + self.proxy)
-            self.error_code = 'IP BANNED'
-            self.swap_circuit(reason='ban')
-            await self.random_sleep(sleep_min=15, sleep_max=20)
-        except pgoapi_exceptions.AuthException:
-            self.logger.warning('Login failed: ' + self.username)
-            self.error_code = 'FAILED LOGIN'
-            await self.swap_account(reason='login failed')
-            await self.random_sleep()
-        except pgoapi_exceptions.NotLoggedInException:
-            self.logger.error('Invalid credentials: ' + self.username)
-            self.error_code = 'BAD LOGIN'
-            await self.swap_account(reason='bad login')
-            await self.random_sleep()
-        except pgoapi_exceptions.ServerBusyOrOfflineException:
-            self.logger.info('Server too busy - restarting')
-            self.error_code = 'RETRYING'
-            await self.random_sleep()
-        except pgoapi_exceptions.ServerSideRequestThrottlingException:
-            self.logger.info('Server throttling - sleeping for a bit')
-            self.error_code = 'THROTTLE'
-            await self.random_sleep(sleep_min=10)
-        except pgoapi_exceptions.BannedAccountException:
-            self.error_code = 'BANNED?'
-            await self.remove_account()
-        except CaptchaException:
-            await self.bench_account()
-            self.error_code = 'CAPTCHA'
-            await self.random_sleep()
-        except CancelledError:
-            self.kill()
-        except Exception as err:
-            self.logger.exception('A wild exception appeared! ' + str(err))
-            self.error_code = 'EXCEPTION'
-            await self.random_sleep()
-        else:
-            self.ever_authenticated = True
-            self.logged_in = True
-            self.error_code = '@'
-            return True
-        return False
+        )
+        if not self.ever_authenticated:
+            if not await self.app_simulation_login():
+                return False
+
+        self.ever_authenticated = True
+        self.logged_in = True
+        self.error_code = '@'
+        return True
 
     async def visit(self, point, i):
         """Wrapper for self.visit_point - runs it a few times before giving up
@@ -562,12 +525,20 @@ class Slave:
                         continue
                 visited = await self.visit_point(point, i)
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
-                self.logger.error('Banned IP.')
+                err = 'Banned IP.'
+                if self.proxy:
+                    err += ' ' + self.proxy
+                self.logger.error(err)
                 self.error_code = 'IP BANNED'
                 self.swap_circuit(reason='ban')
-                await self.random_sleep(sleep_min=15, sleep_max=20)
+                await self.random_sleep(sleep_min=20, sleep_max=30)
+            except pgoapi_exceptions.AuthException:
+                self.logger.warning('Login failed: ' + self.username)
+                self.error_code = 'FAILED LOGIN'
+                await self.swap_account(reason='login failed')
+                await self.random_sleep()
             except pgoapi_exceptions.NotLoggedInException:
-                self.logger.error('Invalid credentials: ' + self.username)
+                self.logger.error(self.username + ' is not logged in.')
                 self.error_code = 'NOT AUTHENTICATED'
                 await self.swap_account(reason='not logged in')
                 await self.random_sleep()
@@ -579,17 +550,16 @@ class Slave:
                 self.logger.info('Server throttling - sleeping for a bit')
                 self.error_code = 'THROTTLE'
                 await self.random_sleep(sleep_min=10)
+            except pgoapi_exceptions.BannedAccountException:
+                self.error_code = 'BANNED?'
+                await self.remove_account()
             except CaptchaException:
                 await self.bench_account()
                 self.error_code = 'CAPTCHA'
-                await self.random_sleep()
             except MalformedResponse:
                 self.logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
                 await self.random_sleep()
-            except pgoapi_exceptions.BannedAccountException:
-                self.error_code = 'BANNED?'
-                await self.remove_account()
             except Exception as err:
                 self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
@@ -704,9 +674,9 @@ class Slave:
                         self.logger.warning(explanation)
 
                 if normalized['valid'] and normalized not in db.SIGHTING_CACHE:
+                    pokemons.append(normalized)
                     if 'cp' not in normalized:
                         normalized.update(await self.encounter(pokemon))
-                    pokemons.append(normalized)
 
                 if not normalized['valid'] or db.LONGSPAWN_CACHE.in_store(normalized):
                     normalized = normalized.copy()
@@ -869,15 +839,15 @@ class Overseer:
                 except Exception as e:
                     print(e)
             try:
-                while not self.fixed_queue.empty():
-                    username = self.fixed_queue.get()
+                while not self.extra_queue.empty():
+                    username = self.extra_queue.get()
                     ACCOUNTS[username]['captcha'] = False
             except Exception as e:
                 print(e)
-            self.manager.shutdown()
-            self.db_processor.stop()
-            SPAWNS.session.close()
             notifier.session.close()
+            SPAWNS.session.close()
+            self.db_processor.stop()
+            self.manager.shutdown()
         except Exception as e:
             print(e)
 
@@ -886,18 +856,15 @@ class Overseer:
         captcha = Queue()
         extra = Queue()
         workers = {}
-        fixed = Queue()
         class QueueManager(SyncManager): pass
         QueueManager.register('captcha_queue', callable=lambda:captcha)
         QueueManager.register('extra_queue', callable=lambda:extra)
         QueueManager.register('worker_dict', callable=lambda:workers)
-        QueueManager.register('fixed_queue', callable=lambda:fixed)
         self.manager = QueueManager(address='queue.sock', authkey=b'monkeys')
         self.manager.start()
         self.captcha_queue = self.manager.captcha_queue()
         self.extra_queue = self.manager.extra_queue()
         self.worker_dict = self.manager.worker_dict()
-        self.fixed_queue = self.manager.fixed_queue()
         for username, account in ACCOUNTS.items():
             if account.get('banned'):
                 continue
@@ -955,9 +922,6 @@ class Overseer:
             if now - last_cleaned_cache > 900:  # clean cache after 15min
                 self.db_processor.clean_cache()
                 last_cleaned_cache = now
-                while not self.killed and not self.fixed_queue.empty():
-                    username = self.fixed_queue.get()
-                    ACCOUNTS[username]['captcha'] = False
             # Check up on workers
             if now - last_workers_checked > (5 * 60):
                 last_workers_checked = now
@@ -1215,23 +1179,27 @@ def exception_handler(loop, context):
 class Launcher():
     def __init__(self, overseer, loop):
         self.loop = loop
-        self.overseer = overseer
         self.running = True
-        self.workers = list(self.overseer.workers.values())
-        count = len(self.workers)
-        self.coroutine_limit = int(count / 1.75) + 1
+        self.workers = list(overseer.workers.values())
+        self.coroutine_limit = len(self.workers) - 2
         self.skipped = 0
         self.visited = 0
-        self.cell_ids_executor = self.overseer.cell_ids_executor
+        self.searches_without_shuffle = 0
+        self.cell_ids_executor = overseer.cell_ids_executor
+        self.captcha_queue = overseer.captcha_queue
 
     async def best_worker(self, point, spawn_time, give_up=False):
         worker = None
         lowest_speed = float('inf')
+        self.searches_without_shuffle += 1
+        if self.searches_without_shuffle > 19:
+            random.shuffle(self.workers)
+        workers = self.workers.copy()
         while worker is None or lowest_speed > config.SPEED_LIMIT:
             speed = None
             lowest_speed = float('inf')
             worker = None
-            for w in self.workers:
+            for w in workers:
                 if not self.running:
                     return False, False
                 speed = await self.loop.run_in_executor(
@@ -1243,6 +1211,8 @@ class Launcher():
                     worker = w
                     if speed < 7:
                         break
+            if worker.busy:
+               worker = None
             if worker is None:
                 time_diff = spawn_time - time.time()
                 if time_diff < -60:
@@ -1260,10 +1230,9 @@ class Launcher():
                     pickle.dump(ACCOUNTS, f, pickle.HIGHEST_PROTOCOL)
             SPAWNS.update_spawns()
             current_hour = utils.get_current_hour()
-            random.shuffle(self.workers)
             for spawn_id, spawn in SPAWNS.spawns.items():
                 try:
-                    while self.overseer.captcha_queue.qsize() > config.MAX_CAPTCHAS and self.running:
+                    while self.captcha_queue.qsize() > config.MAX_CAPTCHAS and self.running:
                         time.sleep(30)
                     coroutines_count = len(asyncio.Task.all_tasks(self.loop))
                     while coroutines_count > self.coroutine_limit or not isinstance(coroutines_count, int):
@@ -1279,7 +1248,7 @@ class Launcher():
                 time_diff = spawn_time - time.time()
                 if self.visited == 0 and (time_diff < -10 or time_diff > 10):
                     continue
-                elif time_diff < -300:
+                elif time_diff < -180:
                     self.skipped += 1
                     continue
                 elif time_diff > 90:
@@ -1313,11 +1282,19 @@ if __name__ == '__main__':
     try:
         with open('cells.pickle', 'rb') as f:
             CELL_IDS = pickle.load(f)
-    except Exception:
+    except FileNotFoundError:
         CELL_IDS = dict()
 
-    with open('accounts.pickle', 'rb') as f:
-        ACCOUNTS = pickle.load(f)
+    try:
+        with open('accounts.pickle', 'rb') as f:
+            ACCOUNTS = pickle.load(f)
+        if (config.ACCOUNTS and
+                set(ACCOUNTS) != set(acc[0] for acc in config.ACCOUNTS)):
+            ACCOUNTS = utils.generate_accounts_dict(ACCOUNTS)
+    except FileNotFoundError:
+        if not config.ACCOUNTS:
+            raise ValueError('Must have accounts in config or an accounts pickle.')
+        ACCOUNTS = utils.generate_accounts_dict()
 
     SPAWNS = Spawns()
 
@@ -1355,8 +1332,9 @@ if __name__ == '__main__':
         loop.run_forever()
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
-        overseer.kill()  # also cancels all workers' futures
         launcher.stop()
+        overseer.kill()  # also cancels all workers' futures
+
         with open('cells.pickle', 'wb') as f:
             pickle.dump(CELL_IDS, f, pickle.HIGHEST_PROTOCOL)
         with open('accounts.pickle', 'wb') as f:

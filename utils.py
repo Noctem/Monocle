@@ -4,6 +4,7 @@ import requests
 import polyline
 import time
 
+from uuid import uuid4
 from geopy import distance, Point
 from pgoapi import utilities as pgoapi_utils
 
@@ -16,6 +17,22 @@ OPTIONAL_SETTINGS = {
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
+
+IPHONES = {'iPhone5,1': 'N41AP',
+           'iPhone5,2': 'N42AP',
+           'iPhone5,3': 'N48AP',
+           'iPhone5,4': 'N49AP',
+           'iPhone6,1': 'N51AP',
+           'iPhone6,2': 'N53AP',
+           'iPhone7,1': 'N56AP',
+           'iPhone7,2': 'N61AP',
+           'iPhone8,1': 'N71AP',
+           'iPhone8,2': 'N66AP',
+           'iPhone8,4': 'N69AP',
+           'iPhone9,1': 'D10AP',
+           'iPhone9,2': 'D11AP',
+           'iPhone9,3': 'D101AP',
+           'iPhone9,4': 'D111AP'}
 
 
 def get_map_center():
@@ -224,31 +241,64 @@ def get_points_per_worker(gen_alts=False):
 
 
 def get_device_info(account):
-    hardware = {'iPhone5,1': 'N41AP',
-                'iPhone5,2': 'N42AP',
-                'iPhone5,3': 'N48AP',
-                'iPhone5,4': 'N49AP',
-                'iPhone6,1': 'N51AP',
-                'iPhone6,2': 'N53AP',
-                'iPhone7,1': 'N56AP',
-                'iPhone7,2': 'N61AP',
-                'iPhone8,1': 'N71AP',
-                'iPhone8,2': 'N66AP',
-                'iPhone8,4': 'N69AP',
-                'iPhone9,1': 'D10AP',
-                'iPhone9,2': 'D11AP',
-                'iPhone9,3': 'D101AP',
-                'iPhone9,4': 'D111AP'}
     device_info = {'brand': 'Apple',
                    'device': 'iPhone',
                    'manufacturer': 'Apple',
                    'product': 'iPhone OS'
                    }
     device_info['hardware'] = account.get('model')
-    device_info['model'] = hardware[account.get('model')]
+    device_info['model'] = IPHONES[account.get('model')]
     device_info['version'] = account.get('iOS')
     device_info['device_id'] = account.get('id')
     return device_info
+
+
+def generate_device_info():
+    account = dict()
+    devices = tuple(IPHONES.keys())
+    ios8 = ('8.0', '8.0.1', '8.0.2', '8.1', '8.1.1', '8.1.2', '8.1.3', '8.2', '8.3', '8.4', '8.4.1')
+    ios9 = ('9.0', '9.0.1', '9.0.2', '9.1', '9.2', '9.2.1', '9.3', '9.3.1', '9.3.2', '9.3.3', '9.3.4', '9.3.5')
+    ios10 = ('10.0', '10.0.1', '10.0.2', '10.0.3', '10.1', '10.1.1')
+
+    account['model'] = random.choice(devices)
+    account['id'] = uuid4().hex
+
+    if account['model'] in ('iPhone9,1', 'iPhone9,2',
+                            'iPhone9,3', 'iPhone9,4'):
+        account['iOS'] = random.choice(ios10)
+    elif account['model'] in ('iPhone8,1', 'iPhone8,2', 'iPhone8,4'):
+        account['iOS'] = random.choice(ios9 + ios10)
+    else:
+        account['iOS'] = random.choice(ios8 + ios9 + ios10)
+
+    return account
+
+
+def create_account_dict(account):
+    if not (len(account) == 3 or len(account) == 6):
+        raise ValueError('Each account should have either 3 (account info only) or 6 values (account and device info).')
+    username = account[0]
+    entry = {}
+
+    entry['password'], entry['provider'] = account[1:3]
+    if len(account) == 3:
+        entry.update(utils.generate_device_info())
+    elif len(account) == 6:
+        entry['model'], entry['iOS'], entry['id'] = account[3:6]
+    entry.update({'location': (0,0,0), 'time': 0, 'captcha': False, 'banned': False})
+
+    return entry
+
+
+def create_accounts_dict(old_accounts=None):
+    accounts = {}
+    for account in config.ACCOUNTS:
+        username = account[0]
+        if old_accounts and username in old_accounts:
+            accounts[username] = old_accounts[username]
+        else:
+            accounts[username] = create_account_dict(account)
+    return accounts
 
 
 def sort_points_for_worker(points, worker_no):

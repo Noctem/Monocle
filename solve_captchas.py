@@ -46,16 +46,13 @@ with open('accounts.pickle', 'rb') as f:
 
 captcha = Queue()
 extra = Queue()
-fixed = Queue()
 class QueueManager(SyncManager): pass
 QueueManager.register('captcha_queue', callable=lambda:captcha)
 QueueManager.register('extra_queue', callable=lambda:extra)
-QueueManager.register('fixed_queue', callable=lambda:fixed)
 manager = QueueManager(address='queue.sock', authkey=b'monkeys')
 manager.connect()
 captcha_queue = manager.captcha_queue()
 extra_queue = manager.extra_queue()
-fixed_queue = manager.fixed_queue()
 
 
 middle_lat = (MAP_START[0] + MAP_END[0]) / 2
@@ -104,11 +101,9 @@ while not captcha_queue.empty():
         timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
         if challenge_url == ' ':
             extra_queue.put(username)
-            fixed_queue.put(username)
         else:
             if resolve_captcha(challenge_url, api, driver, timestamp):
                 extra_queue.put(username)
-                fixed_queue.put(username)
             else:
                 print('failure')
                 captcha_queue.put(username)
