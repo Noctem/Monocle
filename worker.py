@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from geopy.distance import great_circle
 from queue import Queue
 from multiprocessing.managers import SyncManager
+from pgoapi.auth_ptc import AuthPtc
 import argparse
 import asyncio
 import logging
@@ -32,7 +33,6 @@ START_TIME = time.time()
 GLOBAL_SEEN = 0
 CAPTCHAS = 0
 NOTIFICATIONS_SENT = 0
-LAST_LOGIN = 0
 DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
 
 # Check whether config has all necessary attributes
@@ -166,8 +166,10 @@ class Slave:
         self.worker_dict = worker_dict
         self.worker_no = worker_no
         self.username = self.extra_queue.get()
+        global ACCOUNTS
         self.account = ACCOUNTS[self.username]
         self.location = self.account.get('location', (0,0,0))
+        self.inventory_timestamp = self.account.get('inventory_timestamp')
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
         self.set_proxy(proxy)
         self.initialize_api()
@@ -202,11 +204,23 @@ class Slave:
                 self.api.set_hash_lib(config.HASH_PATH)
             self.api.set_position(*self.location)
             self.api.set_logger(self.logger)
+            if self.account.get('provider') == 'ptc' and self.account.get('refresh'):
+                self.api._auth_provider = AuthPtc()
+                self.api._auth_provider.set_refresh_token(self.account.get('refresh'))
+                self.api._auth_provider._access_token = self.account.get('auth')
+                self.api._auth_provider._access_token_expiry = self.account.get('expiry')
+                if self.api._auth_provider.check_access_token():
+                    self.api._auth_provider._login = True
+                    self.logged_in = True
+                    self.ever_authenticated = True
 
     async def call_chain(self, request):
         request.check_challenge()
         request.get_hatched_eggs()
-        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
+        if self.inventory_timestamp:
+            request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
+        else:
+            request.get_inventory()
         request.check_awarded_badges()
         request.download_settings(hash=DOWNLOAD_HASH)
         request.get_buddy_walked()
@@ -267,10 +281,20 @@ class Slave:
 
     def update_accounts_dict(self, captcha=False, banned=False):
         global ACCOUNTS
-        ACCOUNTS[self.username]['captcha'] = captcha
-        ACCOUNTS[self.username]['banned'] = banned
-        ACCOUNTS[self.username]['location'] = self.location
-        ACCOUNTS[self.username]['time'] = self.last_visit
+        account = ACCOUNTS[self.username]
+        account['captcha'] = captcha
+        account['banned'] = banned
+        account['location'] = self.location
+        account['time'] = self.last_visit
+        account['inventory_timestamp'] = self.inventory_timestamp
+        if not self.api._auth_provider:
+            return
+        account['refresh'] = self.api._auth_provider._refresh_token
+        if self.api._auth_provider.check_access_token():
+            account['auth'] = self.api._auth_provider._access_token
+            account['expiry'] = self.api._auth_provider._access_token_expiry
+        else:
+            account['auth'], account['expiry'] = None, None
 
     async def bench_account(self):
         self.error_code = 'BENCHING'
@@ -479,29 +503,26 @@ class Slave:
         """Logs worker in and prepares for scanning"""
         self.logger.info('Trying to log in')
         self.error_code = 'LOGIN'
-        global LAST_LOGIN
-        time_required = random.triangular(2, 4, 7)
-        while (time.time() - LAST_LOGIN) < time_required:
-            self.error_code = 'WAITING'
-            if self.killed:
-                return False
-            await asyncio.sleep(2)
-        LAST_LOGIN = time.time()
+        global LOGIN_SEM
+        global SIMULATION_SEM
 
-        await self.loop.run_in_executor(
-            self.network_executor,
-            self.call_api(
-                self.api.set_authentication,
-                username=self.username,
-                password=self.account.get('password'),
-                provider=self.account.get('provider'),
+        async with LOGIN_SEM:
+            await self.random_sleep(minimum=0.5, maximum=1.5)
+            await self.loop.run_in_executor(
+                self.network_executor,
+                self.call_api(
+                    self.api.set_authentication,
+                    username=self.username,
+                    password=self.account.get('password'),
+                    provider=self.account.get('provider'),
+                )
             )
-        )
         if self.killed:
             return False
         if not self.ever_authenticated:
-            if not await self.app_simulation_login():
-                return False
+            async with SIMULATION_SEM:
+                if not await self.app_simulation_login():
+                    return False
 
         self.ever_authenticated = True
         self.logged_in = True
@@ -1331,6 +1352,8 @@ if __name__ == '__main__':
     overseer = Overseer(status_bar=args.status_bar, loop=loop)
     loop.set_default_executor(ThreadPoolExecutor())
     loop.set_exception_handler(exception_handler)
+    LOGIN_SEM = asyncio.BoundedSemaphore(1, loop=loop)
+    SIMULATION_SEM = asyncio.BoundedSemaphore(2, loop=loop)
     overseer.start()
     overseer_thread = threading.Thread(target=overseer.check)
     overseer_thread.start()
