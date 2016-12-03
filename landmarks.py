@@ -49,11 +49,12 @@ class Landmark:
         # very imprecise conversion to square meters
         self.size = round(self.location.area * 12100000000)
 
-        if not phrase:
-            if is_area:
-                self.phrase = 'in'
-            else:
-                self.phrase = 'at'
+        if phrase:
+            self.phrase = phrase
+        elif is_area:
+            self.phrase = 'in'
+        else:
+            self.phrase = 'at'
 
         self.hashtags = hashtags
 
