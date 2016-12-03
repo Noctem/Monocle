@@ -29,7 +29,6 @@ import utils
 
 
 START_TIME = time.time()
-GLOBAL_VISITS = 0
 GLOBAL_SEEN = 0
 CAPTCHAS = 0
 NOTIFICATIONS_SENT = 0
@@ -563,11 +562,12 @@ class Slave:
                     return False
                 await self.remove_account()
             except CaptchaException:
-                CAPTCHAS += 1
+                global CAPTCHAS
                 if self.killed:
                     return False
                 await self.bench_account()
                 self.error_code = 'CAPTCHA'
+                CAPTCHAS += 1
             except MalformedResponse:
                 self.logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
@@ -585,7 +585,6 @@ class Slave:
 
     async def visit_point(self, point, i):
         global GLOBAL_SEEN
-        global GLOBAL_VISITS
 
         latitude, longitude, altitude = point
         altitude = random.uniform(altitude - 1, altitude + 1)
@@ -605,7 +604,6 @@ class Slave:
             pokemon_seen = random.randint(2,9)
             self.total_seen += pokemon_seen
             GLOBAL_SEEN += pokemon_seen
-            GLOBAL_VISITS += 1
             self.visits += 1
             if not self.killed:
                 self.worker_dict.update([(self.worker_no, ((latitude, longitude), start, self.speed, self.total_seen, self.visits, pokemon_seen, sent_notification))])
@@ -727,7 +725,6 @@ class Slave:
                     reason = str(CIRCUIT_FAILURES[self.proxy]) + ' empty visits'
                     self.swap_circuit(reason)
 
-        GLOBAL_VISITS += 1
         self.visits += 1
         if not self.killed:
             self.worker_dict.update([(self.worker_no, ((latitude, longitude), start, self.speed, self.total_seen, self.visits, pokemon_seen, sent_notification))])
@@ -845,8 +842,11 @@ class Overseer:
         self.coroutines_count = 0
         self.logger.info('Overseer initialized')
         self.skipped = 0
-        self.visited = 0
+        self.visits = 0
         self.searches_without_shuffle = 0
+        self.spawn_cache = db.SIGHTING_CACHE.spawn_ids
+        self.redundant = 0
+
 
     def kill(self):
         self.killed = True
@@ -1086,11 +1086,13 @@ class Overseer:
         except ZeroDivisionError:
             pass
         seconds_since_start = time.time() - START_TIME
-        visits_per_second = GLOBAL_VISITS / seconds_since_start
-        captchas_per_hour = CAPTCHAS * (3600 / seconds_since_start)
-        output.append('Visits per second: ' + str(round(visits_per_second, 2)))
-        output.append('Spawns skipped: ' + str(self.skipped))
-        output.append('CAPTCHAs per hour: ' + str(round(captchas_per_hour, 2)))
+        visits_per_second = self.visits / seconds_since_start
+        output.append('Visits (per second): ' + str(round(visits_per_second, 2)) + ' ' + str(self.visits))
+        if self.skipped or self.redundant:
+            output.append('Spawns skipped (redundant): ' + str(self.skipped) + ' ' + str(self.redundant))
+        if CAPTCHAS:
+            captchas_per_hour = CAPTCHAS * (3600 / seconds_since_start)
+            output.append('CAPTCHAs per hour: ' + str(round(captchas_per_hour, 1)))
         output.append('')
         no_sightings = ', '.join(str(w.worker_no)
                                  for w in self.workers.values()
@@ -1142,7 +1144,7 @@ class Overseer:
     def launch(self):
         global SPAWNS
         while not self.killed:
-            if self.visited > 0:
+            if self.visits > 0:
                 with open('accounts.pickle', 'wb') as f:
                     pickle.dump(ACCOUNTS, f, pickle.HIGHEST_PROTOCOL)
             SPAWNS.update_spawns()
@@ -1167,8 +1169,10 @@ class Overseer:
                 # negative = already happened
                 # positive = hasn't happened yet
                 time_diff = spawn_time - time.time()
-                if self.visited == 0 and (time_diff < -10 or time_diff > 10):
+                if self.visits == 0 and (time_diff < -10 or time_diff > 10):
                     continue
+                elif time_diff < -10 and spawn_id in self.spawn_cache:
+                    self.redundant += 1
                 elif time_diff < -180:
                     self.skipped += 1
                     continue
@@ -1191,8 +1195,9 @@ class Overseer:
         worker.busy = True
         worker.after_spawn = time.time() - spawn_time
         worker.speed = speed
+
         if await worker.visit(point, spawn_id):
-            self.visited += 1
+            self.visits += 1
         worker.busy = False
 
 class DatabaseProcessor(threading.Thread):
