@@ -18,11 +18,9 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
-    'GRID',
     'TRASH_IDS',
     'AREA_NAME',
     'REPORT_SINCE',
-    'SCAN_RADIUS',
     'MAP_PROVIDER_URL',
     'MAP_PROVIDER_ATTRIBUTION',
     'GOOGLE_MAPS_KEY'
