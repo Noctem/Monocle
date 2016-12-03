@@ -580,15 +580,33 @@ def get_pokemon_ranking(session, order='ASC'):
             pokemon_id,
             COUNT(*) how_many
         FROM sightings
+        {report_since}
         GROUP BY pokemon_id
         ORDER BY how_many {order}
-    '''.format(order=order))
+    '''.format(report_since=get_since_query_part(), order=order))
     db_ids = [r[0] for r in query.fetchall()]
     for pokemon_id in range(1, 152):
         if pokemon_id not in db_ids:
             ranking.append(pokemon_id)
     ranking.extend(db_ids)
     return ranking
+
+
+def get_sightings_per_pokemon(session):
+    query = session.execute('''
+        SELECT
+            pokemon_id,
+            COUNT(*) how_many
+        FROM sightings
+        GROUP BY pokemon_id
+    ''')
+    sightings = {}
+    for item in query.fetchall():
+        sightings[item[0]] = item[1]
+    for pokemon_id in range(1, 152):
+        if pokemon_id not in sightings:
+            sightings[pokemon_id] = 0
+    return sightings
 
 
 def get_stage2_pokemon(session):
