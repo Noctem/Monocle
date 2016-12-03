@@ -28,6 +28,11 @@ _workers_count = GRID[0] * GRID[1]
 COMPUTE_THREADS = round(_workers_count / 10) + 1
 NETWORK_THREADS = round(_workers_count / 2) + 1
 
+# If all accounts use the same provider and password you can set defaults here
+# omit them from the accounts list.
+#PASS = 'pik4chu'
+#PROVIDER = 'ptc'
+
 # Optionally also provide an iPhone model, iOS version, and device_id
 # otherwise these values will be generated for you and stored in a pickle
 ACCOUNTS = [

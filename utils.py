@@ -275,16 +275,31 @@ def generate_device_info():
 
 
 def create_account_dict(account):
-    if not (len(account) == 3 or len(account) == 6):
+    if isinstance(account, (tuple, list)):
+        length = len(account)
+    elif isinstance(account, str):
+        length = 1
+    else:
+        raise TypeError('Account must be a tuple/list or string.')
+
+    if not (length == 1 or length == 3 or length == 4 or length == 6):
         raise ValueError('Each account should have either 3 (account info only) or 6 values (account and device info).')
+    if (length == 1 or length == 4) and (not config.PASS or not config.PROVIDER):
+        raise ValueError('No default PASS or PROVIDER are set.')
+
     username = account[0]
     entry = {}
 
-    entry['password'], entry['provider'] = account[1:3]
-    if len(account) == 3:
+    if length == 1 or length == 4:
+        entry['password'], entry['provider'] = config.PASS, config.PROVIDER
+    else:
+        entry['password'], entry['provider'] = account[1:3]
+
+    if length == 4 or length == 6:
+        entry['model'], entry['iOS'], entry['id'] = account[-3:]
+    else:
         entry.update(utils.generate_device_info())
-    elif len(account) == 6:
-        entry['model'], entry['iOS'], entry['id'] = account[3:6]
+
     entry.update({'location': (0,0,0), 'time': 0, 'captcha': False, 'banned': False})
 
     return entry
