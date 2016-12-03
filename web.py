@@ -6,7 +6,7 @@ import json
 import requests
 from flask import Flask, request, render_template
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
-from multiprocessing.managers import SyncManager
+from multiprocessing.managers import BaseManager, DictProxy
 
 import config
 import db
@@ -89,10 +89,10 @@ def workers_map():
         map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION
     )
 
-class QueueManager(SyncManager): pass
-workers = {}
-QueueManager.register('worker_dict', callable=lambda:workers)
-manager = QueueManager(address='queue.sock', authkey=b'monkeys')
+worker_dict = {}
+class AccountManager(BaseManager): pass
+AccountManager.register('worker_dict', callable=lambda:worker_dict, proxytype=DictProxy)
+manager = AccountManager(address='queue.sock', authkey=b'monkeys')
 manager.connect()
 
 def get_pokemarkers():
