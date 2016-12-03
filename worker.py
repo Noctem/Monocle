@@ -72,15 +72,12 @@ if config.CONTROL_SOCKS:
     stem.util.log.get_logger().level = 40
     CIRCUIT_TIME = dict()
     CIRCUIT_FAILURES = dict()
-    CIRCUIT_LATENCIES = dict()
     for proxy in config.PROXIES:
         CIRCUIT_TIME[proxy] = time.time()
         CIRCUIT_FAILURES[proxy] = 0
-        CIRCUIT_LATENCIES[proxy] = deque(maxlen=30)
 else:
     CIRCUIT_TIME = None
     CIRCUIT_FAILURES = None
-    CIRCUIT_LATENCIES = None
 
 BAD_STATUSES = (
     'LOGIN FAIL',
@@ -187,7 +184,6 @@ class Slave:
         self.killed = False
         # Other variables
         self.last_visit = self.account.get('time', 0)
-        self.last_api_latency = 0
         self.after_spawn = None
         self.speed = 0
         self.error_code = 'INIT'
@@ -227,8 +223,7 @@ class Slave:
         request.get_buddy_walked()
 
         response = await self.loop.run_in_executor(
-            self.network_executor,
-            self.call_api(request.call)
+            self.network_executor, request.call
         )
         try:
             if response.get('status_code') == 3:
@@ -241,28 +236,6 @@ class Slave:
             raise MalformedResponse
         return responses
 
-
-    def call_api(self, method, *args, **kwargs):
-        """Returns decorated function that measures execution time
-
-        This works exactly like functools.partial does.
-        """
-        def inner():
-            start = time.time()
-            result = method(*args, **kwargs)
-            self.last_api_latency = time.time() - start
-            if CIRCUIT_LATENCIES:
-                self.add_circuit_latency()
-            return result
-        return inner
-
-    def add_circuit_latency(self):
-        CIRCUIT_LATENCIES[self.proxy].append(self.last_api_latency)
-        samples = len(CIRCUIT_LATENCIES[self.proxy])
-        if samples > 10:
-            average = sum(CIRCUIT_LATENCIES[self.proxy]) / samples
-            if average > 10:
-                self.swap_circuit('average latency of ' + str(round(average)) + 's')
 
     def set_proxy(self, proxy):
         self.proxy = proxy
@@ -381,7 +354,6 @@ class Slave:
                 controller.signal(Signal.NEWNYM)
             CIRCUIT_TIME[self.proxy] = time.time()
             CIRCUIT_FAILURES[self.proxy] = 0
-            CIRCUIT_LATENCIES[self.proxy] = deque(maxlen=30)
             self.logger.warning('Changed circuit on ' + self.proxy +
                                 ' due to ' + reason)
         else:
@@ -404,8 +376,7 @@ class Slave:
         request = self.api.create_request()
 
         response = await self.loop.run_in_executor(
-            self.network_executor,
-            self.call_api(request.call)
+            self.network_executor, request.call
         )
         await self.random_sleep(1, 1.5, 1.172)
 
@@ -413,8 +384,7 @@ class Slave:
         request = self.api.create_request()
 
         response = await self.loop.run_in_executor(
-            self.network_executor,
-            self.call_api(request.call)
+            self.network_executor, request.call
         )
         await self.random_sleep(1, 1.5, 1.304)
 
@@ -424,8 +394,7 @@ class Slave:
         request.get_player(player_locale = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'})
 
         response = await self.loop.run_in_executor(
-            self.network_executor,
-            self.call_api(request.call)
+            self.network_executor, request.call
         )
 
         if response.get('responses', {}).get('GET_PLAYER', {}).get('banned', False):
@@ -443,8 +412,7 @@ class Slave:
         request.download_settings()
 
         response = await self.loop.run_in_executor(
-            self.network_executor,
-            self.call_api(request.call)
+            self.network_executor, request.call
         )
 
         responses = response.get('responses', {})
@@ -476,8 +444,7 @@ class Slave:
         request.download_settings(hash=DOWNLOAD_HASH)
 
         response = await self.loop.run_in_executor(
-            self.network_executor,
-            self.call_api(request.call)
+            self.network_executor, request.call
         )
 
         self.get_inventory_timestamp(response.get('responses', {}))
@@ -511,7 +478,7 @@ class Slave:
             await self.random_sleep(minimum=0.5, maximum=1.5)
             await self.loop.run_in_executor(
                 self.network_executor,
-                self.call_api(
+                partial(
                     self.api.set_authentication,
                     username=self.username,
                     password=self.account.get('password'),
@@ -1006,9 +973,6 @@ class Overseer:
             'avg': sum(somelist) / len(somelist)
         }
 
-    def get_api_stats(self):
-        api_calls = [w.last_api_latency for w in self.workers.values()]
-        return self.generate_stats(api_calls)
 
     def get_visit_stats(self):
         visits = []
@@ -1036,10 +1000,19 @@ class Overseer:
     def get_dots_and_messages(self):
         """Returns status dots and status messages for workers
 
-        Status dots will be either . or : if everything is OK, or a letter
-        if something weird happened (but not dangerous).
-        If anything dangerous happened, worker will be displayed as X and
-        more detailed message should be displayed below.
+        Dots meaning:
+        . = visited more than a minute ago
+        , = visited less than a minute ago, nothing seen
+        : = visited less than a minute ago, pokemon seen
+        ! = currently visiting
+        * = sending a notification
+        I = initial, haven't done anything yet
+        L = logging in
+        A = simulating app startup
+        X = something bad happened
+        C = CAPTCHA
+
+        Other letters: various errors and procedures
         """
         dots = []
         messages = []
@@ -1063,21 +1036,16 @@ class Overseer:
     def get_status_message(self):
         workers_count = len(self.workers)
 
-        api_stats = self.get_api_stats()
         running_for = datetime.now() - self.start_date
         seen_stats, visit_stats, delay_stats, speed_stats = self.get_visit_stats()
 
+        seconds_since_start = time.time() - START_TIME
+        visits_per_second = self.visits / seconds_since_start
+
         output = [
             'PokeMiner\trunning for {}'.format(running_for),
-            '{len} workers'.format(len=workers_count),
-            '',
-            '{} threads and {} coroutines active'.format(
-                threading.active_count(),
-                self.coroutines_count,
-            ),
-            'API latency: min {min:.2f}, max {max:.2f}, avg {avg:.2f}'.format(
-                **api_stats
-            ),
+            '{w} workers, {t} threads, {c} coroutines'.format(w=workers_count,
+                t=threading.active_count(), c=self.coroutines_count),
             '',
             'Seen per worker: min {min}, max {max}, avg {avg:.1f}'.format(
                 **seen_stats
@@ -1091,37 +1059,42 @@ class Overseer:
             'Speed: min {min:.1f}, max {max:.1f}, avg {avg:.1f}'.format(
                 **speed_stats
             ),
+            'Extra accounts: {a}, CAPTCHAs needed: {c}'.format(
+                a=self.extra_queue.qsize(), c=self.captcha_queue.qsize()
+            ),
             '',
             'Pokemon found count (10s interval):',
             ' '.join(self.things_count),
-            ''
+            '',
+            'Visits: {v}, per/s: {ps}, skipped: {s}, unnecessary: {u}'.format(
+               v=self.visits, ps=round(visits_per_second, 2), s=self.skipped,
+               u=self.redundant
+            )
         ]
+
         try:
-            output.append('Pokemon seen per visit: ' + str(round(GLOBAL_SEEN / self.visits, 2)))
+            output.append('Seen per visit: {}'.format(
+                (round(GLOBAL_SEEN / self.visits, 2)))
+            )
         except ZeroDivisionError:
             pass
-        try:
-            output.append('Extra Accounts: {}, CAPTCHAs needed: {}'.format(
-                self.extra_queue.qsize(), self.captcha_queue.qsize()
-            ))
-        except (EOFError, BrokenPipeError):
-            pass
+
         if NOTIFICATIONS_SENT:
-            output.append('Notifications sent: ' + str(NOTIFICATIONS_SENT))
-        seconds_since_start = time.time() - START_TIME
-        visits_per_second = self.visits / seconds_since_start
-        output.append('Visits (per second): ' + str(round(visits_per_second, 2)) + ' ' + str(self.visits))
-        if self.skipped or self.redundant:
-            output.append('Spawns skipped (redundant): ' + str(self.skipped) + ' ' + str(self.redundant))
+            output.append('Notifications sent: {}'.format(NOTIFICATIONS_SENT))
+
         if CAPTCHAS:
             captchas_per_hour = CAPTCHAS * (3600 / seconds_since_start)
-            output.append('CAPTCHAs per hour: ' + str(round(captchas_per_hour, 1)))
+            output.append('CAPTCHAs per hour: {}'.format(
+                round(captchas_per_hour, 1))
+            )
+
         output.append('')
         no_sightings = ', '.join(str(w.worker_no)
                                  for w in self.workers.values()
                                  if w.total_seen == 0)
         if no_sightings:
             output += ['Workers without sightings so far:', no_sightings, '']
+
         dots, messages = self.get_dots_and_messages()
         output += [' '.join(row) for row in dots]
         previous = 0

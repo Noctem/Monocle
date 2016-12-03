@@ -128,4 +128,7 @@ while not captcha_queue.empty():
         captcha_queue.put(username)
         raise
 
-driver.close()
+try:
+    driver.close()
+except Exception:
+    pass
