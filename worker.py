@@ -90,8 +90,10 @@ DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
 class MalformedResponse(Exception):
     """Raised when server response is malformed"""
 
+
 class CaptchaException(Exception):
     """Raised when a CAPTCHA is needed."""
+
 
 def configure_logger(filename='worker.log'):
     logging.basicConfig(
@@ -106,6 +108,7 @@ def configure_logger(filename='worker.log'):
 
 
 class Spawns:
+
     def __init__(self):
         self.spawns = None
         self.session = db.Session()
@@ -171,7 +174,7 @@ class Slave:
         self.username = self.extra_queue.get()
         global ACCOUNTS
         self.account = ACCOUNTS[self.username]
-        self.location = self.account.get('location', (0,0,0))
+        self.location = self.account.get('location', (0, 0, 0))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
         self.set_proxy(proxy)
@@ -241,7 +244,6 @@ class Slave:
             raise MalformedResponse
         return responses
 
-
     def set_proxy(self, proxy):
         self.proxy = proxy
         if self.proxy:
@@ -284,8 +286,8 @@ class Slave:
 
     async def swap_account(self, reason=''):
         self.error_code = 'SWAPPING'
-        self.logger.warning('Swapping out ' + self.username + ' because ' +
-                            reason + '.')
+        self.logger.warning('Swapping out {u} because {r}.'.format(
+                            u=self.username, r=reason))
         self.update_accounts_dict()
         while self.extra_queue.empty():
             if self.killed:
@@ -350,18 +352,20 @@ class Slave:
         response = responses.get('ENCOUNTER', {})
         pokemon_data = response.get('wild_pokemon', {}).get('pokemon_data', {})
         if 'cp' in pokemon_data:
-            for iv in ('individual_attack', 'individual_defense', 'individual_stamina'):
+            for iv in ('individual_attack',
+                       'individual_defense',
+                       'individual_stamina'):
                 if iv not in pokemon_data:
                     pokemon_data[iv] = 0
-            pokemon_data['probability'] = response.get('capture_probability', {}).get('capture_probability')
+            pokemon_data['probability'] = response.get(
+                'capture_probability', {}).get('capture_probability')
         self.error_code = '!'
         return pokemon_data
 
-
     def swap_proxy(self, reason=''):
         self.set_proxy(random.choice(config.PROXIES))
-        self.logger.warning('Swapped out ' + self.proxy +
-                            ' due to ' + reason)
+        self.logger.warning('Swapped out {p} due to {r}.'.format(
+                            p=self.proxy, r=reason))
 
     def swap_circuit(self, reason=''):
         if not config.CONTROL_SOCKS:
@@ -376,12 +380,12 @@ class Slave:
                 controller.signal(Signal.NEWNYM)
             CIRCUIT_TIME[self.proxy] = time.time()
             CIRCUIT_FAILURES[self.proxy] = 0
-            self.logger.warning('Changed circuit on ' + self.proxy +
-                                ' due to ' + reason)
+            self.logger.warning('Changed circuit on {p} due to {r}.'.format(
+                                p=self.proxy, r=reason))
         else:
-            self.logger.info('Skipped changing circuit on ' + self.proxy +
-                             ' because it was changed ' + str(time_passed)
-                             + ' seconds ago.')
+            self.logger.info('Skipped changing circuit on {p} because it was '
+                             'changed {s} seconds ago.'.format(
+                                 p=self.proxy, s=time_passed))
 
     def get_inventory_timestamp(self, responses):
         timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
@@ -410,10 +414,13 @@ class Slave:
         )
         await self.random_sleep(1, 1.5, 1.304)
 
-
         # request 1: get_player
         request = self.api.create_request()
-        request.get_player(player_locale = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'})
+        request.get_player(
+            player_locale={
+                'country': 'US',
+                'language': 'en',
+                'timezone': 'America/Denver'})
 
         response = await self.loop.run_in_executor(
             self.network_executor, request.call
@@ -519,13 +526,13 @@ class Slave:
         self.error_code = '@'
         return True
 
-    async def visit(self, point, i):
+    async def visit(self, point):
         """Wrapper for self.visit_point - runs it a few times before giving up
 
         Also is capable of restarting in case an error occurs.
         """
         visited = False
-        for attempts in range(0,5):
+        for attempts in range(0, 5):
             try:
                 if self.killed:
                     return False
@@ -536,7 +543,7 @@ class Slave:
                         continue
                 if self.killed:
                     return False
-                visited = await self.visit_point(point, i)
+                visited = await self.visit_point(point)
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
                 err = 'Banned IP.'
                 if self.proxy:
@@ -592,17 +599,14 @@ class Slave:
                     await self.random_sleep()
         return False
 
-    async def visit_point(self, point, i):
+    async def visit_point(self, point):
         global GLOBAL_SEEN
 
         latitude, longitude, altitude = point
         altitude = random.uniform(altitude - 1, altitude + 1)
-        rounded_coords = utils.round_coords(point, precision=5)
         self.error_code = '!'
         self.logger.info(
-            'Visiting point %d (%s,%s %sm)', i, rounded_coords[0],
-            rounded_coords[1], round(altitude)
-        )
+            'Visiting {0[0]:.4f},{0[1]:.4f} {0[2]:.1f}m'.format(point))
         start = time.time()
         self.location = point
 
@@ -610,22 +614,26 @@ class Slave:
             self.last_visit = start
             sent_notification = False
             self.error_code = ':'
-            pokemon_seen = random.randint(2,9)
+            pokemon_seen = random.randint(2, 9)
             self.total_seen += pokemon_seen
             GLOBAL_SEEN += pokemon_seen
             self.visits += 1
             if not self.killed:
-                self.worker_dict.update([(self.worker_no, ((latitude, longitude), start, self.speed, self.total_seen, self.visits, pokemon_seen, sent_notification))])
+                self.worker_dict.update([(self.worker_no,
+                    ((latitude, longitude), start, self.speed, self.total_seen,
+                    self.visits, pokemon_seen, sent_notification))])
             self.db_processor.count += pokemon_seen
             return True
 
         self.api.set_position(latitude, longitude, altitude)
 
-        if rounded_coords not in CELL_IDS or len(CELL_IDS[rounded_coords]) > 25:
+        rounded_coords = utils.round_coords(point, precision=5)
+        if rounded_coords not in CELL_IDS or len(
+                CELL_IDS[rounded_coords]) > 25:
             CELL_IDS[rounded_coords] = await self.loop.run_in_executor(
                 self.cell_ids_executor,
                 partial(
-                    pgoapi_utils.get_cell_ids, latitude, longitude
+                    pgoapi_utils.get_cell_ids, latitude, longitude, radius=500
                 )
             )
         cell_ids = CELL_IDS[rounded_coords]
@@ -649,10 +657,11 @@ class Slave:
         global SPAWNS
         if map_objects.get('status') != 1:
             self.error_code = 'UNKNOWNRESPONSE'
-            self.logger.warning('Response code : ' + str(map_objects.get('status')))
+            self.logger.warning(
+                'Response code: {}'.format(map_objects.get('status')))
             self.empty_visits += 1
             if self.empty_visits > 2:
-                reason = str(self.empty_visits) + ' empty visits'
+                reason = '{} empty visits'.format(self.empty_visits)
                 await self.swap_account(reason)
             return False
         for map_cell in map_objects['map_cells']:
@@ -670,10 +679,12 @@ class Slave:
                     request_time_ms
                 )
                 if invalid_tth:
-                    despawn_time = SPAWNS.get_despawn_time(normalized['spawn_id'])
+                    despawn_time = SPAWNS.get_despawn_time(
+                        normalized['spawn_id'])
                     if despawn_time:
                         normalized['expire_timestamp'] = despawn_time
-                        normalized['time_till_hidden_ms'] = (despawn_time * 1000) - request_time_ms
+                        normalized['time_till_hidden_ms'] = (
+                            despawn_time * 1000) - request_time_ms
                         normalized['valid'] = 'fixed'
                     else:
                         normalized['valid'] = False
@@ -694,10 +705,9 @@ class Slave:
 
                 if normalized['valid'] and normalized not in db.SIGHTING_CACHE:
                     pokemons.append(normalized)
-                    #if 'cp' not in normalized:
-                    #    normalized.update(await self.encounter(pokemon))
 
-                if not normalized['valid'] or db.LONGSPAWN_CACHE.in_store(normalized):
+                if not normalized[
+                        'valid'] or db.LONGSPAWN_CACHE.in_store(normalized):
                     normalized = normalized.copy()
                     normalized['type'] = 'longspawn'
                     ls_seen.append(normalized)
@@ -726,17 +736,20 @@ class Slave:
             self.error_code = ','
             self.empty_visits += 1
             if self.empty_visits > 2:
-                reason = str(self.empty_visits) + ' empty visits'
+                reason = '{} empty visits'.format(self.empty_visits)
                 await self.swap_account(reason)
             if CIRCUIT_FAILURES:
                 CIRCUIT_FAILURES[self.proxy] += 1
                 if CIRCUIT_FAILURES[self.proxy] > 20:
-                    reason = str(CIRCUIT_FAILURES[self.proxy]) + ' empty visits'
+                    reason = '{} empty visits'.format(
+                        CIRCUIT_FAILURES[self.proxy])
                     self.swap_circuit(reason)
 
         self.visits += 1
         if not self.killed:
-            self.worker_dict.update([(self.worker_no, ((latitude, longitude), start, self.speed, self.total_seen, self.visits, pokemon_seen, sent_notification))])
+            self.worker_dict.update([(self.worker_no,
+                ((latitude, longitude), start, self.speed, self.total_seen,
+                self.visits, pokemon_seen, sent_notification))])
         self.logger.info(
             'Point processed, %d Pokemons and %d forts seen!',
             pokemon_seen,
@@ -762,14 +775,12 @@ class Slave:
         speed = (distance / time_diff) * 3600
         return speed
 
-
     def check_captcha(self, responses):
         challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
         if challenge_url != ' ':
             raise CaptchaException
         else:
             return False
-
 
     @staticmethod
     def normalize_pokemon(raw, now):
@@ -800,7 +811,6 @@ class Slave:
             'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
             'last_modified': round(raw['last_modified_timestamp_ms'] / 1000),
         }
-
 
     @property
     def status(self):
@@ -835,6 +845,7 @@ class Slave:
 
 
 class Overseer:
+
     def __init__(self, status_bar, loop):
         self.logger = logging.getLogger('overseer')
         self.workers = {}
@@ -860,7 +871,6 @@ class Overseer:
         self.redundant = 0
         self.spawns_count = 0
 
-
     def kill(self):
         self.killed = True
         print('Killing workers.')
@@ -884,10 +894,14 @@ class Overseer:
         captcha_queue = Queue()
         extra_queue = Queue()
         worker_dict = {}
-        class AccountManager(BaseManager): pass
+
+        class AccountManager(BaseManager):
+            pass
         AccountManager.register('captcha_queue', callable=lambda:captcha_queue)
         AccountManager.register('extra_queue', callable=lambda:extra_queue)
-        AccountManager.register('worker_dict', callable=lambda:worker_dict, proxytype=DictProxy)
+        AccountManager.register('worker_dict',
+            callable=lambda:worker_dict, proxytype=DictProxy)
+
         self.manager = AccountManager(address='queue.sock', authkey=b'monkeys')
         self.manager.start(mgr_init)
         self.captcha_queue = self.manager.captcha_queue()
@@ -973,7 +987,8 @@ class Overseer:
         # OK, now we're killed
         while True:
             try:
-                tasks = sum(not t.done() for t in asyncio.Task.all_tasks(self.loop))
+                tasks = sum(not t.done()
+                            for t in asyncio.Task.all_tasks(self.loop))
             except RuntimeError:
                 # Set changed size during iteration
                 tasks = '?'
@@ -987,7 +1002,6 @@ class Overseer:
                 print('Done.                ')
                 return
 
-
     @staticmethod
     def generate_stats(somelist):
         return {
@@ -995,7 +1009,6 @@ class Overseer:
             'min': min(somelist),
             'avg': sum(somelist) / len(somelist)
         }
-
 
     def get_visit_stats(self):
         visits = []
@@ -1029,6 +1042,8 @@ class Overseer:
         : = visited less than a minute ago, pokemon seen
         ! = currently visiting
         * = sending a notification
+        ~ = waiting to encounter
+        E = currently encountering
         I = initial, haven't done anything yet
         L = logging in
         A = simulating app startup
@@ -1055,7 +1070,6 @@ class Overseer:
             dots.append(row)
         return dots, messages
 
-
     def get_status_message(self):
         workers_count = len(self.workers)
 
@@ -1068,41 +1082,38 @@ class Overseer:
         output = [
             'PokeMiner running for {}'.format(running_for),
             'Total spawns: {}'.format(self.spawns_count),
-            '{w} workers, {t} threads, {c} coroutines'.format(w=workers_count,
-                t=threading.active_count(), c=self.coroutines_count),
+            '{w} workers, {t} threads, {c} coroutines'.format(
+                w=workers_count,
+                t=threading.active_count(),
+                c=self.coroutines_count),
             '',
             'Seen per worker: min {min}, max {max}, avg {avg:.0f}'.format(
-                **seen_stats
-            ),
+                **seen_stats),
             'Visits per worker: min {min}, max {max:}, avg {avg:.1f}'.format(
-                **visit_stats
-            ),
+                **visit_stats),
             'Visit delay: min {min:.1f}, max {max:.1f}, avg {avg:.1f}'.format(
-                **delay_stats
-            ),
+                **delay_stats),
             'Speed: min {min:.1f}, max {max:.1f}, avg {avg:.1f}'.format(
-                **speed_stats
-            ),
+                **speed_stats),
             'Extra accounts: {a}, CAPTCHAs needed: {c}'.format(
-                a=self.extra_queue.qsize(), c=self.captcha_queue.qsize()
-            ),
+                a=self.extra_queue.qsize(),
+                c=self.captcha_queue.qsize()),
             '',
             'Pokemon found count (10s interval):',
             ' '.join(self.things_count),
             '',
             'Visits: {v}, per second: {ps:.2f}'.format(
-                v=self.visits, ps=visits_per_second
-            ),
+                v=self.visits,
+                ps=visits_per_second),
             'Skipped: {s}, unnecessary: {u}'.format(
-                s=self.skipped, u=self.redundant
-            )
+                s=self.skipped,
+                u=self.redundant)
         ]
 
         try:
             output.append('Seen per visit: {:.2f}'.format(
-                    GLOBAL_SEEN / self.visits
-                )
-            )
+                GLOBAL_SEEN / self.visits
+            ))
         except ZeroDivisionError:
             pass
 
@@ -1111,7 +1122,8 @@ class Overseer:
 
         if CAPTCHAS:
             captchas_per_hour = CAPTCHAS * (3600 / seconds_since_start)
-            output.append('CAPTCHAs per hour: {:.1f}'.format(captchas_per_hour))
+            output.append(
+                'CAPTCHAs per hour: {:.1f}'.format(captchas_per_hour))
 
         output.append('')
         no_sightings = ', '.join(str(w.worker_no)
@@ -1153,7 +1165,7 @@ class Overseer:
                     if speed < 10:
                         break
             if worker.busy:
-               worker = None
+                worker = None
             if lowest_speed > config.SPEED_LIMIT or worker is None:
                 time_diff = spawn_time - time.time()
                 if time_diff < -60:
@@ -1175,10 +1187,13 @@ class Overseer:
             current_hour = utils.get_current_hour()
             for spawn_id, spawn in SPAWNS.spawns.items():
                 try:
-                    self.coroutines_count = len(asyncio.Task.all_tasks(self.loop))
-                    while self.coroutines_count > self.coroutine_limit or not isinstance(self.coroutines_count, int):
+                    self.coroutines_count = len(
+                        asyncio.Task.all_tasks(self.loop))
+                    while self.coroutines_count > self.coroutine_limit or not isinstance(
+                            self.coroutines_count, int):
                         time.sleep(1)
-                        self.coroutines_count = len(asyncio.Task.all_tasks(self.loop))
+                        self.coroutines_count = len(
+                            asyncio.Task.all_tasks(self.loop))
                     while self.captcha_queue.qsize() > config.MAX_CAPTCHAS and not self.killed:
                         self.paused = True
                         time.sleep(10)
@@ -1207,11 +1222,10 @@ class Overseer:
                     time.sleep(30)
 
                 asyncio.run_coroutine_threadsafe(
-                    self.try_point(point, spawn_time, spawn_id), loop=self.loop
+                    self.try_point(point, spawn_time), loop=self.loop
                 )
 
-
-    async def try_point(self, point, spawn_time, spawn_id):
+    async def try_point(self, point, spawn_time):
         point[0] = random.uniform(point[0] - 0.0004, point[0] + 0.0004)
         point[1] = random.uniform(point[1] - 0.0004, point[1] + 0.0004)
         time_diff = spawn_time - time.time()
@@ -1226,12 +1240,13 @@ class Overseer:
         worker.after_spawn = time.time() - spawn_time
         worker.speed = speed
 
-        if await worker.visit(point, spawn_id):
+        if await worker.visit(point):
             self.visits += 1
         worker.busy = False
 
 
 class DatabaseProcessor(threading.Thread):
+
     def __init__(self):
         super().__init__()
         self.queue = deque()
@@ -1318,7 +1333,6 @@ def exception_handler(loop, context):
     logger.error(context)
 
 
-
 if __name__ == '__main__':
     try:
         os.makedirs('pickles')
@@ -1339,7 +1353,8 @@ if __name__ == '__main__':
             ACCOUNTS = utils.create_accounts_dict(ACCOUNTS)
     except (FileNotFoundError, EOFError):
         if not config.ACCOUNTS:
-            raise ValueError('Must have accounts in config or an accounts pickle.')
+            raise ValueError(
+                'Must have accounts in config or an accounts pickle.')
         ACCOUNTS = utils.create_accounts_dict()
 
     SPAWNS = Spawns()
