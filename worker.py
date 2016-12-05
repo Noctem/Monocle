@@ -30,17 +30,9 @@ import db
 import utils
 
 
-START_TIME = time.time()
-GLOBAL_SEEN = 0
-CAPTCHAS = 0
-NOTIFICATIONS_SENT = 0
-DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
-
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
     'DB_ENGINE',
-    'MAP_START',
-    'MAP_END',
     'GRID',
     'COMPUTE_THREADS',
     'NETWORK_THREADS'
@@ -59,7 +51,9 @@ OPTIONAL_SETTINGS = {
     'ENCRYPT_PATH': None,
     'HASH_PATH': None,
     'MAX_CAPTCHAS': 100,
-    'ACCOUNTS': ()
+    'ACCOUNTS': (),
+    'BOUNDARIES': None,
+    'SPEED_LIMIT': 21
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -79,6 +73,9 @@ else:
     CIRCUIT_TIME = None
     CIRCUIT_FAILURES = None
 
+if config.BOUNDARIES:
+    from shapely.geometry import Point
+
 BAD_STATUSES = (
     'LOGIN FAIL',
     'EXCEPTION',
@@ -86,6 +83,12 @@ BAD_STATUSES = (
     'RETRYING',
     'THROTTLE',
 )
+
+START_TIME = time.time()
+GLOBAL_SEEN = 0
+CAPTCHAS = 0
+NOTIFICATIONS_SENT = 0
+DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
 
 class MalformedResponse(Exception):
     """Raised when server response is malformed"""
@@ -309,7 +312,7 @@ class Slave:
     async def encounter(self, pokemon):
         self.simulate_jitter()
 
-        delay_required = random.triangular(1.5, 4.5, 2)
+        delay_required = random.triangular(1.5, 4, 2.25)
         self.error_code = '~'
         while time.time() - self.last_visit < delay_required:
             await asyncio.sleep(1)
@@ -833,9 +836,10 @@ class Overseer:
         self.skipped = 0
         self.visits = 0
         self.searches_without_shuffle = 0
-        self.coroutine_limit = self.count - 2
+        self.coroutine_limit = self.count * .9
         self.spawn_cache = db.SIGHTING_CACHE.spawn_ids
         self.redundant = 0
+        self.outofbounds = 0
 
 
     def kill(self):
@@ -950,7 +954,7 @@ class Overseer:
         # OK, now we're killed
         while True:
             try:
-                tasks = len(asyncio.Task.all_tasks(self.loop))
+                tasks = sum(not t.done() for t in asyncio.Task.all_tasks(self.loop))
             except RuntimeError:
                 # Set changed size during iteration
                 tasks = '?'
@@ -1066,9 +1070,11 @@ class Overseer:
             'Pokemon found count (10s interval):',
             ' '.join(self.things_count),
             '',
-            'Visits: {v}, per/s: {ps}, skipped: {s}, unnecessary: {u}'.format(
-               v=self.visits, ps=round(visits_per_second, 2), s=self.skipped,
-               u=self.redundant
+            'Visits: {v}, per second: {ps}'.format(
+                v=self.visits, ps=round(visits_per_second, 2)
+            ),
+            'Skipped: {s}, unnecessary: {u}, out of bounds: {o}'.format(
+                s=self.skipped, u=self.redundant, o=self.outofbounds
             )
         ]
 
@@ -1107,8 +1113,9 @@ class Overseer:
         worker = None
         lowest_speed = float('inf')
         self.searches_without_shuffle += 1
-        if self.searches_without_shuffle > 19:
+        if self.searches_without_shuffle > 30:
             random.shuffle(self.workers_list)
+            self.searches_without_shuffle = 0
         workers = self.workers_list.copy()
         while worker is None or lowest_speed > config.SPEED_LIMIT:
             speed = None
@@ -1124,17 +1131,15 @@ class Overseer:
                 if speed is not None and speed < lowest_speed:
                     lowest_speed = speed
                     worker = w
-                    if speed < 7:
+                    if speed < 10:
                         break
             if worker.busy:
                worker = None
-            if worker is None:
+            if lowest_speed > config.SPEED_LIMIT or worker is None:
                 time_diff = spawn_time - time.time()
                 if time_diff < -60:
                     return False, False
-                await asyncio.sleep(5)
-            elif lowest_speed > config.SPEED_LIMIT:
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
         return worker, lowest_speed
 
     def launch(self):
@@ -1160,8 +1165,11 @@ class Overseer:
                     self.logger.error(e)
                 if self.killed:
                     return
+
                 self.paused = False
+                point = list(spawn[0])
                 spawn_time = spawn[1] + current_hour
+
                 # negative = already happened
                 # positive = hasn't happened yet
                 time_diff = spawn_time - time.time()
@@ -1172,10 +1180,17 @@ class Overseer:
                 elif time_diff < -180:
                     self.skipped += 1
                     continue
+                elif (config.BOUNDARIES and
+                        not config.BOUNDARIES.contains(Point(point[0:2]))):
+                    self.outofbounds += 1
+                    continue
                 elif time_diff > 90:
                     time.sleep(30)
-                point = list(spawn[0])
-                asyncio.run_coroutine_threadsafe(self.try_point(point, spawn_time, spawn_id), loop=self.loop)
+
+                asyncio.run_coroutine_threadsafe(
+                    self.try_point(point, spawn_time, spawn_id), loop=self.loop
+                )
+
 
     async def try_point(self, point, spawn_time, spawn_id):
         point[0] = random.uniform(point[0] - 0.0004, point[0] + 0.0004)
@@ -1195,6 +1210,7 @@ class Overseer:
         if await worker.visit(point, spawn_id):
             self.visits += 1
         worker.busy = False
+
 
 class DatabaseProcessor(threading.Thread):
     def __init__(self):
@@ -1359,8 +1375,8 @@ if __name__ == '__main__':
             SPAWNS.session.close()
             overseer.manager.shutdown()
             print('Stopping and closing loop.')
-            loop.close()
             loop.stop()
+            loop.close()
             print('Exiting.')
         except Exception as e:
             logger.error(e)
