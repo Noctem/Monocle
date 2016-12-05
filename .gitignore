@@ -104,6 +104,7 @@ templates/footer.html
 *.log
 *.pickle
 *.xz
+pickles/
 
 # socket
 *.sock

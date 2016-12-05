@@ -52,7 +52,6 @@ OPTIONAL_SETTINGS = {
     'HASH_PATH': None,
     'MAX_CAPTCHAS': 100,
     'ACCOUNTS': (),
-    'BOUNDARIES': None,
     'SPEED_LIMIT': 21
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
@@ -73,9 +72,6 @@ else:
     CIRCUIT_TIME = None
     CIRCUIT_FAILURES = None
 
-if config.BOUNDARIES:
-    from shapely.geometry import Point
-
 BAD_STATUSES = (
     'LOGIN FAIL',
     'EXCEPTION',
@@ -89,6 +85,7 @@ GLOBAL_SEEN = 0
 CAPTCHAS = 0
 NOTIFICATIONS_SENT = 0
 DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
+
 
 class MalformedResponse(Exception):
     """Raised when server response is malformed"""
@@ -113,12 +110,17 @@ class Spawns:
         self.spawns = None
         self.session = db.Session()
 
-    def update_spawns(self):
-        if DEBUG:
-            with open('spawns.pickle', 'rb') as f:
-                self.spawns = pickle.load(f)
-        else:
-            self.spawns = db.get_spawns(self.session)
+    def update_spawns(self, loadpickle=False):
+        if loadpickle:
+            try:
+                with open('pickles/spawns.pickle', 'rb') as f:
+                    self.spawns = pickle.load(f)
+                    return
+            except (FileNotFoundError, EOFError):
+                pass
+        self.spawns = db.get_spawns(self.session)
+        with open('pickles/spawns.pickle', 'wb') as f:
+            pickle.dump(self.spawns, f, pickle.HIGHEST_PROTOCOL)
 
     def have_id(self, spawn_id):
         return spawn_id in self.spawns
@@ -839,7 +841,7 @@ class Overseer:
         self.coroutine_limit = self.count * .9
         self.spawn_cache = db.SIGHTING_CACHE.spawn_ids
         self.redundant = 0
-        self.outofbounds = 0
+        self.spawns_count = 0
 
 
     def kill(self):
@@ -1047,17 +1049,18 @@ class Overseer:
         visits_per_second = self.visits / seconds_since_start
 
         output = [
-            'PokeMiner\trunning for {}'.format(running_for),
+            'PokeMiner running for {}'.format(running_for),
+            'Total spawns: {}'.format(self.spawns_count),
             '{w} workers, {t} threads, {c} coroutines'.format(w=workers_count,
                 t=threading.active_count(), c=self.coroutines_count),
             '',
-            'Seen per worker: min {min}, max {max}, avg {avg:.1f}'.format(
+            'Seen per worker: min {min}, max {max}, avg {avg:.0f}'.format(
                 **seen_stats
             ),
             'Visits per worker: min {min}, max {max:}, avg {avg:.1f}'.format(
                 **visit_stats
             ),
-            'Visit delay: min {min:.2f}, max {max:.2f}, avg {avg:.2f}'.format(
+            'Visit delay: min {min:.1f}, max {max:.1f}, avg {avg:.1f}'.format(
                 **delay_stats
             ),
             'Speed: min {min:.1f}, max {max:.1f}, avg {avg:.1f}'.format(
@@ -1070,17 +1073,18 @@ class Overseer:
             'Pokemon found count (10s interval):',
             ' '.join(self.things_count),
             '',
-            'Visits: {v}, per second: {ps}'.format(
-                v=self.visits, ps=round(visits_per_second, 2)
+            'Visits: {v}, per second: {ps:.2f}'.format(
+                v=self.visits, ps=visits_per_second
             ),
-            'Skipped: {s}, unnecessary: {u}, out of bounds: {o}'.format(
-                s=self.skipped, u=self.redundant, o=self.outofbounds
+            'Skipped: {s}, unnecessary: {u}'.format(
+                s=self.skipped, u=self.redundant
             )
         ]
 
         try:
-            output.append('Seen per visit: {}'.format(
-                (round(GLOBAL_SEEN / self.visits, 2)))
+            output.append('Seen per visit: {:.2f}'.format(
+                    GLOBAL_SEEN / self.visits
+                )
             )
         except ZeroDivisionError:
             pass
@@ -1090,9 +1094,7 @@ class Overseer:
 
         if CAPTCHAS:
             captchas_per_hour = CAPTCHAS * (3600 / seconds_since_start)
-            output.append('CAPTCHAs per hour: {}'.format(
-                round(captchas_per_hour, 1))
-            )
+            output.append('CAPTCHAs per hour: {:.1f}'.format(captchas_per_hour))
 
         output.append('')
         no_sightings = ', '.join(str(w.worker_no)
@@ -1146,9 +1148,13 @@ class Overseer:
         global SPAWNS
         while not self.killed:
             if self.visits > 0:
-                with open('accounts.pickle', 'wb') as f:
+                with open('pickles/accounts.pickle', 'wb') as f:
                     pickle.dump(ACCOUNTS, f, pickle.HIGHEST_PROTOCOL)
-            SPAWNS.update_spawns()
+                SPAWNS.update_spawns()
+            else:
+                SPAWNS.update_spawns(loadpickle=True)
+
+            self.spawns_count = len(SPAWNS.spawns)
             current_hour = utils.get_current_hour()
             for spawn_id, spawn in SPAWNS.spawns.items():
                 try:
@@ -1179,10 +1185,6 @@ class Overseer:
                     self.redundant += 1
                 elif time_diff < -180:
                     self.skipped += 1
-                    continue
-                elif (config.BOUNDARIES and
-                        not config.BOUNDARIES.contains(Point(point[0:2]))):
-                    self.outofbounds += 1
                     continue
                 elif time_diff > 90:
                     time.sleep(30)
@@ -1302,18 +1304,23 @@ def exception_handler(loop, context):
 
 if __name__ == '__main__':
     try:
-        with open('cells.pickle', 'rb') as f:
+        os.makedirs('pickles')
+    except OSError:
+        pass
+
+    try:
+        with open('pickles/cells.pickle', 'rb') as f:
             CELL_IDS = pickle.load(f)
-    except FileNotFoundError:
+    except (FileNotFoundError, EOFError):
         CELL_IDS = dict()
 
     try:
-        with open('accounts.pickle', 'rb') as f:
+        with open('pickles/accounts.pickle', 'rb') as f:
             ACCOUNTS = pickle.load(f)
         if (config.ACCOUNTS and
                 set(ACCOUNTS) != set(acc[0] for acc in config.ACCOUNTS)):
             ACCOUNTS = utils.create_accounts_dict(ACCOUNTS)
-    except FileNotFoundError:
+    except (FileNotFoundError, EOFError):
         if not config.ACCOUNTS:
             raise ValueError('Must have accounts in config or an accounts pickle.')
         ACCOUNTS = utils.create_accounts_dict()
@@ -1358,9 +1365,9 @@ if __name__ == '__main__':
         overseer.kill()  # also cancels all workers' futures
 
         print('Dumping pickles.')
-        with open('cells.pickle', 'wb') as f:
+        with open('pickles/cells.pickle', 'wb') as f:
             pickle.dump(CELL_IDS, f, pickle.HIGHEST_PROTOCOL)
-        with open('accounts.pickle', 'wb') as f:
+        with open('pickles/accounts.pickle', 'wb') as f:
             pickle.dump(ACCOUNTS, f, pickle.HIGHEST_PROTOCOL)
 
         try:

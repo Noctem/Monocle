@@ -4,6 +4,7 @@ from os import makedirs
 
 import time
 import cairo
+import pickle
 
 from db import Session, get_pokemon_ranking, get_despawn_time, estimate_remaining_time
 from names import POKEMON_NAMES, MOVES
@@ -11,10 +12,10 @@ from names import POKEMON_NAMES, MOVES
 import config
 
 # set unset config options to None
-for variable_name in ['PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
+for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
                       'TWITTER_CONSUMER_SECRET', 'TWITTER_ACCESS_KEY',
                       'TWITTER_ACCESS_SECRET', 'LANDMARKS', 'AREA_NAME',
-                      'HASHTAGS', 'TZ_OFFSET', 'NOTIFY_RANKING', 'NOTIFY_IDS']:
+                      'HASHTAGS', 'TZ_OFFSET', 'NOTIFY_RANKING', 'NOTIFY_IDS'):
     if not hasattr(config, variable_name):
         setattr(config, variable_name, None)
 
@@ -23,6 +24,10 @@ if not hasattr(config, 'ALWAYS_NOTIFY'):
     setattr(config, 'ALWAYS_NOTIFY', 0)
 if not hasattr(config, 'FULL_TIME'):
     setattr(config, 'FULL_TIME', 1800)
+if not hasattr(config, 'TIME_REQUIRED'):
+    setattr(config, 'TIME_REQUIRED', 300)
+if not hasattr(config, 'INITIAL_RANKING'):
+    setattr(config, 'INITIAL_RANKING', config.NOTIFY_RANKING)
 
 def draw_image(ctx, image, top, left, height, width):
     """Draw a scaled image on a given context."""
@@ -237,14 +242,7 @@ class Notification:
                 config.TWITTER_ACCESS_SECRET):
             tweeted = self.tweet()
 
-        if tweeted and pushed:
-            return (True, 'Tweeted and pushed about ' + self.name + '.')
-        elif tweeted:
-            return (True, 'Tweeted about ' + self.name + '.')
-        elif pushed:
-            return (True, 'Pushed about ' + self.name + '.')
-        else:
-            return (False, 'Failed to notify about ' + self.name + '.')
+        return tweeted, pushed
 
     def pbpush(self):
         """ Send a PushBullet notification either privately or to a channel,
@@ -381,8 +379,7 @@ class Notifier:
         self.recent_notifications = deque(maxlen=100)
         self.notify_ranking = config.INITIAL_RANKING
         self.session = Session()
-        self.set_pokemon_ranking()
-        self.differences = deque(maxlen=10)
+        self.set_pokemon_ranking(loadpickle=True)
         self.last_notification = None
         self.always_notify = []
         if self.notify_ranking:
@@ -392,17 +389,21 @@ class Notifier:
             self.set_notify_ids()
 
     def set_notify_ids(self):
-        self.notify_ids = []
-        for pokemon_id in self.pokemon_ranking[0:self.notify_ranking]:
-            self.notify_ids.append(pokemon_id)
-        for pokemon_id in self.pokemon_ranking[0:config.ALWAYS_NOTIFY]:
-            self.always_notify.append(pokemon_id)
+        self.notify_ids = self.pokemon_ranking[0:self.notify_ranking]
+        self.always_notify = self.pokemon_ranking[0:config.ALWAYS_NOTIFY]
 
-    def set_pokemon_ranking(self):
-        if self.notify_ranking:
-            self.pokemon_ranking = get_pokemon_ranking(self.session)
-        else:
-            raise ValueError('Must configure NOTIFY_RANKING.')
+    def set_pokemon_ranking(self, loadpickle=False):
+        self.ranking_time = time.time()
+        if loadpickle:
+            try:
+                with open('pickles/ranking.pickle', 'rb') as f:
+                    self.pokemon_ranking = pickle.load(f)
+                    return
+            except (FileNotFoundError, EOFError):
+                pass
+        self.pokemon_ranking = get_pokemon_ranking(self.session)
+        with open('pickles/ranking.pickle', 'wb') as f:
+            pickle.dump(self.pokemon_ranking, f, pickle.HIGHEST_PROTOCOL)
 
     def notify(self, pokemon):
         """Send a PushBullet notification and/or a Tweet, depending on if their
@@ -411,7 +412,7 @@ class Notifier:
 
         # skip if no API keys have been set in config
         if not (config.PB_API_KEY or config.TWITTER_CONSUMER_KEY):
-            return (False, 'Did not notify, no Twitter/PushBullet keys set.')
+            return False, 'Did not notify, no Twitter/PushBullet keys set.'
 
         spawn_id = pokemon['spawn_id']
         coordinates = (pokemon['lat'], pokemon['lon'])
@@ -421,10 +422,14 @@ class Notifier:
 
         if encounter_id in self.recent_notifications:
             # skip duplicate
-            return (False, 'Already notified about ' + name + '.')
+            return False, 'Already notified about {}.'.format(name)
 
         if self.last_notification:
-            time_passed = time.time() - self.last_notification
+            now = time.time()
+            time_passed = now - self.ranking_time
+            if time_passed > 7200:
+                self.set_pokemon_ranking()
+            time_passed = now - self.last_notification
             if time_passed < config.FULL_TIME:
                 fraction = time_passed / config.FULL_TIME
             else:
@@ -434,18 +439,23 @@ class Notifier:
             self.set_notify_ids()
 
         if pokemon_id not in self.notify_ids:
-            return (False, name + ' is not in the top ' + str(self.notify_ranking))
+            return False, '{n} is not in the top {r}'.format(n=name, r=self.notify_ranking)
 
         if pokemon['valid']:
             time_till_hidden = pokemon['time_till_hidden_ms'] / 1000
         else:
             time_till_hidden = self.spawns.get_time_till_hidden(spawn_id)
 
-        if pokemon_id not in self.always_notify and time_till_hidden and time_till_hidden < 420:
-            return (False, name + ' has only ' + str(time_till_hidden) + ' seconds remaining.')
-
-        if not time_till_hidden:
+        if time_till_hidden:
+            rem = time_till_hidden
+        else:
             time_till_hidden = estimate_remaining_time(self.session, spawn_id)
+            rem = time_till_hidden[1]
+
+        if pokemon_id not in self.always_notify and rem < config.TIME_REQUIRED:
+            return False, '{n} has only {s} seconds remaining.'.format(
+                n=name, s=time_till_hidden
+            )
 
         move1 = MOVES.get(pokemon.get('move_1'), {}).get('name')
         move2 = MOVES.get(pokemon.get('move_2'), {}).get('name')
@@ -454,9 +464,19 @@ class Notifier:
         iv['attack'], iv['defense'], iv['stamina'] = pokemon['individual_attack'], pokemon['individual_defense'], pokemon['individual_stamina']
         create_image(pokemon_id, iv, move1, move2)
 
-        code, explanation = Notification(name, coordinates, time_till_hidden, iv).notify()
-        if code:
+        tweeted, pushed = Notification(name, coordinates, time_till_hidden, iv).notify()
+
+        if tweeted or pushed:
             self.last_notification = time.time()
             self.recent_notifications.append(encounter_id)
-            self.set_pokemon_ranking()
-        return (code, explanation)
+            if tweeted and pushed:
+                explanation = 'Tweeted and pushed '
+            elif tweeted:
+                explanation = 'Tweeted '
+            else:
+                explanation = 'Pushed '
+        else:
+            explanation = 'Failed to notify '
+
+        explanation += 'about {}.'.format(name)
+        return tweeted or pushed, explanation

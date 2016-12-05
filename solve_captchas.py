@@ -39,7 +39,7 @@ def resolve_captcha(url, api, driver, timestamp):
     success = response.get('responses', {}).get('VERIFY_CHALLENGE', {}).get('success', False)
     return success
 
-with open('accounts.pickle', 'rb') as f:
+with open('pickles/accounts.pickle', 'rb') as f:
     ACCOUNTS = pickle.load(f)
 
 captcha_queue = Queue()

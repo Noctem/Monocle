@@ -21,10 +21,14 @@ OPTIONAL_SETTINGS = {
     'SPAWN_ID_INT': False,
     'STAGE2': [],
     'REPORT_SINCE': None,
+    'BOUNDARIES': None
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
+
+if config.BOUNDARIES:
+    from shapely.geometry import Point
 
 class Team(enum.Enum):
     none = 0
@@ -266,6 +270,10 @@ def get_spawns(session):
     spawns = session.query(Spawnpoint)
     spawn_points = []
     for spawn in spawns:
+        if config.BOUNDARIES:
+            point = Point((spawn.lat, spawn.lon))
+            if not config.BOUNDARIES.contains(point):
+                continue
         spawn_points.append({
             'id': spawn.spawn_id,
             'point': (spawn.lat, spawn.lon, spawn.alt),
