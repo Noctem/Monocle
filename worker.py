@@ -303,22 +303,39 @@ class Slave:
         await self.new_account()
 
     def simulate_jitter(self):
-        self.location[0] = random.uniform(self.location[0] - 0.00001,
-                                          self.location[0] + 0.00001)
-        self.location[1] = random.uniform(self.location[1] - 0.00001,
-                                          self.location[1] + 0.00001)
-        self.location[2] = random.uniform(self.location[2] - 1,
-                                          self.location[2] + 1)
+        self.location = [
+            random.uniform(self.location[0] - 0.00002,
+                           self.location[0] + 0.00002),
+            random.uniform(self.location[1] - 0.00002,
+                           self.location[1] + 0.00002),
+            random.uniform(self.location[2] - 1.5,
+                           self.location[2] + 1.5)
+        ]
         self.api.set_position(*self.location)
 
     async def encounter(self, pokemon):
-        self.simulate_jitter()
+        pokemon_point = (pokemon['latitude'], pokemon['longitude'])
+        distance_to_pokemon = great_circle(self.location, pokemon_point).meters
 
-        delay_required = random.triangular(1.5, 4, 2.25)
+        if distance_to_pokemon > 47:
+            percent = 1 - (46 / distance_to_pokemon)
+            lat_change = (self.location[0] - pokemon['latitude']) * percent
+            lon_change = (self.location[1] - pokemon['longitude']) * percent
+            self.location = [
+                self.location[0] - lat_change,
+                self.location[1] - lon_change,
+                random.uniform(self.location[2] - 3, self.location[2] + 3)
+            ]
+            self.api.set_position(*self.location)
+            delay_required = (distance_to_pokemon * percent) / 8
+            if delay_required < 1.5:
+                delay_required = random.triangular(1.5, 4, 2.25)
+        else:
+            self.simulate_jitter()
+            delay_required = random.triangular(1.5, 4, 2.25)
+
         self.error_code = '~'
-        while time.time() - self.last_visit < delay_required:
-            await asyncio.sleep(1)
-
+        await asyncio.sleep(delay_required)
         self.error_code = 'ENCOUNTERING'
 
         request = self.api.create_request()
