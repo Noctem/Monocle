@@ -13,6 +13,9 @@ import config
 OPTIONAL_SETTINGS = {
     'ALT_RANGE': (300, 400),
     'GOOGLE_MAPS_KEY': None,
+    'MAP_START': None,
+    'MAP_END': None,
+    'BOUNDARIES': None
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -37,9 +40,16 @@ IPHONES = {'iPhone5,1': 'N41AP',
 
 def get_map_center():
     """Returns center of the map"""
-    lat = (config.MAP_END[0] + config.MAP_START[0]) / 2
-    lon = (config.MAP_END[1] + config.MAP_START[1]) / 2
-    return lat, lon
+    if config.BOUNDARIES:
+        coords = config.BOUNDARIES.centroid.coords[0]
+        return coords
+    elif config.MAP_START and config.MAP_END:
+        lat = (config.MAP_END[0] + config.MAP_START[0]) / 2
+        lon = (config.MAP_END[1] + config.MAP_START[1]) / 2
+        return lat, lon
+    else:
+        raise ValueError(
+            'Must set either MAP_START/END or BOUNDARIES to get center')
 
 
 def get_scan_area():
