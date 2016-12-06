@@ -308,7 +308,7 @@ def create_account_dict(account):
     if length == 4 or length == 6:
         entry['model'], entry['iOS'], entry['id'] = account[-3:]
     else:
-        entry.update(utils.generate_device_info())
+        entry.update(generate_device_info())
 
     entry.update({'location': (0,0,0), 'time': 0, 'captcha': False, 'banned': False})
 

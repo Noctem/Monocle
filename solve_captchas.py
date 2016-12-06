@@ -4,7 +4,7 @@ import pickle
 from queue import Queue
 from multiprocessing.managers import BaseManager
 from pgoapi import (
-    exceptions as pgoapi_exceptions,
+    exceptions,
     PGoApi,
     utilities as pgoapi_utils,
 )
@@ -18,6 +18,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from config import MAP_START, MAP_END
 from sys import exit
+from time import sleep
 
 DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
 
@@ -124,6 +125,10 @@ while not captcha_queue.empty():
     except (WebDriverException, AttributeError):
         captcha_queue.put(username)
         break
+    except exceptions.AuthException as e:
+        print('Auth exception:', e)
+        captcha_queue.put(username)
+        sleep(2)
     except Exception as e:
         captcha_queue.put(username)
         raise
