@@ -77,7 +77,7 @@ BAD_STATUSES = (
     'EXCEPTION',
     'BAD LOGIN',
     'RETRYING',
-    'THROTTLE',
+    'THROTTLE'
 )
 
 START_TIME = time.time()
@@ -103,7 +103,7 @@ def configure_logger(filename='worker.log'):
             '%(message)s'
         ),
         style='%',
-        level=logging.INFO,
+        level=logging.WARNING,
     )
 
 
@@ -177,7 +177,7 @@ class Slave:
         self.location = self.account.get('location', (0, 0, 0))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
         self.logger = logging.getLogger('worker-{}'.format(worker_no))
-        self.set_proxy(proxy)
+        self.proxy = proxy
         self.initialize_api()
         # asyncio/thread references
         self.loop = loop
@@ -208,6 +208,7 @@ class Slave:
             if config.HASH_PATH:
                 self.api.set_hash_lib(config.HASH_PATH)
             self.api.set_position(*self.location)
+            self.set_proxy()
             self.api.set_logger(self.logger)
             if self.account.get('provider') == 'ptc' and self.account.get('refresh'):
                 self.api._auth_provider = AuthPtc()
@@ -244,8 +245,9 @@ class Slave:
             raise MalformedResponse
         return responses
 
-    def set_proxy(self, proxy):
-        self.proxy = proxy
+    def set_proxy(self, proxy=None):
+        if proxy:
+            self.proxy = proxy
         if self.proxy:
             self.api.set_proxy({'http': proxy, 'https': proxy})
 
@@ -628,8 +630,7 @@ class Slave:
         self.api.set_position(latitude, longitude, altitude)
 
         rounded_coords = utils.round_coords(point, precision=5)
-        if rounded_coords not in CELL_IDS or len(
-                CELL_IDS[rounded_coords]) > 25:
+        if rounded_coords not in CELL_IDS:
             CELL_IDS[rounded_coords] = await self.loop.run_in_executor(
                 self.cell_ids_executor,
                 partial(
@@ -850,7 +851,6 @@ class Overseer:
         self.logger = logging.getLogger('overseer')
         self.workers = {}
         self.count = config.GRID[0] * config.GRID[1]
-        self.logger.info('Done')
         self.start_date = datetime.now()
         self.status_bar = status_bar
         self.things_count = []
@@ -862,7 +862,6 @@ class Overseer:
         self.cell_ids_executor = ThreadPoolExecutor(config.COMPUTE_THREADS)
         self.network_executor = ThreadPoolExecutor(config.NETWORK_THREADS)
         self.coroutines_count = 0
-        self.logger.info('Overseer initialized')
         self.skipped = 0
         self.visits = 0
         self.searches_without_shuffle = 0
@@ -870,6 +869,7 @@ class Overseer:
         self.spawn_cache = db.SIGHTING_CACHE.spawn_ids
         self.redundant = 0
         self.spawns_count = 0
+        self.logger.info('Overseer initialized')
 
     def kill(self):
         self.killed = True

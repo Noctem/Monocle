@@ -529,6 +529,10 @@ def estimate_remaining_time(session, spawn_id):
 
     result = query.first()
     first_sight, last_sight = result
+
+    if not first_sight or not last_sight:
+        return 90, 1800
+
     val_range = last_sight - first_sight
     if val_range > 1710:
         return 90, 3600
