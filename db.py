@@ -18,8 +18,8 @@ except (ImportError, AttributeError):
     DB_ENGINE = 'sqlite:///db.sqlite'
 
 OPTIONAL_SETTINGS = {
-    'SPAWN_ID_INT': False,
-    'STAGE2': [],
+    'SPAWN_ID_INT': True,
+    'RARE_IDS': [],
     'REPORT_SINCE': None,
     'BOUNDARIES': None
 }
@@ -506,7 +506,7 @@ def get_session_stats(session):
         'end': datetime.fromtimestamp(min_max_result[1]),
         'count': min_max_result[2],
         'length_hours': length_hours,
-        'per_hour': min_max_result[2] / length_hours,
+        'per_hour': round(min_max_result[2] / length_hours),
     }
 
 
@@ -621,11 +621,10 @@ def get_sightings_per_pokemon(session):
     return sightings
 
 
-def get_stage2_pokemon(session):
+def get_rare_pokemon(session):
     result = []
-    if not hasattr(config, 'STAGE2'):
-        return []
-    for pokemon_id in config.STAGE2:
+
+    for pokemon_id in config.RARE_IDS:
         query = session.query(Sighting) \
             .filter(Sighting.pokemon_id == pokemon_id)
         if config.REPORT_SINCE:

@@ -39,7 +39,6 @@ for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
 
-_workers_count = config.GRID[0] * config.GRID[1]
 # Set defaults for missing config options
 OPTIONAL_SETTINGS = {
     'PROXIES': None,
@@ -53,8 +52,9 @@ OPTIONAL_SETTINGS = {
     'ACCOUNTS': (),
     'SPEED_LIMIT': 19,
     'ENCOUNTER': None,
-    'COMPUTE_THREADS': round(_workers_count / 4) + 1,
-    'NETWORK_THREADS': round(_workers_count / 2) + 1
+    'NOTIFY': False,
+    'COMPUTE_THREADS': round((config.GRID[0] * config.GRID[1]) / 4) + 1,
+    'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 2) + 1
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -694,7 +694,8 @@ class Slave:
                 else:
                     normalized['valid'] = True
 
-                if NOTIFY and normalized['pokemon_id'] in config.NOTIFY_IDS:
+                if (config.NOTIFY and
+                        normalized['pokemon_id'] in config.NOTIFY_IDS):
                     if config.ENCOUNTER in ('all', 'notifying'):
                         normalized.update(await self.encounter(pokemon))
                     self.error_code = '*'
@@ -1371,17 +1372,13 @@ if __name__ == '__main__':
         logger.info('Starting up!')
     else:
         configure_logger(filename=None)
-    global DEBUG
+
     if args.debug:
         DEBUG = True
     else:
-        if (config.NOTIFY_IDS or config.NOTIFY_RANKING) and (
-                config.TWITTER_CONSUMER_KEY or PB_API_KEY):
+        if config.NOTIFY:
             import notification
-            NOTIFY = True
             notifier = notification.Notifier(SPAWNS)
-        else:
-            NOTIFY = False
         DEBUG = False
 
     logger.setLevel(args.log_level)
@@ -1417,7 +1414,7 @@ if __name__ == '__main__':
             overseer.cell_ids_executor.shutdown()
             overseer.network_executor.shutdown()
             overseer.db_processor.stop()
-            if NOTIFY:
+            if config.NOTIFY:
                 notifier.session.close()
             SPAWNS.session.close()
             overseer.manager.shutdown()

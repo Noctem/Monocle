@@ -61,7 +61,6 @@ for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
 
-_workers_count = config.GRID[0] * config.GRID[1]
 # Set defaults for missing config options
 OPTIONAL_SETTINGS = {
     'PROXIES': None,
@@ -76,8 +75,9 @@ OPTIONAL_SETTINGS = {
     'ACCOUNTS': (),
     'SPEED_LIMIT': 19,
     'ENCOUNTER': None,
-    'COMPUTE_THREADS': round(_workers_count / 10) + 1,
-    'NETWORK_THREADS': round(_workers_count / 2) + 1
+    'NOTIFY': False,
+    'COMPUTE_THREADS': round((config.GRID[0] * config.GRID[1]) / 4) + 1,
+    'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 2) + 1
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -689,7 +689,7 @@ class Slave:
                     else:
                         normalized['valid'] = True
 
-                    if NOTIFY and normalized['pokemon_id'] in config.NOTIFY_IDS:
+                    if config.NOTIFY and normalized['pokemon_id'] in config.NOTIFY_IDS:
                         if config.ENCOUNTER in ('all', 'notifying'):
                             normalized.update(await self.encounter(pokemon))
                         self.error_code = '*'
@@ -1189,12 +1189,6 @@ def parse_args():
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         default=logging.WARNING
     )
-    parser.add_argument(
-        '--debug',
-        dest='debug',
-        help="For testing, skip actually making requests.",
-        action='store_true',
-    )
     return parser.parse_args()
 
 
@@ -1228,14 +1222,12 @@ if __name__ == '__main__':
                 'Must have accounts in config or an accounts pickle.')
         ACCOUNTS = utils.create_accounts_dict()
 
-    DEBUG = False
     SPAWNS = Spawns()
     SPAWNS.update_spawns(loadpickle=True)
 
     args = parse_args()
 
     logger = logging.getLogger()
-    loop = asyncio.get_event_loop()
 
     if args.status_bar:
         configure_logger(filename='worker.log')
@@ -1244,17 +1236,17 @@ if __name__ == '__main__':
     else:
         configure_logger(filename=None)
 
-    if (config.NOTIFY_IDS or config.NOTIFY_RANKING) and (
-            config.TWITTER_CONSUMER_KEY or PB_API_KEY):
-        NOTIFY = True
+    if config.NOTIFY:
         import notification
         notifier = notification.Notifier(SPAWNS)
 
-    LOGIN_SEM = asyncio.BoundedSemaphore(1, loop=loop)
-    SIMULATION_SEM = asyncio.BoundedSemaphore(2, loop=loop)
+    logger.setLevel(args.log_level)
+    loop = asyncio.get_event_loop()
     overseer = Overseer(status_bar=args.status_bar, loop=loop)
     loop.set_default_executor(ThreadPoolExecutor())
     loop.set_exception_handler(exception_handler)
+    LOGIN_SEM = asyncio.BoundedSemaphore(1, loop=loop)
+    SIMULATION_SEM = asyncio.BoundedSemaphore(2, loop=loop)
     overseer.start()
     overseer_thread = threading.Thread(target=overseer.check)
     overseer_thread.start()
@@ -1277,7 +1269,7 @@ if __name__ == '__main__':
         overseer.cell_ids_executor.shutdown()
         overseer.network_executor.shutdown()
         overseer.db_processor.stop()
-        if NOTIFY:
+        if config.NOTIFY:
             notifier.session.close()
         SPAWNS.session.close()
         overseer.manager.shutdown()

@@ -23,7 +23,7 @@
             drawHoursPunchcardChart(backendData.charts_data.punchcard);
             drawPokemonChart(backendData.charts_data.top30, 'top30chart');
             drawPokemonChart(backendData.charts_data.bottom30, 'bottom30chart');
-            drawPokemonChart(backendData.charts_data.stage2, 'stage2chart');
+            drawPokemonChart(backendData.charts_data.rare, 'rarechart');
         }
 
         function drawPokemonChart (data, elemId) {
@@ -53,7 +53,7 @@
             });
         }
 
-        var maps = {heat: null, bottom30: null, stage2: null};
+        var maps = {heat: null, bottom30: null, rare: null};
 
         function initMaps() {
             Object.keys(maps).forEach(function (key) {
@@ -154,7 +154,7 @@
         <p><b>Stage 2 evolutions</b> and Pokemon subjectively considered "rare" by author of this report, together with their spawning places:</p>
 
         <div class="text-center">
-            {% for icon in icons.stage2 %}
+            {% for icon in icons.rare %}
                 <a href="/report/{{ icon[0] }}"><img src="../static/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
                 {% if loop.index > 0 and loop.index % 10 == 0 %}
                     <br>
@@ -162,9 +162,9 @@
             {% endfor %}
         </div>
 
-        <div id="stage2chart"></div>
+        <div id="rarechart"></div>
 
-        <div id="stage2map" class="map"></div>
+        <div id="raremap" class="map"></div>
 
         <h3>Nonexistent species</h3>
 
@@ -181,9 +181,9 @@
 
         <h2>Footnotes</h2>
 
-        <p>This report was generated using pokeminer, a tool for gathering data about Pokemon Go.</p>
+        <p>This report was generated using pokeminer+, a tool for gathering data about Pokemon Go.</p>
 
-        <p>Visit <a href="https://github.com/modrzew/pokeminer">https://github.com/modrzew/pokeminer</a> for more info.</p>
+        <p>Visit <a href="https://github.com/Noctem/pokeminer">https://github.com/Noctem/pokeminer</a> for more info.</p>
 
         <p>This report is available under Creative Commons CC-BY-4.0 license: <a href="https://creativecommons.org/licenses/by/4.0/">https://creativecommons.org/licenses/by/4.0/</a>.</p>
     </div>

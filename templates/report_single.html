@@ -14,7 +14,8 @@
             margin: 20px 0;
         }
         .pokemon-image img {
-            width: 50%;
+            max-width: 100%;
+            max-height: 100%;
         }
     </style>
 
@@ -90,7 +91,7 @@
         <p>This report contains statistics about data gathered during mining session for {{ area_name }} for single species - {{ pokemon_name }}.</p>
 
         <div class="pokemon-image">
-            <img src="/static/larger-icons/{{ pokemon_id }}.png" alt="{{ pokemon_name }}">
+            <img src="/static/original-icons/{{ pokemon_id }}.png" alt="{{ pokemon_name }}">
         </div>
 
         <p>During that session, <b> {{ total_spawn_count }}</b> sightings of {{ pokemon_name }} have been seen on an area of about <b>{{ area_size }} square km</b>. Data gathering started on <b>{{ session_start.strftime('%Y-%m-%d %H:%M:%S') }}</b> and ended on <b>{{ session_end.strftime('%Y-%m-%d %H:%M:%S') }}</b>, lasting <b>{{ session_length_hours }} hours</b>.</p>
@@ -111,9 +112,9 @@
 
         <h2>Footnotes</h2>
 
-        <p>This report was generated using pokeminer, a tool for gathering data about Pokemon Go.</p>
+        <p>This report was generated using pokeminer+, a tool for gathering data about Pokemon Go.</p>
 
-        <p>Visit <a href="https://github.com/modrzew/pokeminer">https://github.com/modrzew/pokeminer</a> for more info.</p>
+        <p>Visit <a href="https://github.com/Noctem/pokeminer">https://github.com/Noctem/pokeminer</a> for more info.</p>
 
         <p>This report is available under Creative Commons CC-BY-4.0 license: <a href="https://creativecommons.org/licenses/by/4.0/">https://creativecommons.org/licenses/by/4.0/</a>.</p>
     </div>

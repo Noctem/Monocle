@@ -179,13 +179,13 @@ def report_main():
     bottom_sightings = db.get_all_sightings(
         session, [r[0] for r in bottom_pokemon]
     )
-    stage2_pokemon = db.get_stage2_pokemon(session)
-    if stage2_pokemon:
-        stage2_sightings = db.get_all_sightings(
-            session, [r[0] for r in stage2_pokemon]
+    rare_pokemon = db.get_rare_pokemon(session)
+    if rare_pokemon:
+        rare_sightings = db.get_all_sightings(
+            session, [r[0] for r in rare_pokemon]
         )
     else:
-        stage2_sightings = []
+        rare_sightings = []
     js_data = {
         'charts_data': {
             'punchcard': db.get_punch_card(session),
@@ -193,13 +193,13 @@ def report_main():
             'bottom30': [
                 (POKEMON_NAMES[r[0]], r[1]) for r in bottom_pokemon
             ],
-            'stage2': [
-                (POKEMON_NAMES[r[0]], r[1]) for r in stage2_pokemon
+            'rare': [
+                (POKEMON_NAMES[r[0]], r[1]) for r in rare_pokemon
             ],
         },
         'maps_data': {
             'bottom30': [sighting_to_marker(s) for s in bottom_sightings],
-            'stage2': [sighting_to_marker(s) for s in stage2_sightings],
+            'rare': [sighting_to_marker(s) for s in rare_sightings],
         },
         'map_center': utils.get_map_center(),
         'zoom': 13,
@@ -207,7 +207,7 @@ def report_main():
     icons = {
         'top30': [(r[0], POKEMON_NAMES[r[0]]) for r in top_pokemon],
         'bottom30': [(r[0], POKEMON_NAMES[r[0]]) for r in bottom_pokemon],
-        'stage2': [(r[0], POKEMON_NAMES[r[0]]) for r in stage2_pokemon],
+        'rare': [(r[0], POKEMON_NAMES[r[0]]) for r in rare_pokemon],
         'nonexistent': [
             (r, POKEMON_NAMES[r])
             for r in db.get_nonexistent_pokemon(session)

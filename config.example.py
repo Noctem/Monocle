@@ -33,24 +33,31 @@ ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query
 #NETWORK_THREADS = round(_workers_count * .5) + 1
 
 # If all accounts use the same provider and password you can set defaults here
-# omit them from the accounts list.
+# and omit them from the accounts list.
 #PASS = 'pik4chu'
 #PROVIDER = 'ptc'
 
-# Optionally also provide an iPhone model, iOS version, and device_id
-# otherwise these values will be generated for you and stored in a pickle
+## Device information will be generated for you if you do not provide it.
+## valid account formats (without PASS and PROVIDER set):
+# (username, password, provider, iPhone, iOS, device_id)
+# (username, password, provider)
+## valid account formats (with PASS and PROVIDER set):
+# (username, iPhone, iOS, device_id)
+# (username)
 ACCOUNTS = [
-    ('ash_ketchum', 'pik4chu', 'ptc',),
+    ('ash_ketchum', 'pik4chu', 'ptc'),
     ('ziemniak_kalafior', 'ogorek', 'google'),
     ('noideawhattoputhere', 's3cr3t', 'ptc'),
     ('misty', 'bulbus4ur', 'ptc')
 ]
 
 TRASH_IDS = [
-    10, 13, 16, 19, 21, 23, 29, 32, 35, 41, 46, 48, 50, 52, 56, 58, 66, 74, 77, 96, 104, 111
+    16, 19, 21, 29, 32, 41, 46, 48, 50, 52, 56, 58, 74, 77, 81, 96, 111, 133
 ]
 
-STAGE2 = [2, 3, 6, 8, 9, 28, 40, 45, 55, 61, 62, 65, 68, 71, 73, 80, 83, 85, 87, 88, 89, 91, 94, 101, 103, 110, 114, 115, 117, 119, 121, 122, 130, 131, 132, 134, 136, 137, 139, 141, 142, 143, 144, 145, 146, 148, 149, 150, 151]
+RARE_IDS = [
+    83, 115, 122, 132, 144, 145, 146, 150, 151, 130, 89, 3, 9, 131, 134, 62, 148, 94, 91, 87, 71, 45, 85, 114, 80, 6, 117, 121, 2, 8, 88, 136, 73, 103, 110, 137, 55, 28, 119, 68, 139, 141, 149, 65, 61, 142, 101, 40, 99, 38
+]
 
 REPORT_SINCE = datetime(2016, 11, 1)
 GOOGLE_MAPS_KEY = 's3cr3t'
@@ -62,6 +69,8 @@ MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreet
 ### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
 from landmarks import Landmarks
 
+NOTIFY = True  # enable notifications
+
 # As many hashtags as can fit will be included in your tweets, these will
 # be combined with landmark-specific hashtags (if applicable).
 HASHTAGS = {AREA_NAME, 'Pokeminer+', 'PokemonGO'}
@@ -69,7 +78,7 @@ TZ_OFFSET = 0  # hours offset from server time for reported times
 
 # Only set one of the following two options. Only use NOTIFY_RANKING if your
 # database has enough data to accurately determine rareness.
-#NOTIFY_IDS = STAGE2  # a list or tuple of Pokémon IDs to notify about
+#NOTIFY_IDS = RARE_IDS  # a list or tuple of Pokémon IDs to notify about
 NOTIFY_RANKING = 70  # notify about the (x) rarest according to your database
 
 # Sightings of the top (x) will always be notified about, even if below TIME_REQUIRED

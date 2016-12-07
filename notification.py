@@ -68,7 +68,7 @@ def draw_stats(cr, attack, defense, stamina, move1=None, move2=None):
 
     cr.set_line_width(1.5)
 
-    if attack and defense and stamina:
+    if attack is not None:
         cr.select_font_face("SF Mono Semibold")
         cr.set_font_size(24)
         cr.move_to(300, 96)
@@ -128,8 +128,7 @@ def draw_name(cr, name):
 def create_image(pokemon_id, iv, move1, move2):
     try:
         attack, defense, stamina = iv['attack'], iv['defense'], iv['stamina']
-        number = pokemon_id
-        name = POKEMON_NAMES[number]
+        name = POKEMON_NAMES[pokemon_id]
         if config.TZ_OFFSET:
             now = datetime.now(timezone(timedelta(hours=config.TZ_OFFSET)))
         else:
@@ -145,7 +144,7 @@ def create_image(pokemon_id, iv, move1, move2):
         context.set_source_rgba(1, 1, 1)
         height = 236
         width = 280
-        image = 'static/original-icons/{:0>3}.png'.format(pokemon_id)
+        image = 'static/original-icons/{}.png'.format(pokemon_id)
         draw_image(context, image, height, width)
         draw_stats(context, attack, defense, stamina, move1, move2)
         draw_name(context, name)
@@ -483,7 +482,7 @@ class Notifier:
         move1 = MOVES.get(pokemon.get('move_1'), {}).get('name')
         move2 = MOVES.get(pokemon.get('move_2'), {}).get('name')
 
-        if move1 or move2 or pokemon.get('individual_attack'):
+        if move1 or move2 or pokemon.get('individual_attack') is not None:
             iv = {}
             iv['attack'] = pokemon.get('individual_attack')
             iv['defense'] = pokemon.get('individual_defense')
