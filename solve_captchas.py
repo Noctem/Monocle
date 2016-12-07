@@ -125,8 +125,8 @@ while not captcha_queue.empty():
     except (WebDriverException, AttributeError):
         captcha_queue.put(username)
         break
-    except exceptions.AuthException as e:
-        print('Auth exception:', e)
+    except (exceptions.AuthException, exceptions.AuthTokenExpiredException, exceptions.AuthTokenExpiredException):
+        print('Authentication error')
         captcha_queue.put(username)
         sleep(2)
     except Exception as e:

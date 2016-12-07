@@ -15,7 +15,8 @@ OPTIONAL_SETTINGS = {
     'GOOGLE_MAPS_KEY': None,
     'MAP_START': None,
     'MAP_END': None,
-    'BOUNDARIES': None
+    'BOUNDARIES': None,
+    'SPAWN_ID_INT': True
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -125,16 +126,15 @@ def round_coords(point, precision=2):
 
 
 def random_altitude():
-    if hasattr(config, 'ALT_RANGE'):
-        altitude = random.uniform(*config.ALT_RANGE)
-    else:
-        altitude = random.uniform(300, 400)
+    altitude = random.uniform(*config.ALT_RANGE)
     return altitude
 
 
 def get_altitude(point):
     try:
         params = {'locations': 'enc:' + polyline.encode((point,))}
+        if config.GOOGLE_MAPS_KEY:
+            params['key'] = config.GOOGLE_MAPS_KEY
         r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
                          params=params).json()
         altitude = r['results'][0]['elevation']
@@ -151,7 +151,7 @@ def get_altitudes(coords, precision=2):
     else:
         try:
             params = {'locations': 'enc:' + polyline.encode(coords)}
-            if hasattr(config, 'GOOGLE_MAPS_KEY'):
+            if config.GOOGLE_MAPS_KEY:
                 params['key'] = config.GOOGLE_MAPS_KEY
             r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
                              params=params).json()

@@ -33,14 +33,13 @@ import utils
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
     'DB_ENGINE',
-    'GRID',
-    'COMPUTE_THREADS',
-    'NETWORK_THREADS'
+    'GRID'
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
 
+_workers_count = config.GRID[0] * config.GRID[1]
 # Set defaults for missing config options
 OPTIONAL_SETTINGS = {
     'PROXIES': None,
@@ -50,9 +49,12 @@ OPTIONAL_SETTINGS = {
     'CONTROL_SOCKS': None,
     'ENCRYPT_PATH': None,
     'HASH_PATH': None,
-    'MAX_CAPTCHAS': 100,
+    'MAX_CAPTCHAS': 200,
     'ACCOUNTS': (),
-    'SPEED_LIMIT': 21
+    'SPEED_LIMIT': 19,
+    'ENCOUNTER': None,
+    'COMPUTE_THREADS': round(_workers_count / 4) + 1,
+    'NETWORK_THREADS': round(_workers_count / 2) + 1
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -103,7 +105,7 @@ def configure_logger(filename='worker.log'):
             '%(message)s'
         ),
         style='%',
-        level=logging.WARNING,
+        level=logging.INFO,
     )
 
 
@@ -692,8 +694,9 @@ class Slave:
                 else:
                     normalized['valid'] = True
 
-                if normalized['pokemon_id'] in config.NOTIFY_IDS:
-                    normalized.update(await self.encounter(pokemon))
+                if NOTIFY and normalized['pokemon_id'] in config.NOTIFY_IDS:
+                    if config.ENCOUNTER in ('all', 'notifying'):
+                        normalized.update(await self.encounter(pokemon))
                     self.error_code = '*'
                     notified, explanation = notifier.notify(normalized)
                     if notified:
@@ -705,6 +708,8 @@ class Slave:
                         self.logger.warning(explanation)
 
                 if normalized['valid'] and normalized not in db.SIGHTING_CACHE:
+                    if config.ENCOUNTER == 'all':
+                        normalized.update(await self.encounter(pokemon))
                     pokemons.append(normalized)
 
                 if not normalized[
@@ -762,8 +767,6 @@ class Slave:
     def travel_speed(self, point, spawn_time):
         if self.busy or self.killed:
             return None
-        if self.last_visit == 0:
-            return 1
         now = time.time()
         if spawn_time < now:
             spawn_time = now
@@ -1226,8 +1229,8 @@ class Overseer:
                 )
 
     async def try_point(self, point, spawn_time):
-        point[0] = random.uniform(point[0] - 0.0004, point[0] + 0.0004)
-        point[1] = random.uniform(point[1] - 0.0004, point[1] + 0.0004)
+        point[0] = random.uniform(point[0] - 0.00033, point[0] + 0.00033)
+        point[1] = random.uniform(point[1] - 0.00033, point[1] + 0.00033)
         time_diff = spawn_time - time.time()
         if time_diff > -2:
             await asyncio.sleep(time_diff + 2)
@@ -1372,9 +1375,13 @@ if __name__ == '__main__':
     if args.debug:
         DEBUG = True
     else:
-        if config.NOTIFY_IDS or config.NOTIFY_RANKING:
+        if (config.NOTIFY_IDS or config.NOTIFY_RANKING) and (
+                config.TWITTER_CONSUMER_KEY or PB_API_KEY):
             import notification
+            NOTIFY = True
             notifier = notification.Notifier(SPAWNS)
+        else:
+            NOTIFY = False
         DEBUG = False
 
     logger.setLevel(args.log_level)
@@ -1410,7 +1417,8 @@ if __name__ == '__main__':
             overseer.cell_ids_executor.shutdown()
             overseer.network_executor.shutdown()
             overseer.db_processor.stop()
-            notifier.session.close()
+            if NOTIFY:
+                notifier.session.close()
             SPAWNS.session.close()
             overseer.manager.shutdown()
             print('Stopping and closing loop.')

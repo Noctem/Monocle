@@ -3,7 +3,6 @@ from collections import deque
 from os import makedirs
 
 import time
-import cairo
 import pickle
 
 from db import Session, get_pokemon_ranking, get_despawn_time, estimate_remaining_time
@@ -15,21 +14,23 @@ import config
 for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
                       'TWITTER_CONSUMER_SECRET', 'TWITTER_ACCESS_KEY',
                       'TWITTER_ACCESS_SECRET', 'LANDMARKS', 'AREA_NAME',
-                      'HASHTAGS', 'TZ_OFFSET', 'NOTIFY_RANKING', 'NOTIFY_IDS'):
+                      'HASHTAGS', 'TZ_OFFSET', 'NOTIFY_RANKING', 'NOTIFY_IDS'
+                      'ENCOUNTER', 'INITIAL_RANKING'):
     if not hasattr(config, variable_name):
         setattr(config, variable_name, None)
 
 OPTIONAL_SETTINGS = {
     'ALWAYS_NOTIFY': 0,
     'FULL_TIME': 1800,
-    'TIME_REQUIRED': 300,
-    'INITIAL_RANKING': config.NOTIFY_RANKING
+    'TIME_REQUIRED': 300
 }
 # set defaults for unset config options
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
 
+if config.ENCOUNTER in ('all', 'notifying'):
+    import cairo
 
 def draw_image(ctx, image, height, width):
     """Draw a scaled image on a given context."""
@@ -62,30 +63,31 @@ def draw_image(ctx, image, height, width):
     ctx.restore()
 
 
-def draw_text(cr, attack, defense, stamina, move1=None, move2=None):
-    """Draw a box on a given context."""
+def draw_stats(cr, attack, defense, stamina, move1=None, move2=None):
+    """Draw the Pokemon's IV's and moves."""
 
     cr.set_line_width(1.5)
-    cr.select_font_face("SF Mono Semibold")
-    cr.set_font_size(24)
 
-    cr.move_to(300, 96)
-    cr.text_path("Attack:  {:>2}/15".format(attack))
-    cr.move_to(300, 124)
-    cr.text_path("Defense: {:>2}/15".format(defense))
-    cr.move_to(300, 152)
-    cr.text_path("Stamina: {:>2}/15".format(stamina))
-    cr.set_source_rgba(0, 0, 0)
-    cr.stroke()
+    if attack and defense and stamina:
+        cr.select_font_face("SF Mono Semibold")
+        cr.set_font_size(24)
+        cr.move_to(300, 96)
+        cr.text_path("Attack:  {:>2}/15".format(attack))
+        cr.move_to(300, 124)
+        cr.text_path("Defense: {:>2}/15".format(defense))
+        cr.move_to(300, 152)
+        cr.text_path("Stamina: {:>2}/15".format(stamina))
+        cr.set_source_rgba(0, 0, 0)
+        cr.stroke()
 
-    cr.move_to(300, 96)
-    cr.text_path("Attack:  {:>2}/15".format(attack))
-    cr.move_to(300, 124)
-    cr.text_path("Defense: {:>2}/15".format(defense))
-    cr.move_to(300, 152)
-    cr.text_path("Stamina: {:>2}/15".format(stamina))
-    cr.set_source_rgba(1, 1, 1)
-    cr.fill()
+        cr.move_to(300, 96)
+        cr.text_path("Attack:  {:>2}/15".format(attack))
+        cr.move_to(300, 124)
+        cr.text_path("Defense: {:>2}/15".format(defense))
+        cr.move_to(300, 152)
+        cr.text_path("Stamina: {:>2}/15".format(stamina))
+        cr.set_source_rgba(1, 1, 1)
+        cr.fill()
 
     if move1 or move2:
         cr.select_font_face("SF UI Text Semibold")
@@ -109,8 +111,8 @@ def draw_text(cr, attack, defense, stamina, move1=None, move2=None):
         cr.fill()
 
 
-def draw_text2(cr, name):
-    """Draw a box on a given context."""
+def draw_name(cr, name):
+    """Draw the Pokemon's name."""
     cr.set_line_width(2)
     cr.select_font_face("SF UI Display Bold")
     cr.set_font_size(38)
@@ -124,29 +126,38 @@ def draw_text2(cr, name):
 
 
 def create_image(pokemon_id, iv, move1, move2):
-    attack, defense, stamina = iv['attack'], iv['defense'], iv['stamina']
-    number = pokemon_id
-    name = POKEMON_NAMES[number]
-    hour = datetime.now().hour
-    if hour > 6 and hour < 18:
-        image = 'static/img/notification-bg-day.png'
-    else:
-        image = 'static/img/notification-bg-night.png'
-    ims = cairo.ImageSurface.create_from_png(image)
-    context = cairo.Context(ims)
-
-    context.set_source_rgba(1, 1, 1)
-    height = 236
-    width = 280
-    image = 'static/original-icons/{:0>3}.png'.format(pokemon_id)
-    draw_image(context, image, height, width)
-    draw_text(context, attack, defense, stamina, move1, move2)
-    draw_text2(context, name)
     try:
-        makedirs('notification-images')
-    except OSError:
-        pass
-    ims.write_to_png('notification-images/{}-notification.png'.format(name))
+        attack, defense, stamina = iv['attack'], iv['defense'], iv['stamina']
+        number = pokemon_id
+        name = POKEMON_NAMES[number]
+        if config.TZ_OFFSET:
+            now = datetime.now(timezone(timedelta(hours=config.TZ_OFFSET)))
+        else:
+            now = datetime.now()
+        hour = now.hour
+        if hour > 6 and hour < 18:
+            image = 'static/img/notification-bg-day.png'
+        else:
+            image = 'static/img/notification-bg-night.png'
+        ims = cairo.ImageSurface.create_from_png(image)
+        context = cairo.Context(ims)
+
+        context.set_source_rgba(1, 1, 1)
+        height = 236
+        width = 280
+        image = 'static/original-icons/{:0>3}.png'.format(pokemon_id)
+        draw_image(context, image, height, width)
+        draw_stats(context, attack, defense, stamina, move1, move2)
+        draw_name(context, name)
+        image = 'notification-images/{}-notification.png'.format(name)
+        try:
+            makedirs('notification-images')
+        except OSError:
+            pass
+        ims.write_to_png(image)
+        return image
+    except Exception:
+        return None
 
 
 def generic_place_string():
@@ -162,9 +173,10 @@ def generic_place_string():
 
 class Notification:
 
-    def __init__(self, name, coordinates, time_till_hidden, iv):
+    def __init__(self, name, coordinates, time_till_hidden, iv, image):
         self.name = name
         self.coordinates = coordinates
+        self.image = image
         self.attack, self.defense, self.stamina = iv[
             'attack'], iv['defense'], iv['stamina']
         self.iv_sum = self.attack + self.defense + self.stamina
@@ -263,7 +275,7 @@ class Notification:
             expiry = 'until ' + self.expire_time
 
             minutes, seconds = divmod(self.delta.total_seconds(), 60)
-            time_remaining = '{m}m{s}s'.format(m=minutes, s=seconds)
+            time_remaining = '{m}m{s:.0f}s'.format(m=int(minutes), s=seconds)
 
             remaining = 'for ' + time_remaining
         else:
@@ -271,9 +283,9 @@ class Notification:
                      t1=self.min_expire_time, t2=self.max_expire_time)
 
             minutes, seconds = divmod(self.min_delta.total_seconds(), 60)
-            min_remaining = '{m}m{s}s'.format(m=minutes, s=seconds)
+            min_remaining = '{m}m{s:.0f}s'.format(m=int(minutes), s=seconds)
             minutes, seconds = divmod(self.max_delta.total_seconds(), 60)
-            max_remaining = '{m}m{s}s'.format(m=minutes, s=seconds)
+            max_remaining = '{m}m{s:.0f}s'.format(m=int(minutes), s=seconds)
 
             remaining = 'for between {r1} and {r2}'.format(
                         r1=min_remaining, r2=max_remaining)
@@ -356,18 +368,16 @@ class Notification:
                     d=self.description, n=self.name, e1=self.min_expire_time,
                     e2=self.max_expire_time, u=self.map_link)
 
-        image = 'notification-images/{}-notification.png'.format(self.name)
         try:
             api = twitter.Api(consumer_key=config.TWITTER_CONSUMER_KEY,
                               consumer_secret=config.TWITTER_CONSUMER_SECRET,
                               access_token_key=config.TWITTER_ACCESS_KEY,
                               access_token_secret=config.TWITTER_ACCESS_SECRET)
             api.PostUpdate(tweet_text,
-                           media=image,
+                           media=self.image,
                            latitude=self.coordinates[0],
                            longitude=self.coordinates[1],
-                           display_coordinates=True,
-                           verify_status_length=False)
+                           display_coordinates=True)
         except Exception as e:
             print('Exception:', e)
             return False
@@ -379,16 +389,18 @@ class Notifier:
     def __init__(self, spawns):
         self.spawns = spawns
         self.recent_notifications = deque(maxlen=100)
-        self.notify_ranking = config.INITIAL_RANKING
+        self.notify_ranking = config.INITIAL_RANKING or config.NOTIFY_RANKING
         self.session = Session()
-        self.set_pokemon_ranking(loadpickle=True)
         self.last_notification = None
         self.always_notify = []
         if self.notify_ranking:
-            setattr(config, 'NOTIFY_IDS', [])
-            for pokemon_id in self.pokemon_ranking[0:config.NOTIFY_RANKING]:
-                config.NOTIFY_IDS.append(pokemon_id)
+            self.set_pokemon_ranking(loadpickle=True)
             self.set_notify_ids()
+            self.auto = True
+        elif config.NOTIFY_IDS:
+            self.pokemon_ranking = config.NOTIFY_IDS
+            self.notify_ranking = len(self.pokemon_ranking)
+            self.auto = False
 
     def set_notify_ids(self):
         self.notify_ids = self.pokemon_ranking[0:self.notify_ranking]
@@ -400,10 +412,16 @@ class Notifier:
             try:
                 with open('pickles/ranking.pickle', 'rb') as f:
                     self.pokemon_ranking = pickle.load(f)
+                    config.NOTIFY_IDS = []
+                    for pokemon_id in self.pokemon_ranking[0:config.NOTIFY_RANKING]:
+                        config.NOTIFY_IDS.append(pokemon_id)
                     return
             except (FileNotFoundError, EOFError):
                 pass
         self.pokemon_ranking = get_pokemon_ranking(self.session)
+        config.NOTIFY_IDS = []
+        for pokemon_id in self.pokemon_ranking[0:config.NOTIFY_RANKING]:
+            config.NOTIFY_IDS.append(pokemon_id)
         with open('pickles/ranking.pickle', 'wb') as f:
             pickle.dump(self.pokemon_ranking, f, pickle.HIGHEST_PROTOCOL)
 
@@ -428,9 +446,10 @@ class Notifier:
 
         if self.last_notification:
             now = time.time()
-            time_passed = now - self.ranking_time
-            if time_passed > 7200:
-                self.set_pokemon_ranking()
+            if self.auto:
+                time_passed = now - self.ranking_time
+                if time_passed > 7200:
+                    self.set_pokemon_ranking()
             time_passed = now - self.last_notification
             if time_passed < config.FULL_TIME:
                 fraction = time_passed / config.FULL_TIME
@@ -464,13 +483,17 @@ class Notifier:
         move1 = MOVES.get(pokemon.get('move_1'), {}).get('name')
         move2 = MOVES.get(pokemon.get('move_2'), {}).get('name')
 
-        iv = {}
-        iv['attack'], iv['defense'], iv['stamina'] = pokemon['individual_attack'], pokemon[
-            'individual_defense'], pokemon['individual_stamina']
-        create_image(pokemon_id, iv, move1, move2)
+        if move1 or move2 or pokemon.get('individual_attack'):
+            iv = {}
+            iv['attack'] = pokemon.get('individual_attack')
+            iv['defense'] = pokemon.get('individual_defense')
+            iv['stamina'] = pokemon.get('individual_stamina')
+            image = create_image(pokemon_id, iv, move1, move2)
+        else:
+            image = None
 
         tweeted, pushed = Notification(
-            name, coordinates, time_till_hidden, iv).notify()
+            name, coordinates, time_till_hidden, iv, image).notify()
 
         if tweeted or pushed:
             self.last_notification = time.time()

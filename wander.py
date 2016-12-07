@@ -55,27 +55,29 @@ REQUIRED_SETTINGS = (
     'DB_ENGINE',
     'MAP_START',
     'MAP_END',
-    'GRID',
-    'ACCOUNTS',
-    'COMPUTE_THREADS',
-    'NETWORK_THREADS'
+    'GRID'
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
 
+_workers_count = config.GRID[0] * config.GRID[1]
 # Set defaults for missing config options
 OPTIONAL_SETTINGS = {
     'PROXIES': None,
     'CYCLES_PER_WORKER': 3,
     'SCAN_RADIUS': 70,
-    'SCAN_DELAY': 10,
+    'SCAN_DELAY': 11,
     'NOTIFY_IDS': None,
     'NOTIFY_RANKING': None,
     'ENCRYPT_PATH': None,
     'HASH_PATH': None,
-    'MAX_CAPTCHAS': 100,
-    'SPEED_LIMIT': 19
+    'MAX_CAPTCHAS': 200,
+    'ACCOUNTS': (),
+    'SPEED_LIMIT': 19,
+    'ENCOUNTER': None,
+    'COMPUTE_THREADS': round(_workers_count / 10) + 1,
+    'NETWORK_THREADS': round(_workers_count / 2) + 1
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -687,8 +689,9 @@ class Slave:
                     else:
                         normalized['valid'] = True
 
-                    if normalized['pokemon_id'] in config.NOTIFY_IDS:
-                        normalized.update(await self.encounter(pokemon))
+                    if NOTIFY and normalized['pokemon_id'] in config.NOTIFY_IDS:
+                        if config.ENCOUNTER in ('all', 'notifying'):
+                            normalized.update(await self.encounter(pokemon))
                         self.error_code = '*'
                         notified, explanation = notifier.notify(normalized)
                         if notified:
@@ -700,6 +703,8 @@ class Slave:
                             self.logger.warning(explanation)
 
                     if normalized['valid'] and normalized not in db.SIGHTING_CACHE:
+                        if config.ENCOUNTER == 'all':
+                            normalized.update(await self.encounter(pokemon))
                         pokemons.append(normalized)
 
                     if not normalized[
@@ -1239,7 +1244,9 @@ if __name__ == '__main__':
     else:
         configure_logger(filename=None)
 
-    if config.NOTIFY_IDS or config.NOTIFY_RANKING:
+    if (config.NOTIFY_IDS or config.NOTIFY_RANKING) and (
+            config.TWITTER_CONSUMER_KEY or PB_API_KEY):
+        NOTIFY = True
         import notification
         notifier = notification.Notifier(SPAWNS)
 
@@ -1270,7 +1277,8 @@ if __name__ == '__main__':
         overseer.cell_ids_executor.shutdown()
         overseer.network_executor.shutdown()
         overseer.db_processor.stop()
-        notifier.session.close()
+        if NOTIFY:
+            notifier.session.close()
         SPAWNS.session.close()
         overseer.manager.shutdown()
         print('Stopping and closing loop.')

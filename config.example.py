@@ -1,8 +1,9 @@
 # coding: utf-8
 from datetime import datetime
-from landmarks import Landmarks
 
 DB_ENGINE = 'sqlite:///db.sqlite'
+
+# these are provided by pgoapi, or you can use your own
 #ENCRYPT_PATH = './libpcrypt.so'
 #HASH_PATH = './libniahash.so'
 
@@ -14,19 +15,22 @@ GRID = (2, 2)  # row, column
 MAX_CAPTCHAS = 100  # stop launching new visits if this many CAPTCHAs are pending
 SCAN_DELAY = 11  # do not visit within this many seconds of the last visit
 
-ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if generation fails
+ENCOUNTER = None  # encounter pokemon to store IVs. Options: None, 'all', or 'notifying'
+SPEED_LIMIT = 19  # do not travel over this many MPH (applies only to spawn scanning)
+
+ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
 
 # proxy address and port or tuple of proxy addresses and ports.
 #PROXIES = ('socks5://127.0.0.1:9050',
 #           'socks5://127.0.0.1:9051')
 
 # convert spawn_id to integer for more efficient DB storage, set to False if
-# using an existing database since the data types are incompatible.
-SPAWN_ID_INT = True
+# using an old database since the data types are incompatible.
+#SPAWN_ID_INT = True
 
-_workers_count = GRID[0] * GRID[1]
-COMPUTE_THREADS = round(_workers_count / 10) + 1
-NETWORK_THREADS = round(_workers_count / 2) + 1
+#_workers_count = GRID[0] * GRID[1]
+#COMPUTE_THREADS = round(_workers_count * .25) + 1
+#NETWORK_THREADS = round(_workers_count * .5) + 1
 
 # If all accounts use the same provider and password you can set defaults here
 # omit them from the accounts list.
@@ -38,11 +42,15 @@ NETWORK_THREADS = round(_workers_count / 2) + 1
 ACCOUNTS = [
     ('ash_ketchum', 'pik4chu', 'ptc',),
     ('ziemniak_kalafior', 'ogorek', 'google'),
-    ('noideawhattoputhere', 's3cr3t', 'ptc')
+    ('noideawhattoputhere', 's3cr3t', 'ptc'),
+    ('misty', 'bulbus4ur', 'ptc')
 ]
 
-TRASH_IDS = (13, 16, 19, 21, 41, 96)
-STAGE2 = (141, 142, 143, 144, 145, 146, 148, 149, 150, 151)
+TRASH_IDS = [
+    10, 13, 16, 19, 21, 23, 29, 32, 35, 41, 46, 48, 50, 52, 56, 58, 66, 74, 77, 96, 104, 111
+]
+
+STAGE2 = [2, 3, 6, 8, 9, 28, 40, 45, 55, 61, 62, 65, 68, 71, 73, 80, 83, 85, 87, 88, 89, 91, 94, 101, 103, 110, 114, 115, 117, 119, 121, 122, 130, 131, 132, 134, 136, 137, 139, 141, 142, 143, 144, 145, 146, 148, 149, 150, 151]
 
 REPORT_SINCE = datetime(2016, 11, 1)
 GOOGLE_MAPS_KEY = 's3cr3t'
@@ -50,30 +58,36 @@ GOOGLE_MAPS_KEY = 's3cr3t'
 MAP_PROVIDER_URL = '//{s}.tile.osm.org/{z}/{x}/{y}.png'
 MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 
-
+'''
 ### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
+from landmarks import Landmarks
 
 # As many hashtags as can fit will be included in your tweets, these will
 # be combined with landmark-specific hashtags (if applicable).
-HASHTAGS = {AREA_NAME, 'PokemonGO'}
+HASHTAGS = {AREA_NAME, 'Pokeminer+', 'PokemonGO'}
 TZ_OFFSET = 0  # hours offset from server time for reported times
-
 
 # Only set one of the following two options. Only use NOTIFY_RANKING if your
 # database has enough data to accurately determine rareness.
-NOTIFY_IDS = STAGE2  # a list or tuple of Pokémon IDs to notify about
-#NOTIFY_RANKING = 50  # notify about the (x) rarest according to your database
+#NOTIFY_IDS = STAGE2  # a list or tuple of Pokémon IDs to notify about
+NOTIFY_RANKING = 70  # notify about the (x) rarest according to your database
+
+# Sightings of the top (x) will always be notified about, even if below TIME_REQUIRED
+ALWAYS_NOTIFY = 14
 
 # the required number of seconds remaining to notify about a Pokémon
-MIN_TIME = 300
+TIME_REQUIRED = 300
 
-# Sightings of the top (x) will always be notified about, even if below MIN_TIME
-ALWAYS_NOTIFY = 11
+# The Pokemon that will be eligible for notification will be on a sliding scale
+# from the time of a notification to this many seconds later.
+FULL_TIME = 600
 
-# If this is set, the amount of seconds required for Pokémon will be a sliding
-# scale from MIN_TIME to MAX_TIME, from rarest to least rare, or in the order
-# you specify in your NOTIFY_IDS (depending on which variable you set above)
-#MAX_TIME = 600
+# The top (x) Pokemon will always be eligible, ignoring the sliding scale configured above.
+ALWAYS_ELIGIBLE = 29
+
+# The top (x) Pokemon will be eligible upon startup, after the first notification
+# the sliding scale will be used.
+INITIAL_RANKING = 60
 
 # The following values are fake, replace them with your own keys to enable
 # PushBullet notifications and/or tweeting, otherwise leave them out of your
@@ -118,3 +132,4 @@ LANDMARKS.add('the State Capitol', query='Utah State Capitol Building')
 LANDMARKS.add('the University of Utah', hashtags={'Utes'}, phrase='at', is_area=True)
 # provide corner points to create a polygon of the area since OpenStreetMap does not have a shape for it
 LANDMARKS.add('Yalecrest', points=((40.750263, -111.836502), (40.750377, -111.851108), (40.751515, -111.853833), (40.741212, -111.853909), (40.741188, -111.836519)), is_area=True)
+'''
