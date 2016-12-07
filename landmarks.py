@@ -10,9 +10,10 @@ class FailedQuery(Exception):
 class Landmark:
     ''' Contains information about user-defined landmarks.'''
 
-    def __init__(self, name, points=None, query=None, hashtags=None,
-                 phrase=None, is_area=False, query_suffix=None):
+    def __init__(self, name, shortname=None, points=None, query=None,
+                 hashtags=None, phrase=None, is_area=False, query_suffix=None):
         self.name = name
+        self.shortname = shortname
         self.is_area = is_area
 
         if not points and not query:
@@ -20,7 +21,7 @@ class Landmark:
 
         if ((query_suffix and query) and
                 query_suffix.lower() not in query.lower()):
-            query = query + ' ' + query_suffix
+            query = '{q} {qs}'.format(q=query, qs=query_suffix)
 
         self.location = None
         if query:
@@ -35,16 +36,16 @@ class Landmark:
                 elif len(points) == 1:
                     self.location = Point(*points[0])
             except (TypeError, IndexError):
-                print('points must be a list/tuple of lists/tuples'
-                      ' containing 2 coordinates each')
-                raise
+                raise ValueError('points must be a list/tuple of lists/tuples'
+                                 ' containing 2 coordinates each')
 
         if not self.location:
-            raise ValueError('No location provided for ' + name +
-                             '. Must provide either points, or query.')
+            raise ValueError('No location provided for {}. Must provide'
+                             ' either points, or query.'.format(self.name))
         elif not isinstance(self.location, (Point, Polygon, LineString)):
-            raise NotImplementedError(name + 'is a ' + self.location.type +
-                                      ' which is not supported.')
+            raise NotImplementedError('{n} is a {t} which is not '
+                                      'supported.'.format(
+                                      n=self.name, t=self.location.type))
 
         # very imprecise conversion to square meters
         self.size = round(self.location.area * 12100000000)
@@ -73,7 +74,7 @@ class Landmark:
             geo = nom.geocode(query=query, geometry='geojson').raw
             geojson = geo['geojson']
         except (AttributeError, KeyError):
-            raise FailedQuery('Query for ' + query + ' did not return results.')
+            raise FailedQuery('Query for {} did not return results.'.format(query))
         print(geo['display_name'])
         geojson['coordinates'] = swap_coords(geojson['coordinates'])
         self.location = shape(geojson)
@@ -88,12 +89,12 @@ class Landmark:
 
     def generate_string(self, coordinates):
         if self.contains(coordinates):
-            return self.phrase + ' ' + self.name
+            return '{p} {n}'.format(p=self.phrase, n=self.name)
         distance = round(self.distance_from_point(coordinates))
-        if (self.is_area and distance < 100) or distance < 20:
-            return self.phrase + ' ' + self.name
+        if (self.is_area and distance < 100) or distance < 40:
+            return '{p} {s}'.format(p=self.phrase, s=self.name)
         else:
-            return str(distance) + ' meters from ' + self.name
+            return '{d} meters from {n}'.format(d=distance, n=self.name)
 
     def contains(self, coordinates):
         """determine if a point is within this object range"""
@@ -172,9 +173,9 @@ class Landmark:
                     min_dist = cur_dist
                     nearest_point = intersection_point
         else:
-            raise NotImplementedError('project_point_to_object not ' +
-                                      "implemented for geometry type '" +
-                                      self.location.type + "'.")
+            raise NotImplementedError('project_point_to_object not implemented'
+                                      "for geometry type '{}'.".format(
+                                      self.location.type))
         return nearest_point
 
 

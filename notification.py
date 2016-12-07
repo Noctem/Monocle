@@ -229,14 +229,14 @@ class Notification:
 
     def notify(self):
         if config.LANDMARKS:
-            landmark = config.LANDMARKS.find_landmark(self.coordinates)
+            self.landmark = config.LANDMARKS.find_landmark(self.coordinates)
         else:
-            landmark = None
+            self.landmark = None
 
-        if landmark:
-            self.place = landmark.generate_string(self.coordinates)
-            if landmark.hashtags:
-                self.hashtags.update(landmark.hashtags)
+        if self.landmark:
+            self.place = self.landmark.generate_string(self.coordinates)
+            if self.landmark.hashtags:
+                self.hashtags.update(self.landmark.hashtags)
         else:
             self.place = generic_place_string()
 
@@ -336,6 +336,9 @@ class Notification:
                 e1=self.min_expire_time, e2=self.max_expire_time,
                 t=tag_string, u=self.map_link)
 
+        if calc_expected_status_length(tweet_text) > 140:
+            tweet_text = tweet_text.replace(' meters ', 'm ')
+
         # remove hashtags until length is short enough
         while calc_expected_status_length(tweet_text) > 140:
             if self.hashtags:
@@ -344,17 +347,27 @@ class Notification:
             else:
                 break
 
+        if (calc_expected_status_length(tweet_text) > 140 and
+                self.landmark.shortname):
+            tweet_text = tweet_text.replace(self.landmark,
+                                            self.landmark.shortname)
+
+        if calc_expected_status_length(tweet_text) > 140:
+            place = self.landmark.shortname or self.landmark.name
+            place_string = 'near {}'.format(place)
+            tweet_text = tweet_text.replace(self.place, place_string)
+
         if calc_expected_status_length(tweet_text) > 140:
             if self.expire_time:
-                tweet_text = 'A {d} {n} will be in {a} until {e}. {u}'.format(
+                tweet_text = 'A {d} {n} will be {p} until {e}. {u}'.format(
                              d=self.description, n=self.name,
-                             a=config.AREA_NAME, e=self.expire_time,
+                             p=place_string, e=self.expire_time,
                              u=self.map_link)
             else:
                 tweet_text = (
                     "A {d} {n} appeared {p}! It'll expire between {e1} & {e2}."
                     ' {u}').format(d=self.description, n=self.name,
-                                   p=self.place, e1=self.min_expire_time,
+                                   p=place_string, e1=self.min_expire_time,
                                    e2=self.max_expire_time, u=self.map_link)
 
         if calc_expected_status_length(tweet_text) > 140:

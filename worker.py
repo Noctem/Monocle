@@ -469,7 +469,7 @@ class Slave:
 
         # request 3: get_asset_digest
         request = self.api.create_request()
-        request.get_asset_digest(platform=1, app_version=4500)
+        request.get_asset_digest(platform=1, app_version=4701)
         request.check_challenge()
         request.get_hatched_eggs()
         request.get_inventory(last_timestamp_ms=self.inventory_timestamp)

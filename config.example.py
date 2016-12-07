@@ -127,18 +127,18 @@ LANDMARKS = Landmarks(query_suffix=AREA_NAME)
 # the default phrase is 'in' for areas and 'at' for non-areas, but can be overriden for either.
 
 # since no points or query is provided, the names provided will be queried and suffixed with AREA_NAME
-LANDMARKS.add('Rice Eccles Stadium', hashtags={'Utes'})
-LANDMARKS.add('the Salt Lake Temple', hashtags={'TempleSquare'})
+LANDMARKS.add('Rice Eccles Stadium', shortname='Rice Eccles', hashtags={'Utes'})
+LANDMARKS.add('the Salt Lake Temple', shortname='the temple', hashtags={'TempleSquare'})
 
 # provide two corner points to create a square for this area
 LANDMARKS.add('City Creek Center', points=((40.769210, -111.893901), (40.767231, -111.888275)), hashtags={'CityCreek'})
 
 # provide a query that is different from the landmark name so that OpenStreetMap finds the correct one
-LANDMARKS.add('the State Capitol', query='Utah State Capitol Building')
+LANDMARKS.add('the State Capitol', shortname='the Capitol', query='Utah State Capitol Building')
 
 ## area examples ##
 # query using name, override the default area phrase so that it says 'at (name)' instead of 'in'
-LANDMARKS.add('the University of Utah', hashtags={'Utes'}, phrase='at', is_area=True)
+LANDMARKS.add('the University of Utah', shortname='the U of U', hashtags={'Utes'}, phrase='at', is_area=True)
 # provide corner points to create a polygon of the area since OpenStreetMap does not have a shape for it
 LANDMARKS.add('Yalecrest', points=((40.750263, -111.836502), (40.750377, -111.851108), (40.751515, -111.853833), (40.741212, -111.853909), (40.741188, -111.836519)), is_area=True)
 '''
