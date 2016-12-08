@@ -10,6 +10,7 @@ from multiprocessing.managers import BaseManager, DictProxy
 from pgoapi.auth_ptc import AuthPtc
 from statistics import median
 from signal import signal, SIGINT, SIG_IGN
+import socket
 import argparse
 import asyncio
 import logging
@@ -909,7 +910,14 @@ class Overseer:
         AccountManager.register('worker_dict',
             callable=lambda:worker_dict, proxytype=DictProxy)
 
-        self.manager = AccountManager(address='queue.sock', authkey=b'monkeys')
+        if sys.platform == 'win32':
+            address=r'\\.\pipe\pokeminer'
+        elif hasattr(socket, 'AF_UNIX'):
+            address='pokeminer.sock'
+        else:
+            address=('127.0.0.1', 5000)
+
+        self.manager = AccountManager(address=address, authkey=b'monkeys')
         self.manager.start(mgr_init)
         self.captcha_queue = self.manager.captcha_queue()
         self.extra_queue = self.manager.extra_queue()

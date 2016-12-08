@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import pickle
+import socket
 from queue import Queue
 from multiprocessing.managers import BaseManager
 from pgoapi import (
@@ -17,7 +18,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from config import MAP_START, MAP_END
-from sys import exit
+from sys import platform
 from time import sleep
 
 DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
@@ -43,12 +44,19 @@ def resolve_captcha(url, api, driver, timestamp):
 with open('pickles/accounts.pickle', 'rb') as f:
     ACCOUNTS = pickle.load(f)
 
+if platform == 'win32':
+    address=r'\\.\pipe\pokeminer'
+elif hasattr(socket, 'AF_UNIX'):
+    address='pokeminer.sock'
+else:
+    address=('127.0.0.1', 5000)
+
 captcha_queue = Queue()
 extra_queue = Queue()
 class AccountManager(BaseManager): pass
 AccountManager.register('captcha_queue', callable=lambda:captcha_queue)
 AccountManager.register('extra_queue', callable=lambda:extra_queue)
-manager = AccountManager(address='queue.sock', authkey=b'monkeys')
+manager = AccountManager(address=address, authkey=b'monkeys')
 manager.connect()
 captcha_queue = manager.captcha_queue()
 extra_queue = manager.extra_queue()
