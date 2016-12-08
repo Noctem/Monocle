@@ -48,15 +48,15 @@ def draw_image(ctx, image, height, width):
         if scale_xy != width_ratio:
             new_width = img_width * scale_xy
             left = (width - new_width) / 2
-            ctx.translate(left + 10, 10)
+            ctx.translate(left + 8, 8)
         elif scale_xy != height_ratio:
             new_height = img_height * scale_xy
             top = (height - new_height) / 2
-            ctx.translate(10, top + 10)
+            ctx.translate(8, top + 8)
     else:
-        left = (width - img_width) / 2 + 10
-        top = (height - img_height) / 2 + 10
-        ctx.translate(left, top)
+        left = (width - img_width) / 2
+        top = (height - img_height) / 2
+        ctx.translate(left + 8, top + 8)
     ctx.set_source_surface(image_surface)
 
     ctx.paint()
@@ -66,25 +66,26 @@ def draw_image(ctx, image, height, width):
 def draw_stats(cr, attack, defense, stamina, move1=None, move2=None):
     """Draw the Pokemon's IV's and moves."""
 
-    cr.set_line_width(1.5)
+    cr.set_line_width(1.75)
 
+    text_x = 240
     if attack is not None:
         cr.select_font_face("SF Mono Semibold")
-        cr.set_font_size(24)
-        cr.move_to(300, 96)
+        cr.set_font_size(22)
+        cr.move_to(text_x, 90)
         cr.text_path("Attack:  {:>2}/15".format(attack))
-        cr.move_to(300, 124)
+        cr.move_to(text_x, 116)
         cr.text_path("Defense: {:>2}/15".format(defense))
-        cr.move_to(300, 152)
+        cr.move_to(text_x, 142)
         cr.text_path("Stamina: {:>2}/15".format(stamina))
         cr.set_source_rgba(0, 0, 0)
         cr.stroke()
 
-        cr.move_to(300, 96)
+        cr.move_to(text_x, 90)
         cr.text_path("Attack:  {:>2}/15".format(attack))
-        cr.move_to(300, 124)
+        cr.move_to(text_x, 116)
         cr.text_path("Defense: {:>2}/15".format(defense))
-        cr.move_to(300, 152)
+        cr.move_to(text_x, 142)
         cr.text_path("Stamina: {:>2}/15".format(stamina))
         cr.set_source_rgba(1, 1, 1)
         cr.fill()
@@ -93,19 +94,19 @@ def draw_stats(cr, attack, defense, stamina, move1=None, move2=None):
         cr.select_font_face("SF UI Text Semibold")
         cr.set_font_size(16)
         if move1:
-            cr.move_to(300, 184)
+            cr.move_to(text_x, 170)
             cr.text_path("Move 1: {}".format(move1))
         if move2:
-            cr.move_to(300, 204)
+            cr.move_to(text_x, 188)
             cr.text_path("Move 2: {}".format(move2))
         cr.set_source_rgba(0, 0, 0)
         cr.stroke()
 
         if move1:
-            cr.move_to(300, 184)
+            cr.move_to(text_x, 170)
             cr.text_path("Move 1: {}".format(move1))
         if move2:
-            cr.move_to(300, 204)
+            cr.move_to(text_x, 188)
             cr.text_path("Move 2: {}".format(move2))
         cr.set_source_rgba(1, 1, 1)
         cr.fill()
@@ -113,14 +114,16 @@ def draw_stats(cr, attack, defense, stamina, move1=None, move2=None):
 
 def draw_name(cr, name):
     """Draw the Pokemon's name."""
-    cr.set_line_width(2)
+    cr.set_line_width(2.5)
+    text_x = 240
+    text_y = 50
     cr.select_font_face("SF UI Display Bold")
-    cr.set_font_size(38)
-    cr.move_to(300, 50)
+    cr.set_font_size(32)
+    cr.move_to(text_x, text_y)
     cr.set_source_rgba(0, 0, 0)
     cr.text_path(name)
     cr.stroke()
-    cr.move_to(300, 50)
+    cr.move_to(text_x, text_y)
     cr.set_source_rgba(1, 1, 1)
     cr.show_text(name)
 
@@ -142,8 +145,8 @@ def create_image(pokemon_id, iv, move1, move2):
         context = cairo.Context(ims)
 
         context.set_source_rgba(1, 1, 1)
-        height = 236
-        width = 280
+        height = 204
+        width = 224
         image = 'static/original-icons/{}.png'.format(pokemon_id)
         draw_image(context, image, height, width)
         draw_stats(context, attack, defense, stamina, move1, move2)
@@ -354,7 +357,11 @@ class Notification:
 
         if calc_expected_status_length(tweet_text) > 140:
             place = self.landmark.shortname or self.landmark.name
-            place_string = 'near {}'.format(place)
+            phrase = self.landmark.phrase
+            if self.place_string.startswith(phrase):
+                place_string = '{ph} {pl}'.format(ph=phrase, pl=place)
+            else:
+                place_string = 'near {}'.format(place)
             tweet_text = tweet_text.replace(self.place, place_string)
 
         if calc_expected_status_length(tweet_text) > 140:
