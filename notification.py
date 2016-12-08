@@ -358,7 +358,7 @@ class Notification:
         if calc_expected_status_length(tweet_text) > 140:
             place = self.landmark.shortname or self.landmark.name
             phrase = self.landmark.phrase
-            if self.place_string.startswith(phrase):
+            if self.place.startswith(phrase):
                 place_string = '{ph} {pl}'.format(ph=phrase, pl=place)
             else:
                 place_string = 'near {}'.format(place)
