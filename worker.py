@@ -8,6 +8,7 @@ from geopy.distance import great_circle
 from queue import Queue
 from multiprocessing.managers import BaseManager, DictProxy
 from pgoapi.auth_ptc import AuthPtc
+from statistics import median
 from signal import signal, SIGINT, SIG_IGN
 import argparse
 import asyncio
@@ -873,6 +874,8 @@ class Overseer:
         self.spawn_cache = db.SIGHTING_CACHE.spawn_ids
         self.redundant = 0
         self.spawns_count = 0
+        self.all_seen = False
+        self.idle_seconds = 0
         self.logger.info('Overseer initialized')
 
     def kill(self):
@@ -955,25 +958,21 @@ class Overseer:
         self.db_processor.start()
 
     def check(self):
-        global ACCOUNTS
         last_cleaned_cache = time.time()
-        last_workers_checked = time.time()
         last_things_found_updated = time.time()
-        workers_check = [
-            (worker, worker.total_seen)
-            for worker in self.workers.values()
-        ]
+        last_stats_updated = 0
+
         while not self.killed:
             now = time.time()
             # Clean cache
             if now - last_cleaned_cache > 900:  # clean cache after 15min
                 self.db_processor.clean_cache()
                 last_cleaned_cache = now
-            # Check up on workers
-            if now - last_workers_checked > (5 * 60):
-                last_workers_checked = now
             # Record things found count
-            if now - last_things_found_updated > 9:
+            if now - last_stats_updated >= 5:
+                self.seen_stats, self.visit_stats, self.delay_stats, self.speed_stats = self.get_visit_stats()
+                last_stats_updated = now
+            if not self.paused and now - last_things_found_updated >= 10:
                 self.things_count = self.things_count[-9:]
                 self.things_count.append(str(self.db_processor.count))
                 last_things_found_updated = now
@@ -983,11 +982,9 @@ class Overseer:
                 else:
                     _ = os.system('clear')
                 print(self.get_status_message())
-            time.sleep(1)
-            while self.paused:
-                if self.killed:
-                    break
-                time.sleep(10)
+            time.sleep(.5)
+            if self.paused:
+                time.sleep(15)
         # OK, now we're killed
         while True:
             try:
@@ -1011,12 +1008,13 @@ class Overseer:
         return {
             'max': max(somelist),
             'min': min(somelist),
-            'avg': sum(somelist) / len(somelist)
+            'med': median(somelist)
         }
 
     def get_visit_stats(self):
         visits = []
-        seconds_since_start = time.time() - START_TIME
+        seconds_since_start = time.time() - START_TIME - self.idle_seconds
+        hours_since_start = seconds_since_start / 3600
         seconds_per_visit = []
         seen_per_worker = []
         after_spawns = []
@@ -1031,7 +1029,7 @@ class Overseer:
         if after_spawns:
             delay_stats = self.generate_stats(after_spawns)
         else:
-            delay_stats = {'min': 0, 'max': 0, 'avg': 0}
+            delay_stats = {'min': 0, 'max': 0, 'med': 0}
         seen_stats = self.generate_stats(seen_per_worker)
         visit_stats = self.generate_stats(visits)
         speed_stats = self.generate_stats(speeds)
@@ -1078,9 +1076,9 @@ class Overseer:
         workers_count = len(self.workers)
 
         running_for = datetime.now() - self.start_date
-        seen_stats, visit_stats, delay_stats, speed_stats = self.get_visit_stats()
 
-        seconds_since_start = time.time() - START_TIME
+        seconds_since_start = time.time() - START_TIME - self.idle_seconds
+        hours_since_start = seconds_since_start / 3600
         visits_per_second = self.visits / seconds_since_start
 
         output = [
@@ -1091,14 +1089,14 @@ class Overseer:
                 t=threading.active_count(),
                 c=self.coroutines_count),
             '',
-            'Seen per worker: min {min}, max {max}, avg {avg:.0f}'.format(
-                **seen_stats),
-            'Visits per worker: min {min}, max {max:}, avg {avg:.1f}'.format(
-                **visit_stats),
-            'Visit delay: min {min:.1f}, max {max:.1f}, avg {avg:.1f}'.format(
-                **delay_stats),
-            'Speed: min {min:.1f}, max {max:.1f}, avg {avg:.1f}'.format(
-                **speed_stats),
+            'Seen per worker: min {min}, max {max}, med {med:.0f}'.format(
+                **self.seen_stats),
+            'Visits per worker: min {min}, max {max:}, med {med:.0f}'.format(
+                **self.visit_stats),
+            'Visit delay: min {min:.1f}, max {max:.1f}, med {med:.1f}'.format(
+                **self.delay_stats),
+            'Speed: min {min:.1f}, max {max:.1f}, med {med:.1f}'.format(
+                **self.speed_stats),
             'Extra accounts: {a}, CAPTCHAs needed: {c}'.format(
                 a=self.extra_queue.qsize(),
                 c=self.captcha_queue.qsize()),
@@ -1115,26 +1113,33 @@ class Overseer:
         ]
 
         try:
-            output.append('Seen per visit: {:.2f}'.format(
-                GLOBAL_SEEN / self.visits
+            output.append('Seen per visit: {v:.2f}, per minute: {m:.0f}'.format(
+                v=GLOBAL_SEEN / self.visits,
+                m=GLOBAL_SEEN / (seconds_since_start / 60)
             ))
         except ZeroDivisionError:
             pass
 
-        if NOTIFICATIONS_SENT:
-            output.append('Notifications sent: {}'.format(NOTIFICATIONS_SENT))
-
         if CAPTCHAS:
-            captchas_per_hour = CAPTCHAS * (3600 / seconds_since_start)
+            captchas_per_request = CAPTCHAS / (self.visits / 1000)
+            captchas_per_hour = CAPTCHAS / hours_since_start
             output.append(
-                'CAPTCHAs per hour: {:.1f}'.format(captchas_per_hour))
+                'CAPTCHAs per 1K visits: {r:.1f}, per hour: {h:.1f}'.format(
+                r=captchas_per_request, h=captchas_per_hour))
+
+        if NOTIFICATIONS_SENT:
+            output.append('Notifications sent: {n}, per hour {p:.1f}'.format(
+            n=NOTIFICATIONS_SENT, p=NOTIFICATIONS_SENT / hours_since_start))
 
         output.append('')
-        no_sightings = ', '.join(str(w.worker_no)
-                                 for w in self.workers.values()
-                                 if w.total_seen == 0)
-        if no_sightings:
-            output += ['Workers without sightings so far:', no_sightings, '']
+        if not self.all_seen:
+            no_sightings = ', '.join(str(w.worker_no)
+                                     for w in self.workers.values()
+                                     if w.total_seen == 0)
+            if no_sightings:
+                output += ['Workers without sightings so far:', no_sightings, '']
+            else:
+                self.all_seen = True
 
         dots, messages = self.get_dots_and_messages()
         output += [' '.join(row) for row in dots]
@@ -1142,6 +1147,8 @@ class Overseer:
         for i in range(4, len(messages) + 4, 4):
             output.append('\t'.join(messages[previous:i]))
             previous = i
+        if self.paused:
+            output += ('', 'CAPTCHAs are needed to proceed.')
         return '\n'.join(output)
 
     async def best_worker(self, point, spawn_time, give_up=False):
@@ -1195,20 +1202,24 @@ class Overseer:
                         asyncio.Task.all_tasks(self.loop))
                     while self.coroutines_count > self.coroutine_limit or not isinstance(
                             self.coroutines_count, int):
-                        time.sleep(1)
+                        time.sleep(1.5)
                         self.coroutines_count = len(
                             asyncio.Task.all_tasks(self.loop))
+
                     while self.captcha_queue.qsize() > config.MAX_CAPTCHAS and not self.killed:
                         self.paused = True
                         time.sleep(10)
+                        self.idle_seconds += 10
                 except IOError:
                     pass
                 except Exception as e:
                     self.logger.error(e)
+
                 if self.killed:
                     return
 
                 self.paused = False
+
                 point = list(spawn[0])
                 spawn_time = spawn[1] + current_hour
 
@@ -1408,7 +1419,7 @@ if __name__ == '__main__':
 
         try:
             pending = asyncio.Task.all_tasks(loop=loop)
-            print('Completing tasks.')
+            print('Completing tasks.    ')
             loop.run_until_complete(asyncio.gather(*pending))
             print('Shutting things down.')
             overseer.cell_ids_executor.shutdown()
