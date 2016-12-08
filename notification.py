@@ -349,7 +349,7 @@ class Notification:
 
         if (calc_expected_status_length(tweet_text) > 140 and
                 self.landmark.shortname):
-            tweet_text = tweet_text.replace(self.landmark,
+            tweet_text = tweet_text.replace(self.landmark.name,
                                             self.landmark.shortname)
 
         if calc_expected_status_length(tweet_text) > 140:
