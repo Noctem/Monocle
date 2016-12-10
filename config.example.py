@@ -47,7 +47,7 @@ ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query
 # (username, password, provider)
 ## valid account formats (with PASS and PROVIDER set):
 # (username, iPhone, iOS, device_id)
-# (username)
+# (username,)
 ACCOUNTS = [
     ('ash_ketchum', 'pik4chu', 'ptc'),
     ('ziemniak_kalafior', 'ogorek', 'google'),

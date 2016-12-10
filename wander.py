@@ -1,23 +1,19 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+
 from concurrent.futures import ThreadPoolExecutor, CancelledError, Future
-from collections import deque
 from datetime import datetime
 from functools import partial
-from sqlalchemy.exc import IntegrityError
 from geopy.distance import great_circle
-from queue import Queue
-from multiprocessing.managers import BaseManager, DictProxy
+from multiprocessing.managers import DictProxy
 from pgoapi.auth_ptc import AuthPtc
-from signal import signal, SIGINT, SIG_IGN
-import argparse
+from logging import getLogger
+from threading import Thread, active_count
+from os import system, makedirs
+from sys import platform
+
 import asyncio
-import logging
-import os
 import random
-import sys
-import threading
 import time
-import pickle
 
 from pgoapi import (
     exceptions as pgoapi_exceptions,
@@ -28,6 +24,8 @@ from pgoapi import (
 import config
 import db
 import utils
+
+from shared import MalformedResponse, CaptchaException, AccountManager, Spawns, DatabaseProcessor, get_captchas, get_extras, get_workers, mgr_init, parse_args, configure_logger, exception_handler, load_accounts, check_captcha, DOWNLOAD_HASH, BAD_STATUSES
 
 
 # Check whether config has all necessary attributes
@@ -64,77 +62,6 @@ for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
 
-BAD_STATUSES = (
-    'LOGIN FAIL',
-    'EXCEPTION',
-    'BAD LOGIN',
-    'RETRYING',
-    'THROTTLE',
-    'NO POKEMON'
-)
-
-START_TIME = time.time()
-GLOBAL_SEEN = 0
-CAPTCHAS = 0
-NOTIFICATIONS_SENT = 0
-DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
-
-
-class MalformedResponse(Exception):
-    """Raised when server response is malformed"""
-
-
-class CaptchaException(Exception):
-    """Raised when a CAPTCHA is needed."""
-
-
-class AccountManager(BaseManager):
-    pass
-
-
-class Spawns:
-
-    def __init__(self):
-        self.spawns = None
-        self.session = db.Session()
-
-    def update_spawns(self, loadpickle=False):
-        if loadpickle:
-            try:
-                with open('pickles/spawns.pickle', 'rb') as f:
-                    self.spawns = pickle.load(f)
-                    return
-            except (FileNotFoundError, EOFError):
-                pass
-        self.spawns = db.get_spawns(self.session)
-        with open('pickles/spawns.pickle', 'wb') as f:
-            pickle.dump(self.spawns, f, pickle.HIGHEST_PROTOCOL)
-
-    def have_id(self, spawn_id):
-        return spawn_id in self.spawns
-
-    def get_despawn_seconds(self, spawn_id):
-        if self.have_id(spawn_id):
-            return self.spawns[spawn_id][2]
-        else:
-            return None
-
-    def get_despawn_time(self, spawn_id):
-        if self.have_id(spawn_id):
-            current_hour = utils.get_current_hour()
-            despawn_time = self.get_despawn_seconds(spawn_id) + current_hour
-            if time.time() > despawn_time + 1:
-                despawn_time += 3600
-            return despawn_time
-        else:
-            return None
-
-    def get_time_till_hidden(self, spawn_id):
-        if not self.have_id(spawn_id):
-            return None
-        despawn_seconds = self.spawns[spawn_id][2]
-        return utils.time_until_time(despawn_seconds)
-
 
 class Slave:
     """Single worker walking on the map"""
@@ -163,12 +90,11 @@ class Slave:
         self.worker_dict = worker_dict
         self.worker_no = worker_no
         self.username = self.extra_queue.get()
-        global ACCOUNTS
         self.account = ACCOUNTS[self.username]
         center = self.points[0]
         self.location = center
         self.inventory_timestamp = self.account.get('inventory_timestamp')
-        self.logger = logging.getLogger('worker-{}'.format(worker_no))
+        self.logger = getLogger('worker-{}'.format(worker_no))
         self.proxy = proxy
         self.initialize_api()
         # asyncio/thread references
@@ -235,7 +161,7 @@ class Slave:
                 raise pgoapi_exceptions.BannedAccountException
             responses = response.get('responses')
             self.get_inventory_timestamp(responses)
-            self.check_captcha(responses)
+            check_captcha(responses)
         except AttributeError:
             raise MalformedResponse
         return responses
@@ -382,7 +308,7 @@ class Slave:
         response = await self.loop.run_in_executor(
             self.network_executor, request.call
         )
-        await self.random_sleep(1, 1.5, 1.172)
+        await utils.random_sleep(1, 1.5, 1.172)
 
         # empty request 2
         request = self.api.create_request()
@@ -390,7 +316,7 @@ class Slave:
         response = await self.loop.run_in_executor(
             self.network_executor, request.call
         )
-        await self.random_sleep(1, 1.5, 1.304)
+        await utils.random_sleep(1, 1.5, 1.304)
 
         # request 1: get_player
         request = self.api.create_request()
@@ -407,7 +333,7 @@ class Slave:
         if response.get('responses', {}).get('GET_PLAYER', {}).get('banned', False):
             raise pgoapi_exceptions.BannedAccountException
 
-        await self.random_sleep(1, 1.5, 1.356)
+        await utils.random_sleep(1, 1.5, 1.356)
 
         # request 2: download_remote_config_version
         request = self.api.create_request()
@@ -423,7 +349,7 @@ class Slave:
         )
 
         responses = response.get('responses', {})
-        self.check_captcha(responses)
+        check_captcha(responses)
         self.get_inventory_timestamp(responses)
 
         download_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
@@ -439,7 +365,7 @@ class Slave:
                 player_level = player_stats.get('level')
                 break
 
-        await self.random_sleep(1, 1.2, 1.072)
+        await utils.random_sleep(1, 1.2, 1.072)
 
         # request 3: get_asset_digest
         request = self.api.create_request()
@@ -455,21 +381,21 @@ class Slave:
         )
 
         self.get_inventory_timestamp(response.get('responses', {}))
-        await self.random_sleep(1, 2, 1.709)
+        await utils.random_sleep(1, 2, 1.709)
 
         # request 4: get_player_profile
         request = self.api.create_request()
         request.get_player_profile()
 
         responses = await self.call_chain(request)
-        await self.random_sleep(1, 1.5, 1.326)
+        await utils.random_sleep(1, 1.5, 1.326)
 
         # requst 5: level_up_rewards
         request = self.api.create_request()
         request.level_up_rewards(level=player_level)
 
         responses = await self.call_chain(request)
-        await self.random_sleep(1, 1.5, 1.184)
+        await utils.random_sleep(1, 1.5, 1.184)
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
         return responses
@@ -499,7 +425,7 @@ class Slave:
         global SIMULATION_SEM
 
         async with LOGIN_SEM:
-            await self.random_sleep(minimum=0.5, maximum=1.5)
+            await utils.random_sleep(minimum=0.5, maximum=1.5)
             await self.loop.run_in_executor(
                 self.network_executor,
                 partial(
@@ -547,7 +473,7 @@ class Slave:
                     err += ' ' + self.proxy
                 self.logger.error(err)
                 self.error_code = 'IP BANNED'
-                await self.random_sleep(minimum=25, maximum=35)
+                await utils.random_sleep(minimum=25, maximum=35)
             except pgoapi_exceptions.AuthException:
                 self.logger.warning('Login failed: ' + self.username)
                 self.error_code = 'FAILED LOGIN'
@@ -563,11 +489,11 @@ class Slave:
             except pgoapi_exceptions.ServerBusyOrOfflineException:
                 self.logger.info('Server too busy - restarting')
                 self.error_code = 'RETRYING'
-                await self.random_sleep()
+                await utils.random_sleep()
             except pgoapi_exceptions.ServerSideRequestThrottlingException:
                 self.logger.info('Server throttling - sleeping for a bit')
                 self.error_code = 'THROTTLE'
-                await self.random_sleep(minimum=10)
+                await utils.random_sleep(minimum=10)
             except pgoapi_exceptions.BannedAccountException:
                 self.error_code = 'BANNED?'
                 if self.killed:
@@ -583,17 +509,17 @@ class Slave:
             except MalformedResponse:
                 self.logger.warning('Malformed response received!')
                 self.error_code = 'RESTART'
-                await self.random_sleep()
+                await utils.random_sleep()
             except CancelledError:
                 self.kill()
                 return
             except Exception as err:
                 self.logger.exception('A wild exception appeared!')
                 self.error_code = 'EXCEPTION'
-                await self.random_sleep()
+                await utils.random_sleep()
             self.cycle += 1
             self.seen_per_cycle = 0
-            await self.random_sleep()
+            await utils.random_sleep()
         self.error_code = 'RESTART'
         await self.restart()
 
@@ -644,7 +570,7 @@ class Slave:
             forts = []
             pokemon_seen = 0
             sent_notification = False
-            global SPAWNS
+
             if map_objects.get('status') != 1:
                 self.error_code = 'UNKNOWNRESPONSE'
                 self.logger.warning(
@@ -665,7 +591,7 @@ class Slave:
                         pokemon['time_till_hidden_ms'] < 0 or
                         pokemon['time_till_hidden_ms'] > 90000
                     )
-                    normalized = self.normalize_pokemon(
+                    normalized = utils.normalize_pokemon(
                         pokemon,
                         request_time_ms
                     )
@@ -711,7 +637,7 @@ class Slave:
                         continue
                     if fort.get('type') == 1:  # pokestops
                         continue
-                    forts.append(self.normalize_fort(fort))
+                    forts.append(utils.normalize_fort(fort))
 
             if pokemons:
                 self.db_processor.add(pokemons)
@@ -746,44 +672,6 @@ class Slave:
 
             await self.sleep(config.SCAN_DELAY)
 
-
-    def check_captcha(self, responses):
-        challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
-        if challenge_url != ' ':
-            raise CaptchaException
-        else:
-            return False
-
-    @staticmethod
-    def normalize_pokemon(raw, now):
-        """Normalizes data coming from API into something acceptable by db"""
-        normalized = {
-            'type': 'pokemon',
-            'encounter_id': raw['encounter_id'],
-            'pokemon_id': raw['pokemon_data']['pokemon_id'],
-            'expire_timestamp': round(
-                (now + raw['time_till_hidden_ms']) / 1000),
-            'lat': raw['latitude'],
-            'lon': raw['longitude'],
-            'spawn_id': utils.get_spawn_id(raw),
-            'time_till_hidden_ms': raw['time_till_hidden_ms'],
-            'last_modified_timestamp_ms': raw['last_modified_timestamp_ms']
-        }
-        return normalized
-
-    @staticmethod
-    def normalize_fort(raw):
-        return {
-            'type': 'fort',
-            'external_id': raw['id'],
-            'lat': raw['latitude'],
-            'lon': raw['longitude'],
-            'team': raw.get('owned_by_team', 0),
-            'prestige': raw.get('gym_points', 0),
-            'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
-            'last_modified': round(raw['last_modified_timestamp_ms'] / 1000),
-        }
-
     @property
     def status(self):
         """Returns status message to be displayed in status screen"""
@@ -800,13 +688,6 @@ class Slave:
             msg=msg
         )
 
-    async def random_sleep(self, minimum=8, maximum=14, mode=10):
-        """Sleeps for a bit"""
-        if mode:
-            await asyncio.sleep(random.triangular(minimum, maximum, mode))
-        else:
-            await asyncio.sleep(random.uniform(minimum, maximum))
-
     async def sleep(self, duration):
         """Sleeps and interrupts if detects that worker was killed"""
         try:
@@ -819,7 +700,7 @@ class Slave:
         if self.killed:
             return
         self.logger.info('Restarting')
-        await self.random_sleep(minimum=sleep_min, maximum=sleep_max)
+        await utils.random_sleep(minimum=sleep_min, maximum=sleep_max)
         self.restart_me = True
         self.running = False
 
@@ -845,7 +726,7 @@ class Slave:
 
 class Overseer:
     def __init__(self, status_bar, loop, manager):
-        self.logger = logging.getLogger('overseer')
+        self.logger = getLogger('overseer')
         self.workers = {}
         self.manager = manager
         self.count = config.GRID[0] * config.GRID[1]
@@ -860,7 +741,7 @@ class Overseer:
         self.killed = False
         self.last_proxy = 0
         self.loop = loop
-        self.db_processor = DatabaseProcessor()
+        self.db_processor = DatabaseProcessor(SPAWNS)
         self.cell_ids_executor = ThreadPoolExecutor(config.COMPUTE_THREADS)
         self.network_executor = ThreadPoolExecutor(config.NETWORK_THREADS)
         self.logger.info('Overseer initialized')
@@ -961,6 +842,8 @@ class Overseer:
 
     def check(self):
         global ACCOUNTS
+        global SPAWNS
+
         last_cleaned_cache = time.time()
         last_workers_checked = time.time()
         last_things_found_updated = time.time()
@@ -1000,10 +883,10 @@ class Overseer:
                 self.things_count.append(str(self.db_processor.count))
                 last_things_found_updated = now
             if self.status_bar:
-                if sys.platform == 'win32':
-                    _ = os.system('cls')
+                if platform == 'win32':
+                    _ = system('cls')
                 else:
-                    _ = os.system('clear')
+                    _ = system('clear')
                 print(self.get_status_message())
             time.sleep(0.5)
             while self.paused:
@@ -1075,7 +958,7 @@ class Overseer:
             ),
             '',
             '{} threads and {} coroutines active'.format(
-                threading.active_count(),
+                active_count(),
                 coroutines_count,
             ),
             'Extra accounts: {a}, CAPTCHAs needed: {c}'.format(
@@ -1100,156 +983,32 @@ class Overseer:
         return '\n'.join(output)
 
 
-class DatabaseProcessor(threading.Thread):
-
-    def __init__(self):
-        super().__init__()
-        self.queue = deque()
-        self.logger = logging.getLogger('dbprocessor')
-        self.running = True
-        self._clean_cache = False
-        self.count = 0
-
-    def stop(self):
-        self.running = False
-
-    def add(self, obj_list):
-        self.queue.extend(obj_list)
-
-    def run(self):
-        session = db.Session()
-        global SPAWNS
-        while self.running or self.queue:
-            if self._clean_cache:
-                db.SIGHTING_CACHE.clean_expired()
-                db.LONGSPAWN_CACHE.clean_expired()
-                self._clean_cache = False
-            try:
-                item = self.queue.popleft()
-            except IndexError:
-                self.logger.debug('No items - sleeping')
-                time.sleep(0.2)
-            else:
-                try:
-                    if item['type'] == 'pokemon':
-                        db.add_sighting(session, item)
-                        if item['valid'] == True:
-                            db.add_spawnpoint(session, item, SPAWNS)
-                        session.commit()
-                        self.count += 1
-                    elif item['type'] == 'longspawn':
-                        db.add_longspawn(session, item)
-                        self.count += 1
-                    elif item['type'] == 'fort':
-                        db.add_fort_sighting(session, item)
-                        # No need to commit here - db takes care of it
-                    self.logger.debug('Item saved to db')
-                except IntegrityError:
-                    session.rollback()
-                    self.logger.info(
-                        'Tried and failed to add a duplicate to DB.')
-                except Exception:
-                    session.rollback()
-                    self.logger.exception('A wild exception appeared!')
-                    self.logger.warning('Tried and failed to add to DB.')
-        session.close()
-
-    def clean_cache(self):
-        self._clean_cache = True
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--no-status-bar',
-        dest='status_bar',
-        help='Log to console instead of displaying status bar',
-        action='store_false',
-    )
-    parser.add_argument(
-        '--log-level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-        default=logging.WARNING
-    )
-    return parser.parse_args()
-
-
-def configure_logger(filename='worker.log'):
-    logging.basicConfig(
-        filename=filename,
-        format=(
-            '[%(asctime)s][%(levelname)8s][%(name)s] '
-            '%(message)s'
-        ),
-        style='%',
-        level=logging.WARNING,
-    )
-
-
-def exception_handler(loop, context):
-    logger = logging.getLogger('eventloop')
-    logger.exception('A wild exception appeared!')
-    logger.error(context)
-
-
-_captcha_queue = Queue()
-_extra_queue = Queue()
-_worker_dict = {}
-
-def get_captchas():
-    return _captcha_queue
-
-def get_extras():
-    return _extra_queue
-
-def get_workers():
-    return _worker_dict
-
-def mgr_init():
-    signal(SIGINT, SIG_IGN)
-
-
 if __name__ == '__main__':
+    START_TIME = time.time()
+    GLOBAL_SEEN = 0
+    CAPTCHAS = 0
+    NOTIFICATIONS_SENT = 0
+
     try:
-        os.makedirs('pickles')
+        makedirs('pickles')
     except OSError:
         pass
 
-    try:
-        with open('pickles/cells.pickle', 'rb') as f:
-            CELL_IDS = pickle.load(f)
-    except (FileNotFoundError, EOFError):
-        CELL_IDS = dict()
-
-    try:
-        with open('pickles/accounts.pickle', 'rb') as f:
-            ACCOUNTS = pickle.load(f)
-        if (config.ACCOUNTS and
-                set(ACCOUNTS) != set(acc[0] for acc in config.ACCOUNTS)):
-            ACCOUNTS = utils.create_accounts_dict(ACCOUNTS)
-    except (FileNotFoundError, EOFError):
-        if not config.ACCOUNTS:
-            raise ValueError(
-                'Must have accounts in config or an accounts pickle.')
-        ACCOUNTS = utils.create_accounts_dict()
+    CELL_IDS = utils.load_pickle('cells') or {}
+    ACCOUNTS = load_accounts()
 
     SPAWNS = Spawns()
     SPAWNS.update_spawns(loadpickle=True)
 
     args = parse_args()
-
-    logger = logging.getLogger()
-
+    logger = getLogger()
     if args.status_bar:
-        configure_logger(filename='worker.log')
+        configure_logger(filename='wander.log')
         logger.info('-' * 30)
         logger.info('Starting up!')
     else:
         configure_logger(filename=None)
-
-    if config.NOTIFY:
-        import notification
-        notifier = notification.Notifier(SPAWNS)
+    logger.setLevel(args.log_level)
 
     AccountManager.register('captcha_queue', callable=get_captchas)
     AccountManager.register('extra_queue', callable=get_extras)
@@ -1259,28 +1018,32 @@ if __name__ == '__main__':
     manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
     manager.start(mgr_init)
 
-    logger.setLevel(args.log_level)
+    if config.NOTIFY:
+        import notification
+        notifier = notification.Notifier(SPAWNS)
+
     loop = asyncio.get_event_loop()
-    overseer = Overseer(status_bar=args.status_bar, loop=loop, manager=manager)
-    loop.set_default_executor(ThreadPoolExecutor())
     loop.set_exception_handler(exception_handler)
     LOGIN_SEM = asyncio.BoundedSemaphore(1, loop=loop)
     SIMULATION_SEM = asyncio.BoundedSemaphore(2, loop=loop)
+
+    overseer = Overseer(status_bar=args.status_bar, loop=loop, manager=manager)
     overseer.start()
-    overseer_thread = threading.Thread(target=overseer.check)
+    overseer_thread = Thread(target=overseer.check, name='overseer')
     overseer_thread.start()
+
     try:
         loop.run_forever()
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
-        overseer.kill()  # also cancels all workers' futures
+        overseer.kill()
+
 
         print('Dumping pickles.')
         SPAWNS.update_spawns()
-        with open('pickles/cells.pickle', 'wb') as f:
-            pickle.dump(CELL_IDS, f, pickle.HIGHEST_PROTOCOL)
-        with open('pickles/accounts.pickle', 'wb') as f:
-            pickle.dump(ACCOUNTS, f, pickle.HIGHEST_PROTOCOL)
+        utils.dump_pickle('accounts', ACCOUNTS)
+        utils.dump_pickle('cells', CELL_IDS)
+
         pending = asyncio.Task.all_tasks(loop=loop)
         print('Completing tasks.    ')
         loop.run_until_complete(asyncio.gather(*pending))

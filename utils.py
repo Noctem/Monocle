@@ -4,11 +4,13 @@ import requests
 import polyline
 import time
 import socket
+import pickle
 
 from uuid import uuid4
 from geopy import distance, Point
 from pgoapi import utilities as pgoapi_utils
 from sys import platform
+from asyncio import sleep
 
 import config
 
@@ -289,8 +291,6 @@ def generate_device_info():
 def create_account_dict(account):
     if isinstance(account, (tuple, list)):
         length = len(account)
-    elif isinstance(account, str):
-        length = 1
     else:
         raise TypeError('Account must be a tuple/list or string.')
 
@@ -355,12 +355,14 @@ def get_cell_ids_for_points(points):
         cell_ids.append(pgoapi_utils.get_cell_ids(point[0], point[1]))
     return cell_ids
 
+
 def time_until_time(seconds):
     current_seconds = time.time() % 3600
     if current_seconds > seconds:
         return seconds + 3600 - current_seconds
     else:
         return seconds - current_seconds
+
 
 def get_address():
     if platform == 'win32':
@@ -370,3 +372,55 @@ def get_address():
     else:
         address=('127.0.0.1', 5000)
     return address
+
+
+def normalize_pokemon(raw, now):
+    """Normalizes data coming from API into something acceptable by db"""
+    return {
+        'type': 'pokemon',
+        'encounter_id': raw['encounter_id'],
+        'pokemon_id': raw['pokemon_data']['pokemon_id'],
+        'expire_timestamp': round(
+            (now + raw['time_till_hidden_ms']) / 1000),
+        'lat': raw['latitude'],
+        'lon': raw['longitude'],
+        'spawn_id': get_spawn_id(raw),
+        'time_till_hidden_ms': raw['time_till_hidden_ms'],
+        'last_modified_timestamp_ms': raw['last_modified_timestamp_ms']
+    }
+
+
+def normalize_fort(raw):
+    return {
+        'type': 'fort',
+        'external_id': raw['id'],
+        'lat': raw['latitude'],
+        'lon': raw['longitude'],
+        'team': raw.get('owned_by_team', 0),
+        'prestige': raw.get('gym_points', 0),
+        'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
+        'last_modified': round(raw['last_modified_timestamp_ms'] / 1000),
+    }
+
+
+def load_pickle(name):
+    location = 'pickles/{}.pickle'.format(name)
+    try:
+        with open(location, 'rb') as f:
+            return pickle.load(f)
+    except (FileNotFoundError, EOFError):
+        return None
+
+
+def dump_pickle(name, var):
+    location = 'pickles/{}.pickle'.format(name)
+    with open(location, 'wb') as f:
+        pickle.dump(var, f, pickle.HIGHEST_PROTOCOL)
+
+
+async def random_sleep(minimum=8, maximum=14, mode=10):
+    """Sleeps for a bit"""
+    if mode:
+        await sleep(random.triangular(minimum, maximum, mode))
+    else:
+        await sleep(random.uniform(minimum, maximum))
