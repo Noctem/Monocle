@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from collections import deque
 from os import makedirs
+from math import sqrt
 
 import time
 import pickle
@@ -31,6 +32,8 @@ for setting_name, default in OPTIONAL_SETTINGS.items():
 
 if config.ENCOUNTER in ('all', 'notifying'):
     import cairo
+
+PERFECT_SCORE = 15 + (sqrt(15) * 2)
 
 def draw_image(ctx, image, height, width):
     """Draw a scaled image on a given context."""
@@ -130,7 +133,7 @@ def draw_name(cr, name):
 
 def create_image(pokemon_id, iv, move1, move2):
     try:
-        attack, defense, stamina = iv['attack'], iv['defense'], iv['stamina']
+        attack, defense, stamina = iv
         name = POKEMON_NAMES[pokemon_id]
         if config.TZ_OFFSET:
             now = datetime.now(timezone(timedelta(hours=config.TZ_OFFSET)))
@@ -175,19 +178,18 @@ def generic_place_string():
 
 class Notification:
 
-    def __init__(self, name, coordinates, time_till_hidden, iv, image):
+    def __init__(self, name, coordinates, time_till_hidden, iv, score, image):
         self.name = name
         self.coordinates = coordinates
         self.image = image
-        self.attack, self.defense, self.stamina = iv[
-            'attack'], iv['defense'], iv['stamina']
-        self.iv_sum = self.attack + self.defense + self.stamina
+        self.score = score
+        self.attack, self.defense, self.stamina = iv
 
-        if self.iv_sum == 45:
+        if self.score == 1:
             self.description = 'perfect'
-        elif self.iv_sum > 36:
+        elif self.score > .83:
             self.description = 'great'
-        elif self.iv_sum > 24 and self.attack > 8:
+        elif self.score > .6:
             self.description = 'good'
         else:
             self.description = 'wild'
@@ -265,9 +267,9 @@ class Notification:
         from pushbullet import Pushbullet
         pb = Pushbullet(config.PB_API_KEY)
 
-        if self.iv_sum < 18:
+        if self.score < .47:
             description = 'weak'
-        elif self.iv_sum < 12:
+        elif self.score < .35:
             description = 'bad'
         else:
             description = self.description
@@ -408,9 +410,11 @@ class Notifier:
     def __init__(self, spawns):
         self.spawns = spawns
         self.recent_notifications = deque(maxlen=100)
-        self.notify_ranking = config.INITIAL_RANKING or config.NOTIFY_RANKING
+        self.notify_ranking = config.NOTIFY_RANKING
         self.session = Session()
-        self.last_notification = None
+        self.initial_score = config.INITIAL_SCORE
+        self.minimum_score = config.MINIMUM_SCORE
+        self.last_notification = time.time() - (config.FULL_TIME / 2)
         self.always_notify = []
         if self.notify_ranking:
             self.set_pokemon_ranking(loadpickle=True)
@@ -444,6 +448,18 @@ class Notifier:
         with open('pickles/ranking.pickle', 'wb') as f:
             pickle.dump(self.pokemon_ranking, f, pickle.HIGHEST_PROTOCOL)
 
+    def evaluate_pokemon(self, pokemon_id, iv):
+        attack, defense, stamina = iv
+        exclude = config.ALWAYS_NOTIFY
+        total = self.notify_ranking - exclude
+        ranking = self.notify_ids.index(pokemon_id) - exclude
+        percentile = 1 - (ranking / total)
+        weighted = (attack + sqrt(defense) + sqrt(stamina)) / PERFECT_SCORE
+        raw = sum(iv) / 45
+        iv_score = (weighted + raw) / 2
+        score = (percentile + iv_score) / 2
+        return score, iv_score
+
     def notify(self, pokemon):
         """Send a PushBullet notification and/or a Tweet, depending on if their
         respective API keys have been set in config.
@@ -463,26 +479,6 @@ class Notifier:
             # skip duplicate
             return False, 'Already notified about {}.'.format(name)
 
-        if self.last_notification:
-            now = time.time()
-            if self.auto:
-                time_passed = now - self.ranking_time
-                if time_passed > 7200:
-                    self.set_pokemon_ranking()
-            time_passed = now - self.last_notification
-            if time_passed < config.FULL_TIME:
-                fraction = time_passed / config.FULL_TIME
-            else:
-                fraction = 1
-            dynamic_range = config.NOTIFY_RANKING - config.ALWAYS_ELIGIBLE
-            self.notify_ranking = round(
-                config.ALWAYS_ELIGIBLE + (dynamic_range * fraction))
-            self.set_notify_ids()
-
-        if pokemon_id not in self.notify_ids:
-            return False, '{n} is not in the top {r}'.format(
-                n=name, r=self.notify_ranking)
-
         if pokemon['valid']:
             time_till_hidden = pokemon['time_till_hidden_ms'] / 1000
         else:
@@ -492,27 +488,54 @@ class Notifier:
             rem = time_till_hidden
         else:
             time_till_hidden = estimate_remaining_time(self.session, spawn_id)
-            rem = time_till_hidden[1]
+            rem = sum(time_till_hidden) / 2
 
-        if pokemon_id not in self.always_notify and rem < config.TIME_REQUIRED:
-            return False, '{n} has only {s} seconds remaining.'.format(
-                n=name, s=time_till_hidden
-            )
+        now = time.time()
+        if self.auto:
+            time_passed = now - self.ranking_time
+            if time_passed > 3600:
+                self.set_pokemon_ranking()
+                self.set_notify_ids()
 
+        if pokemon_id in self.always_notify:
+            score_required = 0
+        else:
+            if rem < config.TIME_REQUIRED:
+                return False, '{n} has only {s} seconds remaining.'.format(
+                    n=name, s=time_till_hidden
+                )
+            time_passed = now - self.last_notification
+            if time_passed < config.FULL_TIME:
+                fraction = time_passed / config.FULL_TIME
+            else:
+                fraction = 1
+            subtract = (self.initial_score - self.minimum_score) * fraction
+            score_required = self.initial_score - subtract
+
+
+        if pokemon.get('individual_attack') is None:
+            return False, '{} has no IVs.'.format(name)
+
+        iv = (pokemon.get('individual_attack'),
+              pokemon.get('individual_defense'),
+              pokemon.get('individual_stamina'))
         move1 = MOVES.get(pokemon.get('move_1'), {}).get('name')
         move2 = MOVES.get(pokemon.get('move_2'), {}).get('name')
 
-        if move1 or move2 or pokemon.get('individual_attack') is not None:
-            iv = {}
-            iv['attack'] = pokemon.get('individual_attack')
-            iv['defense'] = pokemon.get('individual_defense')
-            iv['stamina'] = pokemon.get('individual_stamina')
-            image = create_image(pokemon_id, iv, move1, move2)
-        else:
-            image = None
+        score, iv_score = self.evaluate_pokemon(pokemon_id, iv)
+        with open('pokemon_scores.txt', 'at') as f:
+            f.write('{n}, a: {iv[0]}, d: {iv[1]}, s: {iv[2]}, iv: {i:.3f}, score: {sc:.3f}, required: {r:.3f}\n'.format(
+                n=name, iv=iv, i=iv_score, sc=score, r=score_required
+            ))
+
+        if score < score_required:
+            return False, "{n}'s score was {s:.3f} (iv: {i:.3f}), but {r:.3f} was required.".format(
+                n=name, s=score, i=iv_score, r=score_required)
+
+        image = create_image(pokemon_id, iv, move1, move2)
 
         tweeted, pushed = Notification(
-            name, coordinates, time_till_hidden, iv, image).notify()
+            name, coordinates, time_till_hidden, iv, iv_score, image).notify()
 
         if tweeted or pushed:
             self.last_notification = time.time()
