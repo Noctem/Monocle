@@ -5,6 +5,7 @@ from collections import deque
 from logging import getLogger, basicConfig, WARNING, INFO
 from argparse import ArgumentParser
 from threading import Thread
+from sqlalchemy.exc import IntegrityError
 
 import time
 import pickle
