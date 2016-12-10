@@ -11,14 +11,13 @@ from pgoapi import (
 )
 from pgoapi.auth_ptc import AuthPtc
 from random import uniform
-from utils import random_altitude, get_device_info
+from utils import random_altitude, get_device_info, get_address
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from config import MAP_START, MAP_END
-from sys import platform
 from time import sleep
 
 DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
@@ -51,12 +50,10 @@ elif hasattr(socket, 'AF_UNIX'):
 else:
     address=('127.0.0.1', 5000)
 
-captcha_queue = Queue()
-extra_queue = Queue()
 class AccountManager(BaseManager): pass
-AccountManager.register('captcha_queue', callable=lambda:captcha_queue)
-AccountManager.register('extra_queue', callable=lambda:extra_queue)
-manager = AccountManager(address=address, authkey=b'monkeys')
+AccountManager.register('captcha_queue')
+AccountManager.register('extra_queue')
+manager = AccountManager(address=get_address(), authkey=b'monkeys')
 manager.connect()
 captcha_queue = manager.captcha_queue()
 extra_queue = manager.extra_queue()

@@ -10,7 +10,6 @@ from multiprocessing.managers import BaseManager, DictProxy
 from pgoapi.auth_ptc import AuthPtc
 from statistics import median
 from signal import signal, SIGINT, SIG_IGN
-import socket
 import argparse
 import asyncio
 import logging
@@ -56,7 +55,7 @@ OPTIONAL_SETTINGS = {
     'ENCOUNTER': None,
     'NOTIFY': False,
     'COMPUTE_THREADS': round((config.GRID[0] * config.GRID[1]) / 4) + 1,
-    'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 2) + 1
+    'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 10) + 1
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -99,16 +98,8 @@ class CaptchaException(Exception):
     """Raised when a CAPTCHA is needed."""
 
 
-def configure_logger(filename='worker.log'):
-    logging.basicConfig(
-        filename=filename,
-        format=(
-            '[%(asctime)s][%(levelname)8s][%(name)s] '
-            '%(message)s'
-        ),
-        style='%',
-        level=logging.INFO,
-    )
+class AccountManager(BaseManager):
+    pass
 
 
 class Spawns:
@@ -853,9 +844,10 @@ class Slave:
 
 class Overseer:
 
-    def __init__(self, status_bar, loop):
+    def __init__(self, status_bar, loop, manager):
         self.logger = logging.getLogger('overseer')
         self.workers = {}
+        self.manager = manager
         self.count = config.GRID[0] * config.GRID[1]
         self.start_date = datetime.now()
         self.status_bar = status_bar
@@ -896,40 +888,6 @@ class Overseer:
                 username = self.extra_queue.get()
                 ACCOUNTS[username]['captcha'] = False
 
-    def launch_account_manager(self):
-        def mgr_init():
-            signal(SIGINT, SIG_IGN)
-        captcha_queue = Queue()
-        extra_queue = Queue()
-        worker_dict = {}
-
-        class AccountManager(BaseManager):
-            pass
-        AccountManager.register('captcha_queue', callable=lambda:captcha_queue)
-        AccountManager.register('extra_queue', callable=lambda:extra_queue)
-        AccountManager.register('worker_dict',
-            callable=lambda:worker_dict, proxytype=DictProxy)
-
-        if sys.platform == 'win32':
-            address=r'\\.\pipe\pokeminer'
-        elif hasattr(socket, 'AF_UNIX'):
-            address='pokeminer.sock'
-        else:
-            address=('127.0.0.1', 5000)
-
-        self.manager = AccountManager(address=address, authkey=b'monkeys')
-        self.manager.start(mgr_init)
-        self.captcha_queue = self.manager.captcha_queue()
-        self.extra_queue = self.manager.extra_queue()
-        self.worker_dict = self.manager.worker_dict()
-        for username, account in ACCOUNTS.items():
-            if account.get('banned'):
-                continue
-            if account.get('captcha'):
-                self.captcha_queue.put(username)
-            else:
-                self.extra_queue.put(username)
-
     def start_worker(self, worker_no, first_run=False):
         if self.killed:
             return
@@ -959,7 +917,17 @@ class Overseer:
         self.workers[worker_no] = worker
 
     def start(self):
-        self.launch_account_manager()
+        self.captcha_queue = self.manager.captcha_queue()
+        self.extra_queue = self.manager.extra_queue()
+        self.worker_dict = self.manager.worker_dict()
+        for username, account in ACCOUNTS.items():
+            if account.get('banned'):
+                continue
+            if account.get('captcha'):
+                self.captcha_queue.put(username)
+            else:
+                self.extra_queue.put(username)
+
         for worker_no in range(self.count):
             self.start_worker(worker_no, first_run=True)
         self.workers_list = list(self.workers.values())
@@ -1125,15 +1093,15 @@ class Overseer:
                 v=GLOBAL_SEEN / self.visits,
                 m=GLOBAL_SEEN / (seconds_since_start / 60)
             ))
+
+            if CAPTCHAS:
+                captchas_per_request = CAPTCHAS / (self.visits / 1000)
+                captchas_per_hour = CAPTCHAS / hours_since_start
+                output.append(
+                    'CAPTCHAs per 1K visits: {r:.1f}, per hour: {h:.1f}'.format(
+                    r=captchas_per_request, h=captchas_per_hour))
         except ZeroDivisionError:
             pass
-
-        if CAPTCHAS:
-            captchas_per_request = CAPTCHAS / (self.visits / 1000)
-            captchas_per_hour = CAPTCHAS / hours_since_start
-            output.append(
-                'CAPTCHAs per 1K visits: {r:.1f}, per hour: {h:.1f}'.format(
-                r=captchas_per_request, h=captchas_per_hour))
 
         if NOTIFICATIONS_SENT:
             output.append('Notifications sent: {n}, per hour {p:.1f}'.format(
@@ -1350,10 +1318,39 @@ def parse_args():
     return parser.parse_args()
 
 
+def configure_logger(filename='worker.log'):
+    logging.basicConfig(
+        filename=filename,
+        format=(
+            '[%(asctime)s][%(levelname)8s][%(name)s] '
+            '%(message)s'
+        ),
+        style='%',
+        level=logging.INFO,
+    )
+
+
 def exception_handler(loop, context):
     logger = logging.getLogger('eventloop')
     logger.exception('A wild exception appeared!')
     logger.error(context)
+
+
+_captcha_queue = Queue()
+_extra_queue = Queue()
+_worker_dict = {}
+
+def get_captchas():
+    return _captcha_queue
+
+def get_extras():
+    return _extra_queue
+
+def get_workers():
+    return _worker_dict
+
+def mgr_init():
+    signal(SIGINT, SIG_IGN)
 
 
 if __name__ == '__main__':
@@ -1400,9 +1397,17 @@ if __name__ == '__main__':
             notifier = notification.Notifier(SPAWNS)
         DEBUG = False
 
+    AccountManager.register('captcha_queue', callable=get_captchas)
+    AccountManager.register('extra_queue', callable=get_extras)
+    AccountManager.register('worker_dict', callable=get_workers,
+                            proxytype=DictProxy)
+
+    manager = AccountManager(address=utils.get_address(), authkey=b'monkeys')
+    manager.start(mgr_init)
+
     logger.setLevel(args.log_level)
     loop = asyncio.get_event_loop()
-    overseer = Overseer(status_bar=args.status_bar, loop=loop)
+    overseer = Overseer(status_bar=args.status_bar, loop=loop, manager=manager)
     loop.set_default_executor(ThreadPoolExecutor())
     loop.set_exception_handler(exception_handler)
     LOGIN_SEM = asyncio.BoundedSemaphore(1, loop=loop)
@@ -1436,7 +1441,7 @@ if __name__ == '__main__':
             if config.NOTIFY:
                 notifier.session.close()
             SPAWNS.session.close()
-            overseer.manager.shutdown()
+            manager.shutdown()
             print('Stopping and closing loop.')
             loop.stop()
             loop.close()

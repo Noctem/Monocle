@@ -9,7 +9,6 @@ from queue import Queue
 from multiprocessing.managers import BaseManager, DictProxy
 from pgoapi.auth_ptc import AuthPtc
 from signal import signal, SIGINT, SIG_IGN
-import socket
 import argparse
 import asyncio
 import logging
@@ -30,26 +29,6 @@ import config
 import db
 import utils
 
-from worker import CaptchaException, Spawns
-
-
-class MalformedResponse(Exception):
-    """Raised when server response is malformed"""
-
-
-class CaptchaException(Exception):
-    """Raised when a CAPTCHA is needed."""
-
-def configure_logger(filename='worker.log'):
-    logging.basicConfig(
-        filename=filename,
-        format=(
-            '[%(asctime)s][%(levelname)8s][%(name)s] '
-            '%(message)s'
-        ),
-        style='%',
-        level=logging.WARNING,
-    )
 
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
@@ -77,7 +56,7 @@ OPTIONAL_SETTINGS = {
     'SPEED_LIMIT': 19,
     'ENCOUNTER': None,
     'NOTIFY': False,
-    'COMPUTE_THREADS': round((config.GRID[0] * config.GRID[1]) / 4) + 1,
+    'COMPUTE_THREADS': round((config.GRID[0] * config.GRID[1]) / 10) + 1,
     'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 2) + 1
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
@@ -98,6 +77,18 @@ GLOBAL_SEEN = 0
 CAPTCHAS = 0
 NOTIFICATIONS_SENT = 0
 DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
+
+
+class MalformedResponse(Exception):
+    """Raised when server response is malformed"""
+
+
+class CaptchaException(Exception):
+    """Raised when a CAPTCHA is needed."""
+
+
+class AccountManager(BaseManager):
+    pass
 
 
 class Spawns:
@@ -366,7 +357,7 @@ class Slave:
                     pokemon_data[iv] = 0
             pokemon_data['probability'] = response.get(
                 'capture_probability', {}).get('capture_probability')
-        self.error_code = '!'
+        self.error_code = None
         return pokemon_data
 
     def swap_proxy(self, reason=''):
@@ -382,7 +373,6 @@ class Slave:
             self.inventory_timestamp = (time.time() - 2) * 1000
 
     async def app_simulation_login(self):
-        self.error_code = 'APP SIMULATION'
         self.logger.info('Starting RPC login sequence (iOS app simulation)')
 
         # empty request 1
@@ -527,7 +517,6 @@ class Slave:
 
         self.ever_authenticated = True
         self.logged_in = True
-        self.error_code = '@'
         return True
 
     async def run_cycle(self):
@@ -546,8 +535,9 @@ class Slave:
                     if not await self.login():
                         await asyncio.sleep(2)
                         continue
-                if not self.running and not self.killed:
-                    await self.restart()
+                if not self.running:
+                    if not self.killed:
+                        await self.restart()
                     return
                 await self.main(start_step=start_step)
             except pgoapi_exceptions.ServerSideAccessForbiddenException:
@@ -601,6 +591,7 @@ class Slave:
                 self.error_code = 'EXCEPTION'
                 await self.random_sleep()
             self.cycle += 1
+            self.seen_per_cycle = 0
             await self.random_sleep()
         self.error_code = 'RESTART'
         await self.restart()
@@ -694,6 +685,7 @@ class Slave:
                         if config.ENCOUNTER in ('all', 'notifying'):
                             normalized.update(await self.encounter(pokemon))
                         self.error_code = '*'
+
                         notified, explanation = notifier.notify(normalized)
                         if notified:
                             sent_notification = True
@@ -728,6 +720,7 @@ class Slave:
                 self.db_processor.add(ls_seen)
 
             if pokemon_seen > 0:
+                self.seen_per_cycle += pokemon_seen
                 self.total_seen += pokemon_seen
                 GLOBAL_SEEN += pokemon_seen
                 self.empty_visits = 0
@@ -740,15 +733,18 @@ class Slave:
             # Clear error code and let know that there are Pokemon
             if self.error_code and self.seen_per_cycle:
                 self.error_code = None
+
             self.step += 1
 
             self.worker_dict.update([(self.worker_no,
                 ((latitude, longitude), start, None, self.total_seen,
                 None, pokemon_seen, sent_notification))])
 
+            if self.seen_per_cycle == 0:
+                self.error_code = 'NO POKEMON'
+
             await self.sleep(config.SCAN_DELAY)
-        if self.seen_per_cycle == 0:
-            self.error_code = 'NO POKEMON'
+
 
     def check_captcha(self, responses):
         challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
@@ -847,9 +843,10 @@ class Slave:
 
 
 class Overseer:
-    def __init__(self, status_bar, loop):
+    def __init__(self, status_bar, loop, manager):
         self.logger = logging.getLogger('overseer')
         self.workers = {}
+        self.manager = manager
         self.count = config.GRID[0] * config.GRID[1]
         self.logger.info('Generating points...')
         self.points = utils.get_points_per_worker(gen_alts=True)
@@ -885,40 +882,6 @@ class Overseer:
             while not self.extra_queue.empty():
                 username = self.extra_queue.get()
                 ACCOUNTS[username]['captcha'] = False
-
-    def launch_account_manager(self):
-        def mgr_init():
-            signal(SIGINT, SIG_IGN)
-        captcha_queue = Queue()
-        extra_queue = Queue()
-        worker_dict = {}
-
-        class AccountManager(BaseManager):
-            pass
-        AccountManager.register('captcha_queue', callable=lambda:captcha_queue)
-        AccountManager.register('extra_queue', callable=lambda:extra_queue)
-        AccountManager.register('worker_dict',
-            callable=lambda:worker_dict, proxytype=DictProxy)
-
-        if sys.platform == 'win32':
-            address=r'\\.\pipe\pokeminer'
-        elif hasattr(socket, 'AF_UNIX'):
-            address='pokeminer.sock'
-        else:
-            address=('127.0.0.1', 5000)
-
-        self.manager = AccountManager(address=address, authkey=b'monkeys')
-        self.manager.start(mgr_init)
-        self.captcha_queue = self.manager.captcha_queue()
-        self.extra_queue = self.manager.extra_queue()
-        self.worker_dict = self.manager.worker_dict()
-        for username, account in ACCOUNTS.items():
-            if account.get('banned'):
-                continue
-            if account.get('captcha'):
-                self.captcha_queue.put(username)
-            else:
-                self.extra_queue.put(username)
 
     def start_worker(self, worker_no, first_run=False):
         if self.killed:
@@ -980,7 +943,17 @@ class Overseer:
         }
 
     def start(self):
-        self.launch_account_manager()
+        self.captcha_queue = self.manager.captcha_queue()
+        self.extra_queue = self.manager.extra_queue()
+        self.worker_dict = self.manager.worker_dict()
+        for username, account in ACCOUNTS.items():
+            if account.get('banned'):
+                continue
+            if account.get('captcha'):
+                self.captcha_queue.put(username)
+            else:
+                self.extra_queue.put(username)
+
         for worker_no in range(self.count):
             self.start_worker(worker_no, first_run=True)
         self.db_processor.start()
@@ -1200,10 +1173,39 @@ def parse_args():
     return parser.parse_args()
 
 
+def configure_logger(filename='worker.log'):
+    logging.basicConfig(
+        filename=filename,
+        format=(
+            '[%(asctime)s][%(levelname)8s][%(name)s] '
+            '%(message)s'
+        ),
+        style='%',
+        level=logging.WARNING,
+    )
+
+
 def exception_handler(loop, context):
     logger = logging.getLogger('eventloop')
     logger.exception('A wild exception appeared!')
     logger.error(context)
+
+
+_captcha_queue = Queue()
+_extra_queue = Queue()
+_worker_dict = {}
+
+def get_captchas():
+    return _captcha_queue
+
+def get_extras():
+    return _extra_queue
+
+def get_workers():
+    return _worker_dict
+
+def mgr_init():
+    signal(SIGINT, SIG_IGN)
 
 
 if __name__ == '__main__':
@@ -1248,9 +1250,17 @@ if __name__ == '__main__':
         import notification
         notifier = notification.Notifier(SPAWNS)
 
+    AccountManager.register('captcha_queue', callable=get_captchas)
+    AccountManager.register('extra_queue', callable=get_extras)
+    AccountManager.register('worker_dict', callable=get_workers,
+                            proxytype=DictProxy)
+
+    manager = AccountManager(address=utils.get_address(), authkey=b'monkeys')
+    manager.start(mgr_init)
+
     logger.setLevel(args.log_level)
     loop = asyncio.get_event_loop()
-    overseer = Overseer(status_bar=args.status_bar, loop=loop)
+    overseer = Overseer(status_bar=args.status_bar, loop=loop, manager=manager)
     loop.set_default_executor(ThreadPoolExecutor())
     loop.set_exception_handler(exception_handler)
     LOGIN_SEM = asyncio.BoundedSemaphore(1, loop=loop)
@@ -1271,7 +1281,7 @@ if __name__ == '__main__':
         with open('pickles/accounts.pickle', 'wb') as f:
             pickle.dump(ACCOUNTS, f, pickle.HIGHEST_PROTOCOL)
         pending = asyncio.Task.all_tasks(loop=loop)
-        print('Completing tasks.')
+        print('Completing tasks.    ')
         loop.run_until_complete(asyncio.gather(*pending))
         print('Shutting things down.')
         overseer.cell_ids_executor.shutdown()
@@ -1280,7 +1290,7 @@ if __name__ == '__main__':
         if config.NOTIFY:
             notifier.session.close()
         SPAWNS.session.close()
-        overseer.manager.shutdown()
+        manager.shutdown()
         print('Stopping and closing loop.')
         loop.stop()
         loop.close()

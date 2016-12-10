@@ -3,10 +3,12 @@ import random
 import requests
 import polyline
 import time
+import socket
 
 from uuid import uuid4
 from geopy import distance, Point
 from pgoapi import utilities as pgoapi_utils
+from sys import platform
 
 import config
 
@@ -359,3 +361,12 @@ def time_until_time(seconds):
         return seconds + 3600 - current_seconds
     else:
         return seconds - current_seconds
+
+def get_address():
+    if platform == 'win32':
+        address=r'\\.\pipe\pokeminer'
+    elif hasattr(socket, 'AF_UNIX'):
+        address='pokeminer.sock'
+    else:
+        address=('127.0.0.1', 5000)
+    return address
