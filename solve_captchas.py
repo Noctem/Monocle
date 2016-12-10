@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import pickle
+import config
 import socket
 from queue import Queue
 from multiprocessing.managers import BaseManager
@@ -17,10 +18,9 @@ from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from config import MAP_START, MAP_END
 from time import sleep
 
-DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
+
 
 def resolve_captcha(url, api, driver, timestamp):
     driver.get(url)
@@ -43,24 +43,24 @@ def resolve_captcha(url, api, driver, timestamp):
 with open('pickles/accounts.pickle', 'rb') as f:
     ACCOUNTS = pickle.load(f)
 
-if platform == 'win32':
-    address=r'\\.\pipe\pokeminer'
-elif hasattr(socket, 'AF_UNIX'):
-    address='pokeminer.sock'
+DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
+
+if hasattr(config, 'AUTHKEY'):
+    authkey = config.AUTHKEY
 else:
-    address=('127.0.0.1', 5000)
+    authkey = b'm3wtw0'
 
 class AccountManager(BaseManager): pass
 AccountManager.register('captcha_queue')
 AccountManager.register('extra_queue')
-manager = AccountManager(address=get_address(), authkey=b'monkeys')
+manager = AccountManager(address=get_address(), authkey=authkey)
 manager.connect()
 captcha_queue = manager.captcha_queue()
 extra_queue = manager.extra_queue()
 
 
-middle_lat = (MAP_START[0] + MAP_END[0]) / 2
-middle_lon = (MAP_START[1] + MAP_END[1]) / 2
+middle_lat = (config.MAP_START[0] + config.MAP_END[0]) / 2
+middle_lon = (config.MAP_START[1] + config.MAP_END[1]) / 2
 middle_alt = random_altitude()
 
 driver = webdriver.Chrome()

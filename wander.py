@@ -56,6 +56,7 @@ OPTIONAL_SETTINGS = {
     'SPEED_LIMIT': 19,
     'ENCOUNTER': None,
     'NOTIFY': False,
+    'AUTHKEY': b'm3wtw0',
     'COMPUTE_THREADS': round((config.GRID[0] * config.GRID[1]) / 10) + 1,
     'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 2) + 1
 }
@@ -1255,7 +1256,7 @@ if __name__ == '__main__':
     AccountManager.register('worker_dict', callable=get_workers,
                             proxytype=DictProxy)
 
-    manager = AccountManager(address=utils.get_address(), authkey=b'monkeys')
+    manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
     manager.start(mgr_init)
 
     logger.setLevel(args.log_level)

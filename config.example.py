@@ -28,9 +28,13 @@ ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query
 # using an old database since the data types are incompatible.
 #SPAWN_ID_INT = True
 
+# Bytestring key to authenticate with manager for inter-process communication
+#AUTHKEY = b'm3wtw0'
+
+# worker requires more compute threads, wander requires more network threads
 #_workers_count = GRID[0] * GRID[1]
-#COMPUTE_THREADS = round(_workers_count * .25) + 1
-#NETWORK_THREADS = round(_workers_count * .5) + 1
+#COMPUTE_THREADS = round(_workers_count / 4) + 1
+#NETWORK_THREADS = round(_workers_count / 10) + 1
 
 # If all accounts use the same provider and password you can set defaults here
 # and omit them from the accounts list.

@@ -87,9 +87,14 @@ def workers_map():
         map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION
     )
 
+if hasattr(config, 'AUTHKEY'):
+    authkey = config.AUTHKEY
+else:
+    authkey = b'm3wtw0'
+
 class AccountManager(BaseManager): pass
 AccountManager.register('worker_dict')
-manager = AccountManager(address=utils.get_address(), authkey=b'monkeys')
+manager = AccountManager(address=utils.get_address(), authkey=authkey)
 manager.connect()
 
 def get_pokemarkers():
