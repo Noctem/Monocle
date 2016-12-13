@@ -20,7 +20,7 @@ SPEED_LIMIT = 19  # do not travel over this many MPH (applies only to spawn scan
 
 ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
 
-SPIN_POKESTOPS = False
+#SPIN_POKESTOPS = False
 
 # proxy address and port or tuple of proxy addresses and ports.
 #PROXIES = ('socks5://127.0.0.1:9050',
