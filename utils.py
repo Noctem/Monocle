@@ -397,7 +397,7 @@ def normalize_lured(raw, now):
         'expire_timestamp': raw['lure_info']['lure_expires_timestamp_ms'],
         'lat': raw['latitude'],
         'lon': raw['longitude'],
-        'spawn_id': None,
+        'spawn_id': -1,
         'time_till_hidden_ms': raw['lure_info']['lure_expires_timestamp_ms'] - now,
         'valid': 'pokestop'
     }

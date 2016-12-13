@@ -903,19 +903,14 @@ class Overseer:
                 time.sleep(15)
         # OK, now we're killed
         while True:
-            try:
-                tasks = sum(not t.done()
-                            for t in asyncio.Task.all_tasks(self.loop))
-            except RuntimeError:
-                # Set changed size during iteration
-                tasks = '?'
+            self.update_coroutines_count()
             # Spaces at the end are important, as they clear previously printed
             # output - \r doesn't clean whole line
             print(
-                '{} coroutines active   '.format(tasks),
+                '{} coroutines active   '.format(self.coroutines_count),
                 end='\r'
             )
-            if tasks == 0:
+            if self.coroutines_count == 0 or not isinstance(self.coroutines_count, int):
                 print('Done.                ')
                 return
 
@@ -987,6 +982,14 @@ class Overseer:
         if row:
             dots.append(row)
         return dots, messages
+
+    def update_coroutines_count(self):
+        try:
+            self.coroutines_count = sum(not t.done()
+                                    for t in asyncio.Task.all_tasks(self.loop))
+        except RuntimeError:
+            # Set changed size during iteration
+            self.coroutines_count = '?'
 
     def get_status_message(self):
         workers_count = len(self.workers)
@@ -1113,15 +1116,11 @@ class Overseer:
             current_hour = utils.get_current_hour()
             for spawn_id, spawn in SPAWNS.spawns.items():
                 try:
-                    self.coroutines_count = len(
-                        asyncio.Task.all_tasks(self.loop))
-                    while self.coroutines_count > self.coroutine_limit or not isinstance(
-                            self.coroutines_count, int):
-                        if self.killed:
-                            return
-                        time.sleep(1.5)
-                        self.coroutines_count = len(
-                            asyncio.Task.all_tasks(self.loop))
+                    self.update_coroutines_count()
+                    while (self.coroutines_count > self.coroutine_limit or not
+                            isinstance(self.coroutines_count, int)) and not self.killed:
+                        time.sleep(1)
+                        self.update_coroutines_count()
 
                     while self.captcha_queue.qsize() > config.MAX_CAPTCHAS and not self.killed:
                         self.paused = True
