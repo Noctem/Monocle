@@ -23,14 +23,14 @@ Here it is in action:
 
 ## Features
 
-- spawnpoint scanning with worker
-- hexagonal scanning with wander
 - accurate timestamp information whenever possible with historical data
 - Twitter and PushBullet notifications
   - references nearest landmark from your own list
 - IV/moves detection, storage, and notification
   - produces nice image of Pokémon with stats for Twitter
 - stores Pokémon, gyms, and pokestops in database
+- spawnpoint scanning with `worker`
+- hexagonal scanning with `wander`
 - automatic account swapping for CAPTCHAs and other problems
 - pickle storage to improve speed and reduce database queries
 - manual CAPTCHA solving that instantly puts accounts back in rotation
@@ -47,12 +47,12 @@ Here it is in action:
 3. Copy `config.example.py` to `config.py` and customize it with your account, location, database information, and any other relevant settings. The comments in the config example provide some information about the options.
 4. `pip3 install -r requirements.txt`
   * Optionally `pip3 install` additional packages listed in optional-requirements
-    * pushbullet.py is required for pushbullet notifications
-    * python-twitter is required for twitter notifications
-    * stem is required for proxy circuit swapping
-    * shapely is required for landmarks or spawnpoint scan boundaries
-    * selenium (and [ChromeDriver(https://sites.google.com/a/chromium.org/chromedriver/)) is required for solving CAPTCHAs
-    * pycairo is required for generating IV/move images for tweets
+    * *pushbullet.py* is required for pushbullet notifications
+    * *python-twitter* is required for twitter notifications
+    * *stem* is required for proxy circuit swapping
+    * *shapely* is required for landmarks or spawnpoint scan boundaries
+    * *selenium* (and [ChromeDriver](https://sites.google.com/a/chromium.org/chromedriver/)) are required for solving CAPTCHAs
+    * *pycairo* is required for generating IV/move images
 5. Run `python3` from the command line
   1. Input `import db`
   2. then `db.Base.metadata.create_all(db.get_engine())`
