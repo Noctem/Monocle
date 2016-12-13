@@ -202,8 +202,6 @@ def check_captcha(responses):
         return False
 
 
-DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
-
 BAD_STATUSES = (
     'FAILED LOGIN',
     'EXCEPTION',

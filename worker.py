@@ -27,20 +27,20 @@ import config
 import db
 import utils
 
-from shared import MalformedResponse, CaptchaException, AccountManager, Spawns, DatabaseProcessor, get_captchas, get_extras, get_workers, mgr_init, parse_args, configure_logger, exception_handler, load_accounts, check_captcha, DOWNLOAD_HASH, BAD_STATUSES
+from shared import *
 
 
 # Check whether config has all necessary attributes
-REQUIRED_SETTINGS = (
+_required = (
     'DB_ENGINE',
     'GRID'
 )
-for setting_name in REQUIRED_SETTINGS:
+for setting_name in _required:
     if not hasattr(config, setting_name):
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
 
 # Set defaults for missing config options
-OPTIONAL_SETTINGS = {
+_optional = {
     'PROXIES': None,
     'SCAN_DELAY': 11,
     'NOTIFY_IDS': None,
@@ -57,7 +57,7 @@ OPTIONAL_SETTINGS = {
     'COMPUTE_THREADS': round((config.GRID[0] * config.GRID[1]) / 4) + 1,
     'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 10) + 1
 }
-for setting_name, default in OPTIONAL_SETTINGS.items():
+for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
 
@@ -145,6 +145,7 @@ class Slave:
                 self.ever_authenticated = True
 
     async def call_chain(self, request):
+        global DOWNLOAD_HASH
         request.check_challenge()
         request.get_hatched_eggs()
         if self.inventory_timestamp:
@@ -163,7 +164,10 @@ class Slave:
                 logger.warning(self.username + ' is banned.')
                 raise pgoapi_exceptions.BannedAccountException
             responses = response.get('responses')
-            self.get_inventory_timestamp(responses)
+            timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
+            self.inventory_timestamp = timestamp or self.inventory_timestamp
+            download_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
+            DOWNLOAD_HASH = download_hash or DOWNLOAD_HASH
             check_captcha(responses)
         except AttributeError:
             raise MalformedResponse
@@ -313,13 +317,6 @@ class Slave:
                              'changed {s} seconds ago.'.format(
                                  p=self.proxy, s=time_passed))
 
-    def get_inventory_timestamp(self, responses):
-        timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
-        if timestamp:
-            self.inventory_timestamp = timestamp
-        elif not self.timestamp:
-            self.inventory_timestamp = (time.time() - 2) * 1000
-
     async def app_simulation_login(self):
         self.error_code = 'APP SIMULATION'
         self.logger.info('Starting RPC login sequence (iOS app simulation)')
@@ -357,9 +354,10 @@ class Slave:
 
         await utils.random_sleep(1, 1.5, 1.356)
 
+        version = 4901
         # request 2: download_remote_config_version
         request = self.api.create_request()
-        request.download_remote_config_version(platform=1, app_version=4500)
+        request.download_remote_config_version(platform=1, app_version=version)
         request.check_challenge()
         request.get_hatched_eggs()
         request.get_inventory()
@@ -372,7 +370,8 @@ class Slave:
 
         responses = response.get('responses', {})
         check_captcha(responses)
-        self.get_inventory_timestamp(responses)
+        timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
+        self.inventory_timestamp = timestamp or self.inventory_timestamp
 
         download_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
         if download_hash:
@@ -391,7 +390,7 @@ class Slave:
 
         # request 3: get_asset_digest
         request = self.api.create_request()
-        request.get_asset_digest(platform=1, app_version=4701)
+        request.get_asset_digest(platform=1, app_version=version)
         request.check_challenge()
         request.get_hatched_eggs()
         request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
@@ -402,25 +401,52 @@ class Slave:
             self.network_executor, request.call
         )
 
-        self.get_inventory_timestamp(response.get('responses', {}))
+        timestamp = response.get('responses', {}).get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
+        self.inventory_timestamp = timestamp or self.inventory_timestamp
         await utils.random_sleep(1, 2, 1.709)
 
+        lat, lon = self.location[0:2]
         # request 4: get_player_profile
         request = self.api.create_request()
         request.get_player_profile()
+        request.check_challenge()
+        request.get_hatched_eggs()
+        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
+        request.check_awarded_badges()
+        request.download_settings(hash=DOWNLOAD_HASH)
+        request.get_incense_pokemon(player_latitude=lat, player_longitude=lon)
+        request.get_buddy_walked()
 
-        responses = await self.call_chain(request)
+        response = await self.loop.run_in_executor(
+            self.network_executor, request.call
+        )
+
+        timestamp = response.get('responses', {}).get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
+        self.inventory_timestamp = timestamp or self.inventory_timestamp
+
         await utils.random_sleep(1, 1.5, 1.326)
 
         # requst 5: level_up_rewards
         request = self.api.create_request()
         request.level_up_rewards(level=player_level)
+        request.check_challenge()
+        request.get_hatched_eggs()
+        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
+        request.check_awarded_badges()
+        request.download_settings(hash=DOWNLOAD_HASH)
+        request.get_incense_pokemon(player_latitude=lat, player_longitude=lon)
+        request.get_buddy_walked()
 
-        responses = await self.call_chain(request)
+        response = await self.loop.run_in_executor(
+            self.network_executor, request.call
+        )
+
+        timestamp = response.get('responses', {}).get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
+        self.inventory_timestamp = timestamp or self.inventory_timestamp
         await utils.random_sleep(1, 1.5, 1.184)
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
-        return responses
+        return response
 
     async def login(self):
         """Logs worker in and prepares for scanning"""
@@ -1112,6 +1138,7 @@ if __name__ == '__main__':
     GLOBAL_SEEN = 0
     CAPTCHAS = 0
     NOTIFICATIONS_SENT = 0
+    DOWNLOAD_HASH = "d3da400db60abf79ea05abc38e2396f0bbd453f9"
 
     try:
         makedirs('pickles')
