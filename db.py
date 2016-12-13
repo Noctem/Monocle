@@ -44,6 +44,7 @@ def get_engine():
 def get_engine_name(session):
     return session.connection().engine.name
 
+
 def combine_key(sighting):
     return(sighting['encounter_id'], sighting['spawn_id'])
 
@@ -128,27 +129,29 @@ class FortCache(object):
     def __init__(self):
         self.store = {}
 
-    @staticmethod
-    def _make_key(fort_sighting):
-        return fort_sighting['external_id']
-
     def add(self, sighting):
-        self.store[self._make_key(sighting)] = (
-            sighting['team'],
-            sighting['prestige'],
-            sighting['guard_pokemon_id'],
-        )
+        if sighting['type'] == 'pokestop':
+            self.store[sighting['external_id']] = None
+        else:
+            self.store[sighting['external_id']] = (
+                sighting['team'],
+                sighting['prestige'],
+                sighting['guard_pokemon_id'],
+            )
 
     def __contains__(self, sighting):
-        params = self.store.get(self._make_key(sighting))
+        params = self.store.get(sighting['external_id'])
         if not params:
             return False
+        if sighting['type'] == 'pokestop':
+            return True
         is_the_same = (
             params[0] == sighting['team'] and
             params[1] == sighting['prestige'] and
             params[2] == sighting['guard_pokemon_id']
         )
         return is_the_same
+
 
 SIGHTING_CACHE = SightingCache()
 LONGSPAWN_CACHE = LongspawnCache()
@@ -160,10 +163,10 @@ class Sighting(Base):
 
     id = Column(Integer, primary_key=True)
     pokemon_id = Column(SmallInteger, index=True)
-    if config.SPAWN_ID_INT:
-        spawn_id = Column(BigInteger)
-    else:
+    if not config.SPAWN_ID_INT:
         spawn_id = Column(String(11))
+    else:
+        spawn_id = Column(BigInteger)
     expire_timestamp = Column(Integer, index=True)
     if DB_ENGINE.startswith('sqlite'):
         encounter_id = Column(BigInteger)
@@ -233,7 +236,7 @@ class Fort(Base):
     __tablename__ = 'forts'
 
     id = Column(Integer, primary_key=True)
-    external_id = Column(Text, unique=True)
+    external_id = Column(String(35), unique=True)
     lat = Column(Float, index=True)
     lon = Column(Float, index=True)
 
@@ -261,6 +264,15 @@ class FortSighting(Base):
             name='fort_id_last_modified_unique'
         ),
     )
+
+
+class Pokestop(Base):
+    __tablename__ = 'pokestops'
+
+    id = Column(Integer, primary_key=True)
+    external_id = Column(String(35), unique=True)
+    lat = Column(Float, index=True)
+    lon = Column(Float, index=True)
 
 
 Session = sessionmaker(bind=get_engine())
@@ -328,13 +340,13 @@ def add_sighting(session, pokemon):
     # Check if there isn't the same entry already
     if pokemon in SIGHTING_CACHE:
         return
-    if get_engine_name(session) not in ('mysql', 'postgresql'):
-        existing = session.query(Sighting) \
-            .filter(Sighting.encounter_id == pokemon['encounter_id']) \
-            .filter(Sighting.expire_timestamp == pokemon['expire_timestamp']) \
-            .first()
-        if existing:
-            return
+    existing = session.query(Sighting) \
+        .filter(Sighting.encounter_id == pokemon['encounter_id']) \
+        .filter(Sighting.expire_timestamp == pokemon['expire_timestamp']) \
+        .first()
+    if existing:
+        SIGHTING_CACHE.add(pokemon)
+        return
     obj = Sighting(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
@@ -350,7 +362,12 @@ def add_sighting(session, pokemon):
         move_2=pokemon.get('move_2')
     )
     session.add(obj)
-    SIGHTING_CACHE.add(pokemon)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+    else:
+        SIGHTING_CACHE.add(pokemon)
 
 
 def add_spawnpoint(session, pokemon, spawns=None):
@@ -369,7 +386,6 @@ def add_spawnpoint(session, pokemon, spawns=None):
         if abs(new_time - existing_time) < 2:
             return
         existing.despawn_time = new_time
-        session.commit()
     else:
         altitude = utils.get_altitude((pokemon['lat'], pokemon['lon']))
         obj = Spawnpoint(
@@ -380,6 +396,7 @@ def add_spawnpoint(session, pokemon, spawns=None):
             alt=altitude
         )
         session.add(obj)
+    session.commit()
 
 
 def add_longspawn(session, pokemon):
@@ -396,7 +413,12 @@ def add_longspawn(session, pokemon):
         last_modified_timestamp_ms=pokemon['last_modified_timestamp_ms'],
     )
     session.add(obj)
-    LONGSPAWN_CACHE.add(pokemon)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+    else:
+        LONGSPAWN_CACHE.add(pokemon)
 
 
 def add_fort_sighting(session, raw_fort):
@@ -405,8 +427,6 @@ def add_fort_sighting(session, raw_fort):
     # Check if fort exists
     fort = session.query(Fort) \
         .filter(Fort.external_id == raw_fort['external_id']) \
-        .filter(Fort.lat == raw_fort['lat']) \
-        .filter(Fort.lon == raw_fort['lon']) \
         .first()
     if not fort:
         fort = Fort(
@@ -424,7 +444,7 @@ def add_fort_sighting(session, raw_fort):
                     raw_fort['guard_pokemon_id']) \
             .first()
         if existing:
-            # Why it's not in cache? It should be there!
+            # Why is it not in the cache? It should be there!
             FORT_CACHE.add(raw_fort)
             return
     obj = FortSighting(
@@ -441,6 +461,30 @@ def add_fort_sighting(session, raw_fort):
         session.rollback()
     else:
         FORT_CACHE.add(raw_fort)
+
+
+def add_pokestop(session, raw_pokestop):
+    if raw_pokestop in FORT_CACHE:
+        return
+    pokestop = session.query(Fort) \
+        .filter(Fort.external_id == raw_pokestop['external_id']) \
+        .first()
+    if pokestop:
+        FORT_CACHE.add(raw_pokestop)
+        return
+
+    pokestop = Pokestop(
+        external_id=raw_pokestop['external_id'],
+        lat=raw_pokestop['lat'],
+        lon=raw_pokestop['lon'],
+    )
+    session.add(pokestop)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+    else:
+        FORT_CACHE.add(raw_pokestop)
 
 
 def get_sightings(session):

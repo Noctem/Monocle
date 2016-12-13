@@ -380,8 +380,7 @@ def normalize_pokemon(raw, now):
         'type': 'pokemon',
         'encounter_id': raw['encounter_id'],
         'pokemon_id': raw['pokemon_data']['pokemon_id'],
-        'expire_timestamp': round(
-            (now + raw['time_till_hidden_ms']) / 1000),
+        'expire_timestamp': round((now + raw['time_till_hidden_ms']) / 1000),
         'lat': raw['latitude'],
         'lon': raw['longitude'],
         'spawn_id': get_spawn_id(raw),
@@ -390,7 +389,21 @@ def normalize_pokemon(raw, now):
     }
 
 
-def normalize_fort(raw):
+def normalize_lured(raw, now):
+    return {
+        'type': 'pokemon',
+        'encounter_id': raw['lure_info']['encounter_id'],
+        'pokemon_id': raw['lure_info']['active_pokemon_id'],
+        'expire_timestamp': raw['lure_info']['lure_expires_timestamp_ms'],
+        'lat': raw['latitude'],
+        'lon': raw['longitude'],
+        'spawn_id': None,
+        'time_till_hidden_ms': raw['lure_info']['lure_expires_timestamp_ms'] - now,
+        'valid': 'pokestop'
+    }
+
+
+def normalize_gym(raw):
     return {
         'type': 'fort',
         'external_id': raw['id'],
@@ -400,6 +413,15 @@ def normalize_fort(raw):
         'prestige': raw.get('gym_points', 0),
         'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
         'last_modified': round(raw['last_modified_timestamp_ms'] / 1000),
+    }
+
+
+def normalize_pokestop(raw):
+    return {
+        'type': 'pokestop',
+        'external_id': raw['id'],
+        'lat': raw['latitude'],
+        'lon': raw['longitude']
     }
 
 

@@ -55,7 +55,8 @@ _optional = {
     'NOTIFY': False,
     'AUTHKEY': b'm3wtw0',
     'COMPUTE_THREADS': round((config.GRID[0] * config.GRID[1]) / 4) + 1,
-    'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 10) + 1
+    'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 10) + 1,
+    'SPIN_POKESTOPS': False
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -159,6 +160,7 @@ class Slave:
         response = await self.loop.run_in_executor(
             self.network_executor, request.call
         )
+        self.last_visit = time.time()
         try:
             if response.get('status_code') == 3:
                 logger.warning(self.username + ' is banned.')
@@ -277,7 +279,6 @@ class Slave:
                                     player_longitude=self.location[1])
 
         responses = await self.call_chain(request)
-        self.last_visit = time.time()
 
         response = responses.get('ENCOUNTER', {})
         pokemon_data = response.get('wild_pokemon', {}).get('pokemon_data', {})
@@ -291,6 +292,38 @@ class Slave:
                 'capture_probability', {}).get('capture_probability')
         self.error_code = '!'
         return pokemon_data
+
+    async def spin_pokestop(self, pokestop):
+        pokestop_location = pokestop['lat'], pokestop['lon']
+        distance = great_circle(self.location, pokestop_location).meters
+        if distance > 40:
+            return False
+
+        await utils.random_sleep(.6, 1.2, .75)
+
+        request = self.api.create_request()
+        request.fort_details(fort_id = pokestop['external_id'],
+                             latitude = pokestop['lat'],
+                             longitude = pokestop['lon'])
+        responses = await self.call_chain(request)
+        name = responses.get('FORT_DETAILS', {}).get('name')
+
+        await utils.random_sleep(.6, 1.2, .75)
+
+        request = self.api.create_request()
+        request.fort_search(fort_id = pokestop['external_id'],
+                            player_latitude = self.location[0],
+                            player_longitude = self.location[1],
+                            fort_latitude = pokestop['lat'],
+                            fort_longitude = pokestop['lon'])
+        responses = await self.call_chain(request)
+
+        result = responses.get('FORT_SEARCH', {}).get('result')
+        if result == 1:
+            self.logger.info('Spun {n}: {r}'.format(n=name, r=result))
+        else:
+            self.logger.warning('Failed spinning {n}: {r}'.format(n=name, r=result))
+        return responses
 
     def swap_proxy(self, reason=''):
         self.set_proxy(random.choice(config.PROXIES))
@@ -582,13 +615,10 @@ class Slave:
                                 longitude=pgoapi_utils.f2i(longitude))
 
         responses = await self.call_chain(request)
-        self.last_visit = time.time()
 
         map_objects = responses.get('GET_MAP_OBJECTS', {})
         pokemons = []
-        ls_seen = []
         forts = []
-        pokemon_seen = 0
         sent_notification = False
 
         if map_objects.get('status') != 1:
@@ -604,7 +634,6 @@ class Slave:
             request_time_ms = map_cell['current_timestamp_ms']
             for pokemon in map_cell.get('wild_pokemons', []):
                 pokemon_data = None
-                pokemon_seen += 1
                 # Accurate times only provided in the last 90 seconds
                 invalid_tth = (
                     pokemon['time_till_hidden_ms'] < 0 or
@@ -627,45 +656,44 @@ class Slave:
                 else:
                     normalized['valid'] = True
 
-                if (config.NOTIFY and
-                        normalized['pokemon_id'] in config.NOTIFY_IDS):
-                    if config.ENCOUNTER in ('all', 'notifying'):
-                        normalized.update(await self.encounter(pokemon))
-                    self.error_code = '*'
-                    notified, explanation = notifier.notify(normalized)
-                    if notified:
-                        sent_notification = True
-                        self.logger.info(explanation)
-                        global NOTIFICATIONS_SENT
-                        NOTIFICATIONS_SENT += 1
-                    else:
-                        self.logger.warning(explanation)
+                normalized = await self.notify(normalized, pokemon)
 
-                if normalized['valid'] and normalized not in db.SIGHTING_CACHE:
-                    if config.ENCOUNTER == 'all':
-                        normalized.update(await self.encounter(pokemon))
+                if normalized['valid']:
+                    if (config.ENCOUNTER == 'all'
+                            and 'individual_attack' not in normalized
+                            and normalized not in db.SIGHTING_CACHE):
+                        try:
+                            normalized.update(await self.encounter(pokemon))
+                        except Exception:
+                            self.logger.warning('Exception during encounter.')
                     pokemons.append(normalized)
 
                 if not normalized[
                         'valid'] or db.LONGSPAWN_CACHE.in_store(normalized):
-                    normalized = normalized.copy()
-                    normalized['type'] = 'longspawn'
-                    ls_seen.append(normalized)
+                    long_normal = normalized.copy()
+                    long_normal['type'] = 'longspawn'
+                    pokemons.append(long_normal)
             for fort in map_cell.get('forts', []):
                 if not fort.get('enabled'):
                     continue
                 if fort.get('type') == 1:  # pokestops
-                    continue
-                forts.append(utils.normalize_fort(fort))
+                    if 'lure_info' in fort:
+                        norm = utils.normalize_lured(fort, request_time_ms)
+                        pokemons.append(norm)
+                    pokestop = utils.normalize_pokestop(fort)
+                    forts.append(pokestop)
+                    if config.SPIN_POKESTOPS:
+                        cooldown = fort.get('cooldown_complete_timestamp_ms', 0)
+                        if not cooldown or time.time() > cooldown / 1000:
+                            await self.spin_pokestop(pokestop)
+                else:
+                    forts.append(utils.normalize_gym(fort))
 
-        if pokemons:
-            self.db_processor.add(pokemons)
-        if forts:
-            self.db_processor.add(forts)
-        if ls_seen:
-            self.db_processor.add(ls_seen)
+        self.db_processor.add(forts)
+        pokemon_seen = len(pokemons)
 
         if pokemon_seen > 0:
+            self.db_processor.add(pokemons)
             self.error_code = ':'
             self.total_seen += pokemon_seen
             GLOBAL_SEEN += pokemon_seen
@@ -697,6 +725,22 @@ class Slave:
         )
         self.update_accounts_dict()
         return True
+
+    async def notify(self, normalized, pokemon):
+        if config.NOTIFY and normalized['pokemon_id'] in config.NOTIFY_IDS:
+            if config.ENCOUNTER in ('all', 'notifying'):
+                normalized.update(await self.encounter(pokemon))
+            self.error_code = '*'
+            notified, explanation = notifier.notify(normalized)
+            if notified:
+                sent_notification = True
+                self.logger.info(explanation)
+                global NOTIFICATIONS_SENT
+                NOTIFICATIONS_SENT += 1
+            else:
+                self.error_code = '!'
+                self.logger.warning(explanation)
+        return normalized
 
     def travel_speed(self, point, spawn_time):
         if self.busy or self.killed:

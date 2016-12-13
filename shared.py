@@ -5,7 +5,6 @@ from collections import deque
 from logging import getLogger, basicConfig, WARNING, INFO
 from argparse import ArgumentParser
 from threading import Thread
-from sqlalchemy.exc import IntegrityError
 
 import time
 import pickle
@@ -104,23 +103,18 @@ class DatabaseProcessor(Thread):
                         db.add_sighting(session, item)
                         if item['valid'] == True:
                             db.add_spawnpoint(session, item, self.spawns)
-                        session.commit()
                         self.count += 1
                     elif item['type'] == 'longspawn':
                         db.add_longspawn(session, item)
                         self.count += 1
                     elif item['type'] == 'fort':
                         db.add_fort_sighting(session, item)
-                        # No need to commit here - db takes care of it
+                    elif item['type'] == 'pokestop':
+                        db.add_pokestop(session, item)
                     self.logger.debug('Item saved to db')
-                except IntegrityError:
-                    session.rollback()
-                    self.logger.info(
-                        'Tried and failed to add a duplicate to DB.')
                 except Exception:
                     session.rollback()
                     self.logger.exception('A wild exception appeared!')
-                    self.logger.warning('Tried and failed to add to DB.')
         session.close()
 
     def clean_cache(self):
