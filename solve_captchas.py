@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import pickle
 import config
 import socket
 from queue import Queue
@@ -18,7 +17,7 @@ from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from time import sleep
+from time import sleep, time
 
 
 
@@ -40,10 +39,7 @@ def resolve_captcha(url, api, driver, timestamp):
     success = response.get('responses', {}).get('VERIFY_CHALLENGE', {}).get('success', False)
     return success
 
-with open('pickles/accounts.pickle', 'rb') as f:
-    ACCOUNTS = pickle.load(f)
-
-DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
+DOWNLOAD_HASH = "d3da400db60abf79ea05abc38e2396f0bbd453f9"
 
 if hasattr(config, 'AUTHKEY'):
     authkey = config.AUTHKEY
@@ -67,13 +63,11 @@ driver = webdriver.Chrome()
 driver.set_window_size(803, 807)
 
 while not captcha_queue.empty():
-    username = captcha_queue.get()
-    account = ACCOUNTS[username]
+    account = captcha_queue.get()
+    username = account.get('username')
     location = account.get('location')
     if location and location != (0,0,0):
-        lat = location[0]
-        lon = location[1]
-        alt = location[2]
+        lat, lon, alt = location
     else:
         lat = uniform(middle_lat - 0.001, middle_lat + 0.001)
         lon = uniform(middle_lon - 0.001, middle_lon + 0.001)
@@ -109,6 +103,7 @@ while not captcha_queue.empty():
         request.check_awarded_badges()
         request.download_settings()
         response = request.call()
+        account['time'] = time()
 
         responses = response.get('responses', {})
         challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
@@ -116,26 +111,32 @@ while not captcha_queue.empty():
         if download_hash and download_hash != DOWNLOAD_HASH:
             DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
         timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
+        account['location'] = lat, lon, alt
+        account['inventory_timestamp'] = timestamp
         if challenge_url == ' ':
-            extra_queue.put(username)
+            account['captcha'] = False
+            extra_queue.put(account)
         else:
             if resolve_captcha(challenge_url, api, driver, timestamp):
-                extra_queue.put(username)
+                account['time'] = time()
+                account['captcha'] = False
+                extra_queue.put(account)
             else:
+                account['time'] = time()
                 print('failure')
-                captcha_queue.put(username)
+                captcha_queue.put(account)
     except KeyboardInterrupt:
-        captcha_queue.put(username)
+        captcha_queue.put(account)
         break
     except (WebDriverException, AttributeError):
-        captcha_queue.put(username)
+        captcha_queue.put(account)
         break
     except (exceptions.AuthException, exceptions.AuthTokenExpiredException, exceptions.AuthTokenExpiredException):
         print('Authentication error')
-        captcha_queue.put(username)
+        captcha_queue.put(account)
         sleep(2)
     except Exception as e:
-        captcha_queue.put(username)
+        captcha_queue.put(account)
         raise
 
 try:

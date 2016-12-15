@@ -440,6 +440,23 @@ def dump_pickle(name, var):
         pickle.dump(var, f, pickle.HIGHEST_PROTOCOL)
 
 
+def load_accounts():
+    try:
+        with open('pickles/accounts.pickle', 'rb') as f:
+            accounts = pickle.load(f)
+        if (config.ACCOUNTS and 
+                set(accounts) != set(acc[0] for acc in config.ACCOUNTS)):
+            accounts = create_accounts_dict(accounts)
+            dump_pickle('accounts', accounts)
+    except (FileNotFoundError, EOFError):
+        if not config.ACCOUNTS:
+            raise ValueError(
+                'Must have accounts in config or an accounts pickle.')
+        accounts = create_accounts_dict()
+        dump_pickle('accounts', accounts)
+    return accounts
+
+
 async def random_sleep(minimum=8, maximum=14, mode=10):
     """Sleeps for a bit"""
     if mode:
