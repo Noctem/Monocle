@@ -56,7 +56,8 @@ _optional = {
     'AUTHKEY': b'm3wtw0',
     'COMPUTE_THREADS': round((config.GRID[0] * config.GRID[1]) / 4) + 1,
     'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 10) + 1,
-    'SPIN_POKESTOPS': False
+    'SPIN_POKESTOPS': False,
+    'COMPLETE_TUTORIAL': False
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -145,7 +146,7 @@ class Slave:
                 self.logged_in = True
                 self.ever_authenticated = True
 
-    async def call_chain(self, request):
+    async def call_chain(self, request, buddy=True, incense=False):
         global DOWNLOAD_HASH
         request.check_challenge()
         request.get_hatched_eggs()
@@ -155,7 +156,11 @@ class Slave:
             request.get_inventory()
         request.check_awarded_badges()
         request.download_settings(hash=DOWNLOAD_HASH)
-        request.get_buddy_walked()
+        if incense:
+            request.get_incense_pokemon(player_latitude=self.location[0],
+                                        player_longitude=self.location[1])
+        if buddy:
+            request.get_buddy_walked()
 
         response = await self.loop.run_in_executor(
             self.network_executor, request.call
@@ -171,7 +176,7 @@ class Slave:
             download_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
             DOWNLOAD_HASH = download_hash or DOWNLOAD_HASH
             check_captcha(responses)
-        except AttributeError:
+        except (TypeError, AttributeError):
             raise MalformedResponse
         return responses
 
@@ -350,24 +355,121 @@ class Slave:
                              'changed {s} seconds ago.'.format(
                                  p=self.proxy, s=time_passed))
 
+    async def complete_tutorial(self, tutorial_state):
+        self.error_code = '#'
+        if 0 not in tutorial_state:
+            await utils.random_sleep(1, 5)
+            request = self.api.create_request()
+            request.mark_tutorial_complete(tutorials_completed=0)
+            await self.call_chain(request, buddy=False)
+
+        if 1 not in tutorial_state:
+            await utils.random_sleep(5, 12)
+            request = self.api.create_request()
+            request.set_avatar(player_avatar={
+                    'hair': random.randint(1,5),
+                    'shirt': random.randint(1,3),
+                    'pants': random.randint(1,2),
+                    'shoes': random.randint(1,6),
+                    'gender': random.randint(0,1),
+                    'eyes': random.randint(1,4),
+                    'backpack': random.randint(1,5)
+                })
+            await self.call_chain(request, buddy=False)
+
+            await utils.random_sleep(.3, .5)
+
+            request = self.api.create_request()
+            request.mark_tutorial_complete(tutorials_completed=1)
+            await self.call_chain(request, buddy=False)
+
+        await utils.random_sleep(.5, .6)
+        request = self.api.create_request()
+        request.get_player_profile()
+        await self.call_chain(request)
+
+        starter_id = None
+        if 3 not in tutorial_state:
+            await utils.random_sleep(1, 1.5)
+            request = self.api.create_request()
+            request.get_download_urls(asset_id=['1a3c2816-65fa-4b97-90eb-0b301c064b7a/1477084786906000',
+                                                'aa8f7687-a022-4773-b900-3a8c170e9aea/1477084794890000',
+                                                'e89109b0-9a54-40fe-8431-12f7826c8194/1477084802881000'])
+            await self.call_chain(request)
+
+            await utils.random_sleep(1, 1.6)
+            request = self.api.create_request()
+            await self.loop.run_in_executor(self.network_executor, request.call)
+
+            await utils.random_sleep(6, 13)
+            request = self.api.create_request()
+            starter = random.choice((1, 4, 7))
+            request.encounter_tutorial_complete(pokemon_id=starter)
+            await self.call_chain(request)
+
+            await utils.random_sleep(.5, .6)
+            request = self.api.create_request()
+            request.get_player(
+                player_locale={
+                    'country': 'US',
+                    'language': 'en',
+                    'timezone': 'America/Denver'})
+            responses = await self.call_chain(request)
+
+            inventory = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('inventory_items', [])
+            for item in inventory:
+                pokemon = item.get('inventory_item_data', {}).get('pokemon_data')
+                if pokemon:
+                    starter_id = pokemon.get('id')
+
+
+        if 4 not in tutorial_state:
+            await utils.random_sleep(5, 12)
+            request = self.api.create_request()
+            request.claim_codename(codename=self.username)
+            await self.call_chain(request)
+
+            await utils.random_sleep(1, 1.3)
+            request = self.api.create_request()
+            request.mark_tutorial_complete(tutorials_completed=4)
+            await self.call_chain(request, buddy=False)
+
+            await asyncio.sleep(.1)
+            request = self.api.create_request()
+            request.get_player(
+                player_locale={
+                    'country': 'US',
+                    'language': 'en',
+                    'timezone': 'America/Denver'})
+            await self.call_chain(request)
+
+        if 7 not in tutorial_state:
+            await utils.random_sleep(4, 10)
+            request = self.api.create_request()
+            request.mark_tutorial_complete(tutorials_completed=7)
+            await self.call_chain(request)
+
+        if starter_id:
+            await utils.random_sleep(3, 5)
+            request = self.api.create_request()
+            request.set_buddy_pokemon(pokemon_id=starter_id)
+            await utils.random_sleep(.8, 1.8)
+
+        await asyncio.sleep(.2)
+        return True
+
     async def app_simulation_login(self):
         self.error_code = 'APP SIMULATION'
         self.logger.info('Starting RPC login sequence (iOS app simulation)')
 
         # empty request 1
         request = self.api.create_request()
-
-        response = await self.loop.run_in_executor(
-            self.network_executor, request.call
-        )
+        await self.loop.run_in_executor(self.network_executor, request.call)
         await utils.random_sleep(1, 1.5, 1.172)
 
         # empty request 2
         request = self.api.create_request()
-
-        response = await self.loop.run_in_executor(
-            self.network_executor, request.call
-        )
+        await self.loop.run_in_executor(self.network_executor, request.call)
         await utils.random_sleep(1, 1.5, 1.304)
 
         # request 1: get_player
@@ -382,8 +484,12 @@ class Slave:
             self.network_executor, request.call
         )
 
-        if response.get('responses', {}).get('GET_PLAYER', {}).get('banned', False):
+        responses = response.get('responses', {})
+        tutorial_state = responses.get('GET_PLAYER', {}).get('player_data', {}).get('tutorial_state')
+
+        if responses.get('GET_PLAYER', {}).get('banned', False):
             raise pgoapi_exceptions.BannedAccountException
+            return False
 
         await utils.random_sleep(1, 1.5, 1.356)
 
@@ -391,25 +497,7 @@ class Slave:
         # request 2: download_remote_config_version
         request = self.api.create_request()
         request.download_remote_config_version(platform=1, app_version=version)
-        request.check_challenge()
-        request.get_hatched_eggs()
-        request.get_inventory()
-        request.check_awarded_badges()
-        request.download_settings()
-
-        response = await self.loop.run_in_executor(
-            self.network_executor, request.call
-        )
-
-        responses = response.get('responses', {})
-        check_captcha(responses)
-        timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
-        self.inventory_timestamp = timestamp or self.inventory_timestamp
-
-        download_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
-        if download_hash:
-            global DOWNLOAD_HASH
-            DOWNLOAD_HASH = download_hash
+        responses = await self.call_chain(request, buddy=False)
 
         inventory = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
         player_level = None
@@ -424,62 +512,33 @@ class Slave:
         # request 3: get_asset_digest
         request = self.api.create_request()
         request.get_asset_digest(platform=1, app_version=version)
-        request.check_challenge()
-        request.get_hatched_eggs()
-        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
-        request.check_awarded_badges()
-        request.download_settings(hash=DOWNLOAD_HASH)
+        await self.call_chain(request, buddy=False)
 
-        response = await self.loop.run_in_executor(
-            self.network_executor, request.call
-        )
-
-        timestamp = response.get('responses', {}).get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
-        self.inventory_timestamp = timestamp or self.inventory_timestamp
         await utils.random_sleep(1, 2, 1.709)
 
-        lat, lon = self.location[0:2]
-        # request 4: get_player_profile
-        request = self.api.create_request()
-        request.get_player_profile()
-        request.check_challenge()
-        request.get_hatched_eggs()
-        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
-        request.check_awarded_badges()
-        request.download_settings(hash=DOWNLOAD_HASH)
-        request.get_incense_pokemon(player_latitude=lat, player_longitude=lon)
-        request.get_buddy_walked()
+        if (config.COMPLETE_TUTORIAL and
+                tutorial_state is not None and
+                not all(x in tutorial_state for x in (0, 1, 3, 4, 7))):
+            self.logger.warning('Starting tutorial')
+            await self.complete_tutorial(tutorial_state)
+        else:
+            # request 4: get_player_profile
+            request = self.api.create_request()
+            request.get_player_profile()
+            await self.call_chain(request)
+            await utils.random_sleep(1, 1.5, 1.326)
 
-        response = await self.loop.run_in_executor(
-            self.network_executor, request.call
-        )
-
-        timestamp = response.get('responses', {}).get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
-        self.inventory_timestamp = timestamp or self.inventory_timestamp
-
-        await utils.random_sleep(1, 1.5, 1.326)
-
-        # requst 5: level_up_rewards
-        request = self.api.create_request()
-        request.level_up_rewards(level=player_level)
-        request.check_challenge()
-        request.get_hatched_eggs()
-        request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
-        request.check_awarded_badges()
-        request.download_settings(hash=DOWNLOAD_HASH)
-        request.get_incense_pokemon(player_latitude=lat, player_longitude=lon)
-        request.get_buddy_walked()
-
-        response = await self.loop.run_in_executor(
-            self.network_executor, request.call
-        )
-
-        timestamp = response.get('responses', {}).get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
-        self.inventory_timestamp = timestamp or self.inventory_timestamp
-        await utils.random_sleep(1, 1.5, 1.184)
+        if player_level:
+            # request 5: level_up_rewards
+            request = self.api.create_request()
+            request.level_up_rewards(level=player_level)
+            await self.call_chain(request)
+            await utils.random_sleep(1, 1.5, 1.184)
+        else:
+            self.logger.warning('No player level')
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
-        return response
+        return True
 
     async def login(self):
         """Logs worker in and prepares for scanning"""
@@ -861,8 +920,6 @@ class Overseer:
         self.extra_queue = self.manager.extra_queue()
         self.worker_dict = self.manager.worker_dict()
         for username, account in ACCOUNTS.items():
-            if account.get('banned'):
-                continue
             if account.get('captcha'):
                 self.captcha_queue.put(username)
             else:

@@ -20,25 +20,7 @@ SPEED_LIMIT = 19  # do not travel over this many MPH (applies only to spawn scan
 
 ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
 
-#SPIN_POKESTOPS = False
-
-# proxy address and port or tuple of proxy addresses and ports.
-#PROXIES = ('socks5://127.0.0.1:9050',
-#           'socks5://127.0.0.1:9051')
-
-# convert spawn_id to integer for more efficient DB storage, set to False if
-# using an old database since the data types are incompatible.
-#SPAWN_ID_INT = True
-
-# Bytestring key to authenticate with manager for inter-process communication
-#AUTHKEY = b'm3wtw0'
-
-# worker requires more compute threads, wander requires more network threads
-#_workers_count = GRID[0] * GRID[1]
-#COMPUTE_THREADS = round(_workers_count / 4) + 1
-#NETWORK_THREADS = round(_workers_count / 10) + 1
-
-# If all accounts use the same provider and password you can set defaults here
+# If accounts use the same provider and password you can set defaults here
 # and omit them from the accounts list.
 #PASS = 'pik4chu'
 #PROVIDER = 'ptc'
@@ -70,6 +52,25 @@ GOOGLE_MAPS_KEY = 's3cr3t'
 
 MAP_PROVIDER_URL = '//{s}.tile.osm.org/{z}/{x}/{y}.png'
 MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+
+#SPIN_POKESTOPS = False  # spin all pokestops that are within range
+#COMPLETE_TUTORIAL = False  # run through the tutorial process and configure avatar for all accounts that haven't
+
+# proxy address and port or tuple of proxy addresses and ports.
+#PROXIES = ('socks5://127.0.0.1:9050',
+#           'socks5://127.0.0.1:9051')
+
+# convert spawn_id to integer for more efficient DB storage, set to False if
+# using an old database since the data types are incompatible.
+#SPAWN_ID_INT = True
+
+# Bytestring key to authenticate with manager for inter-process communication
+#AUTHKEY = b'm3wtw0'
+
+# worker requires more compute threads, wander requires more network threads
+#_workers_count = GRID[0] * GRID[1]
+#COMPUTE_THREADS = round(_workers_count / 4) + 1
+#NETWORK_THREADS = round(_workers_count / 10) + 1
 
 '''
 ### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
