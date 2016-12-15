@@ -394,7 +394,7 @@ def normalize_lured(raw, now):
         'type': 'pokemon',
         'encounter_id': raw['lure_info']['encounter_id'],
         'pokemon_id': raw['lure_info']['active_pokemon_id'],
-        'expire_timestamp': raw['lure_info']['lure_expires_timestamp_ms'],
+        'expire_timestamp': raw['lure_info']['lure_expires_timestamp_ms'] / 1000,
         'lat': raw['latitude'],
         'lon': raw['longitude'],
         'spawn_id': -1,
