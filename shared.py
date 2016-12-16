@@ -140,8 +140,7 @@ class BaseSlave:
 
     network_executor = ThreadPoolExecutor(NETWORK_THREADS)
     download_hash = "d3da400db60abf79ea05abc38e2396f0bbd453f9"
-    global_seen = 0
-    captchas = 0
+    g = {'seen': 0, 'captchas': 0}
     db_processor = DatabaseProcessor()
     spawns = db_processor.spawns
     accounts = load_accounts()
@@ -149,7 +148,7 @@ class BaseSlave:
 
     if NOTIFY:
         notifier = notification.Notifier(spawns)
-        notifications_sent = 0
+        g['sent'] = 0
 
     def __init__(
             self,
@@ -627,7 +626,7 @@ class BaseSlave:
             notified, explanation = self.notifier.notify(normalized)
             if notified:
                 self.logger.info(explanation)
-                self.notifications_sent += 1
+                self.g['sent'] += 1
             else:
                 self.error_code = '!'
                 self.logger.warning(explanation)

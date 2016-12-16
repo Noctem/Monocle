@@ -7,7 +7,7 @@ from geopy.distance import great_circle
 from multiprocessing.managers import DictProxy
 from statistics import median
 from logging import getLogger
-from threading import Thread, active_count
+from threading import Thread, active_count, Semaphore
 from os import system, makedirs
 from sys import platform
 
@@ -156,7 +156,7 @@ class Slave(BaseSlave):
                 if self.killed:
                     return False
                 await self.bench_account()
-                self.captchas += 1
+                self.g['captchas'] += 1
             except MalformedResponse:
                 self.logger.warning('Malformed response received!')
                 self.error_code = 'MALFORMED RESPONSE'
@@ -281,7 +281,7 @@ class Slave(BaseSlave):
             self.db_processor.add(pokemons)
             self.error_code = ':'
             self.total_seen += pokemon_seen
-            self.global_seen += pokemon_seen
+            self.g['seen'] += pokemon_seen
             self.empty_visits = 0
             if CIRCUIT_FAILURES:
                 CIRCUIT_FAILURES[self.proxy] = 0
@@ -333,7 +333,7 @@ class Overseer:
         self.skipped = 0
         self.visits = 0
         self.searches_without_shuffle = 0
-        self.coroutine_limit = self.count * .9
+        self.coroutine_semaphore = Semaphore(self.count - 1)
         self.spawn_cache = db.SIGHTING_CACHE.spawn_ids
         self.redundant = 0
         self.spawns_count = 0
@@ -409,6 +409,7 @@ class Overseer:
             # Record things found count
             if now - last_stats_updated >= 5:
                 self.seen_stats, self.visit_stats, self.delay_stats, self.speed_stats = self.get_visit_stats()
+                self.update_coroutines_count()
                 last_stats_updated = now
             if not self.paused and now - last_things_found_updated >= 10:
                 self.things_count = self.things_count[-9:]
@@ -432,9 +433,10 @@ class Overseer:
                 '{} coroutines active   '.format(self.coroutines_count),
                 end='\r'
             )
-            if self.coroutines_count == 0 or not isinstance(self.coroutines_count, int):
+            if self.coroutines_count == 0:
                 print('Done.                ')
                 return
+            time.sleep(.25)
 
     @staticmethod
     def generate_stats(somelist):
@@ -554,24 +556,24 @@ class Overseer:
         ]
 
         try:
+            seen = Slave.g['seen']
+            captchas = Slave.g['captchas']
+            sent = Slave.g['sent']
             output.append('Seen per visit: {v:.2f}, per minute: {m:.0f}'.format(
-                v=Slave.global_seen / self.visits,
-                m=Slave.global_seen / (seconds_since_start / 60)
-            ))
+                v=seen / self.visits, m=seen / (seconds_since_start / 60)))
 
-            if Slave.captchas:
-                captchas_per_request = Slave.captchas / (self.visits / 1000)
-                captchas_per_hour = Slave.captchas / hours_since_start
+            if captchas:
+                captchas_per_request = captchas / (self.visits / 1000)
+                captchas_per_hour = captchas / hours_since_start
                 output.append(
                     'CAPTCHAs per 1K visits: {r:.1f}, per hour: {h:.1f}'.format(
                     r=captchas_per_request, h=captchas_per_hour))
         except ZeroDivisionError:
             pass
 
-        if Slave.notifications_sent:
+        if sent:
             output.append('Notifications sent: {n}, per hour {p:.1f}'.format(
-                n=Slave.notifications_sent,
-                p=Slave.notifications_sent / hours_since_start))
+                n=sent, p=sent / hours_since_start))
 
         output.append('')
         if not self.all_seen:
@@ -635,12 +637,6 @@ class Overseer:
             current_hour = utils.get_current_hour()
             for spawn_id, spawn in self.spawns.spawns.items():
                 try:
-                    self.update_coroutines_count()
-                    while (self.coroutines_count > self.coroutine_limit or not
-                            isinstance(self.coroutines_count, int)) and not self.killed:
-                        time.sleep(1)
-                        self.update_coroutines_count()
-
                     while self.captcha_queue.qsize() > config.MAX_CAPTCHAS and not self.killed:
                         self.paused = True
                         time.sleep(10)
@@ -668,9 +664,8 @@ class Overseer:
                 elif time_diff < -180:
                     self.skipped += 1
                     continue
-                elif time_diff > 90:
-                    time.sleep(30)
 
+                self.coroutine_semaphore.acquire()
                 asyncio.run_coroutine_threadsafe(
                     self.try_point(point, spawn_time), loop=self.loop
                 )
@@ -685,6 +680,7 @@ class Overseer:
         worker, speed = await self.best_worker(point, spawn_time)
         if not worker:
             self.skipped += 1
+            self.coroutine_semaphore.release()
             return False
         worker.busy = True
         worker.after_spawn = time.time() - spawn_time
@@ -693,6 +689,7 @@ class Overseer:
         if await worker.visit(point):
             self.visits += 1
         worker.busy = False
+        self.coroutine_semaphore.release()
 
 
 if __name__ == '__main__':
@@ -749,12 +746,12 @@ if __name__ == '__main__':
         print('Completing tasks.    ')
         loop.run_until_complete(asyncio.gather(*pending))
         print('Shutting things down.')
-        Slave.process_executor.shutdown()
         Slave.network_executor.shutdown()
         Slave.db_processor.stop()
         if config.NOTIFY:
             Slave.notifier.session.close()
         Slave.spawns.session.close()
+        Slave.process_executor.shutdown()
         manager.shutdown()
         print('Stopping and closing loop.')
         loop.stop()
