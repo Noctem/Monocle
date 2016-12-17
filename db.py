@@ -230,6 +230,7 @@ class Spawnpoint(Base):
     lat = Column(Float)
     lon = Column(Float)
     alt = Column(SmallInteger)
+    updated = Column(Integer)
 
 
 class Fort(Base):
@@ -379,21 +380,23 @@ def add_spawnpoint(session, pokemon, spawns=None):
         if existing_time and abs(new_time - existing_time) < 2:
             return
     existing = session.query(Spawnpoint) \
-        .filter(Spawnpoint.spawn_id == pokemon['spawn_id']) \
+        .filter(Spawnpoint.spawn_id == spawn_id) \
         .first()
+    now = round(time.time())
     if existing:
-        existing_time = existing.despawn_time
-        if abs(new_time - existing_time) < 2:
+        existing.updated = now
+        if abs(new_time - existing.despawn_time) < 2:
             return
         existing.despawn_time = new_time
     else:
         altitude = utils.get_altitude((pokemon['lat'], pokemon['lon']))
         obj = Spawnpoint(
-            spawn_id=pokemon['spawn_id'],
+            spawn_id=spawn_id,
             despawn_time=new_time,
             lat=pokemon['lat'],
             lon=pokemon['lon'],
-            alt=altitude
+            alt=altitude,
+            updated=now
         )
         session.add(obj)
     session.commit()
