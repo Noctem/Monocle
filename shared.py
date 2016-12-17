@@ -163,6 +163,7 @@ class BaseSlave:
         self.location = self.account.get('location', (0, 0, 0))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
         self.last_visit = self.account.get('time', 0)
+        self.items = self.account.get('items', {})
         # API setup
         self.proxy = proxy
         self.initialize_api()
@@ -174,6 +175,7 @@ class BaseSlave:
         self.speed = 0
         self.total_seen = 0
         self.error_code = 'INIT'
+        self.item_capacity = 350
 
     def initialize_api(self):
         device_info = get_device_info(self.account)
@@ -223,7 +225,11 @@ class BaseSlave:
                 logger.warning(self.username + ' is banned.')
                 raise pgoapi_exceptions.BannedAccountException
             responses = response.get('responses')
-            timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
+            delta = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
+            timestamp = delta.get('new_timestamp_ms')
+            inventory_items = delta.get('inventory_items', [])
+            if inventory_items:
+                self.update_inventory(inventory_items)
             self.inventory_timestamp = timestamp or self.inventory_timestamp
             d_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
             self.download_hash = d_hash or self.download_hash
@@ -254,6 +260,7 @@ class BaseSlave:
         self.account['location'] = self.location
         self.account['time'] = self.last_visit
         self.account['inventory_timestamp'] = self.inventory_timestamp
+        self.account['items'] = self.items
 
         if self.api._auth_provider:
             self.account['refresh'] = self.api._auth_provider._refresh_token
@@ -348,6 +355,7 @@ class BaseSlave:
         return pokemon_data
 
     async def spin_pokestop(self, pokestop):
+        self.error_code = '$'
         pokestop_location = pokestop['lat'], pokestop['lon']
         distance = great_circle(self.location, pokestop_location).meters
         if distance > 40:
@@ -377,6 +385,7 @@ class BaseSlave:
             self.logger.info('Spun {n}: {r}'.format(n=name, r=result))
         else:
             self.logger.warning('Failed spinning {n}: {r}'.format(n=name, r=result))
+        self.error_code = '!'
         return responses
 
     def swap_proxy(self, reason=''):
@@ -507,6 +516,14 @@ class BaseSlave:
         await asyncio.sleep(.2)
         return True
 
+    def update_inventory(self, inventory_items):
+        for thing in inventory_items:
+            item = thing.get('inventory_item_data', {}).get('item')
+            if not item:
+                continue
+            item_id = item.get('item_id')
+            self.items[item_id] = item.get('count', 0)
+
     async def app_simulation_login(self):
         self.error_code = 'APP SIMULATION'
         self.logger.info('Starting RPC login sequence (iOS app simulation)')
@@ -533,10 +550,11 @@ class BaseSlave:
             self.network_executor, request.call
         )
 
-        responses = response.get('responses', {})
-        tutorial_state = responses.get('GET_PLAYER', {}).get('player_data', {}).get('tutorial_state')
+        get_player = response.get('responses', {}).get('GET_PLAYER', {})
+        tutorial_state = get_player.get('player_data', {}).get('tutorial_state', [])
+        self.item_capacity = get_player.get('player_data', {}).get('max_item_storage', 350)
 
-        if responses.get('GET_PLAYER', {}).get('banned', False):
+        if get_player.get('banned', False):
             raise pgoapi_exceptions.BannedAccountException
             return False
 
@@ -548,9 +566,9 @@ class BaseSlave:
         request.download_remote_config_version(platform=1, app_version=version)
         responses = await self.call_chain(request, stamp=False, buddy=False, dl_hash=False)
 
-        inventory = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
+        inventory_items = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('inventory_items', [])
         player_level = None
-        for item in inventory.get('inventory_items', []):
+        for item in inventory_items:
             player_stats = item.get('inventory_item_data', {}).get('player_stats', {})
             if player_stats:
                 player_level = player_stats.get('level')

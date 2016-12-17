@@ -267,7 +267,7 @@ class Slave(BaseSlave):
                         pokemons.append(norm)
                     pokestop = utils.normalize_pokestop(fort)
                     forts.append(pokestop)
-                    if config.SPIN_POKESTOPS:
+                    if config.SPIN_POKESTOPS and sum(self.items.values()) < self.item_capacity:
                         cooldown = fort.get('cooldown_complete_timestamp_ms', 0)
                         if not cooldown or time.time() > cooldown / 1000:
                             await self.spin_pokestop(pokestop)
