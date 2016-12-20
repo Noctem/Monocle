@@ -131,7 +131,7 @@ class FortCache(object):
 
     def add(self, sighting):
         if sighting['type'] == 'pokestop':
-            self.store[sighting['external_id']] = None
+            self.store[sighting['external_id']] = True
         else:
             self.store[sighting['external_id']] = (
                 sighting['team'],
@@ -469,8 +469,8 @@ def add_fort_sighting(session, raw_fort):
 def add_pokestop(session, raw_pokestop):
     if raw_pokestop in FORT_CACHE:
         return
-    pokestop = session.query(Fort) \
-        .filter(Fort.external_id == raw_pokestop['external_id']) \
+    pokestop = session.query(Pokestop) \
+        .filter(Pokestop.external_id == raw_pokestop['external_id']) \
         .first()
     if pokestop:
         FORT_CACHE.add(raw_pokestop)
