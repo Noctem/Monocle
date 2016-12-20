@@ -20,7 +20,8 @@ OPTIONAL_SETTINGS = {
     'MAP_START': None,
     'MAP_END': None,
     'BOUNDARIES': None,
-    'SPAWN_ID_INT': True
+    'SPAWN_ID_INT': True,
+    'DB_ENGINE': 'sqlite:///db.sqlite'
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -376,9 +377,14 @@ def get_address():
 
 def normalize_pokemon(raw, now):
     """Normalizes data coming from API into something acceptable by db"""
+    _engine = config.DB_ENGINE
+    if _engine.startswith('postgres') or _engine.startswith('mysql'):
+        encounter_id = raw['encounter_id']
+    else:
+        encounter_id = str(raw['encounter_id'])
     return {
         'type': 'pokemon',
-        'encounter_id': raw['encounter_id'],
+        'encounter_id': encounter_id,
         'pokemon_id': raw['pokemon_data']['pokemon_id'],
         'expire_timestamp': round((now + raw['time_till_hidden_ms']) / 1000),
         'lat': raw['latitude'],
@@ -390,6 +396,11 @@ def normalize_pokemon(raw, now):
 
 
 def normalize_lured(raw, now):
+    _engine = config.DB_ENGINE
+    if _engine.startswith('postgres') or _engine.startswith('mysql'):
+        encounter_id = raw['lure_info']['encounter_id']
+    else:
+        encounter_id = str(raw['lure_info']['encounter_id'])
     return {
         'type': 'pokemon',
         'encounter_id': raw['lure_info']['encounter_id'],

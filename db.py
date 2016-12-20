@@ -8,6 +8,7 @@ from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger,
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT
 
 import utils
 
@@ -36,6 +37,23 @@ class Team(enum.Enum):
     valor = 2
     instict = 3
 
+if DB_ENGINE.startswith('mysql'):
+    TINY_TYPE = TINYINT(unsigned=True)          # 0 to 255
+    MEDIUM_TYPE = MEDIUMINT(unsigned=True)      # 0 to 4294967295
+    HUGE_TYPE = BIGINT(unsigned=True)           # 0 to 18446744073709551615
+elif DB_ENGINE.startswith('postgres'):
+    TINY_TYPE = SmallInteger                    # -32768 to 32767
+    MEDIUM_TYPE = Integer                       # -2147483648 to 2147483647
+    HUGE_TYPE = Numeric(precision=20, scale=0)  # up to 20 digits
+else:
+    TINY_TYPE = SmallInteger
+    MEDIUM_TYPE = Integer
+    HUGE_TYPE = Text
+
+if config.SPAWN_ID_INT:
+    ID_TYPE = BigInteger
+else:
+    ID_TYPE = String(11)
 
 def get_engine():
     return create_engine(DB_ENGINE)
@@ -162,22 +180,16 @@ class Sighting(Base):
     __tablename__ = 'sightings'
 
     id = Column(Integer, primary_key=True)
-    pokemon_id = Column(SmallInteger, index=True)
-    if not config.SPAWN_ID_INT:
-        spawn_id = Column(String(11))
-    else:
-        spawn_id = Column(BigInteger)
+    pokemon_id = Column(TINY_TYPE, index=True)
+    spawn_id = Column(ID_TYPE)
     expire_timestamp = Column(Integer, index=True)
-    if DB_ENGINE.startswith('sqlite'):
-        encounter_id = Column(BigInteger)
-    else:
-        encounter_id = Column(Numeric(precision=20, scale=0))
+    encounter_id = Column(HUGE_TYPE)
     normalized_timestamp = Column(Integer)
     lat = Column(Float, index=True)
     lon = Column(Float, index=True)
-    atk_iv = Column(SmallInteger)
-    def_iv = Column(SmallInteger)
-    sta_iv = Column(SmallInteger)
+    atk_iv = Column(TINY_TYPE)
+    def_iv = Column(TINY_TYPE)
+    sta_iv = Column(TINY_TYPE)
     move_1 = Column(SmallInteger)
     move_2 = Column(SmallInteger)
 
@@ -194,16 +206,9 @@ class Longspawn(Base):
     __tablename__ = 'longspawns'
 
     id = Column(Integer, primary_key=True)
-    pokemon_id = Column(SmallInteger, index=True)
-    if config.SPAWN_ID_INT:
-        spawn_id = Column(BigInteger)
-    else:
-        spawn_id = Column(String(11))
-    expire_timestamp = Column(Integer)
-    if DB_ENGINE.startswith('sqlite'):
-        encounter_id = Column(BigInteger)
-    else:
-        encounter_id = Column(Numeric(precision=20, scale=0))
+    pokemon_id = Column(TINY_TYPE, index=True)
+    spawn_id = Column(ID_TYPE)
+    encounter_id = Column(HUGE_TYPE)
     lat = Column(Float, index=True)
     lon = Column(Float, index=True)
     time_till_hidden_ms = Column(Integer)
@@ -222,10 +227,7 @@ class Spawnpoint(Base):
     __tablename__ = 'spawnpoints'
 
     id = Column(Integer, primary_key=True)
-    if config.SPAWN_ID_INT:
-        spawn_id = Column(BigInteger, unique=True)
-    else:
-        spawn_id = Column(String(11), unique=True)
+    spawn_id = Column(ID_TYPE, unique=True)
     despawn_time = Column(SmallInteger, index=True)
     lat = Column(Float)
     lon = Column(Float)
@@ -254,9 +256,9 @@ class FortSighting(Base):
     id = Column(Integer, primary_key=True)
     fort_id = Column(SmallInteger, ForeignKey('forts.id'))
     last_modified = Column(Integer)
-    team = Column(SmallInteger)
-    prestige = Column(Integer)
-    guard_pokemon_id = Column(SmallInteger)
+    team = Column(TINY_TYPE)
+    prestige = Column(MEDIUM_TYPE)
+    guard_pokemon_id = Column(TINY_TYPE)
 
     __table_args__ = (
         UniqueConstraint(
