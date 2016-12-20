@@ -6,7 +6,7 @@ from math import sqrt
 import time
 import pickle
 
-from db import Session, get_pokemon_ranking, get_despawn_time, estimate_remaining_time
+from db import Session, get_pokemon_ranking, estimate_remaining_time
 from names import POKEMON_NAMES, MOVES
 
 import config
@@ -482,13 +482,7 @@ class Notifier:
         if pokemon['valid']:
             time_till_hidden = pokemon['time_till_hidden_ms'] / 1000
         else:
-            time_till_hidden = self.spawns.get_time_till_hidden(spawn_id)
-
-        if time_till_hidden:
-            rem = time_till_hidden
-        else:
-            time_till_hidden = estimate_remaining_time(self.session, spawn_id)
-            rem = sum(time_till_hidden) / 2
+            time_till_hidden = None
 
         now = time.time()
         if self.auto:
@@ -500,7 +494,7 @@ class Notifier:
         if pokemon_id in self.always_notify:
             score_required = 0
         else:
-            if rem < config.TIME_REQUIRED:
+            if time_till_hidden and time_till_hidden < config.TIME_REQUIRED:
                 return False, '{n} has only {s} seconds remaining.'.format(
                     n=name, s=time_till_hidden
                 )
@@ -511,7 +505,6 @@ class Notifier:
                 fraction = 1
             subtract = (self.initial_score - self.minimum_score) * fraction
             score_required = self.initial_score - subtract
-
 
         if pokemon.get('individual_attack') is None:
             return False, '{} has no IVs.'.format(name)
@@ -531,6 +524,15 @@ class Notifier:
         if score < score_required:
             return False, "{n}'s score was {s:.3f} (iv: {i:.3f}), but {r:.3f} was required.".format(
                 n=name, s=score, i=iv_score, r=score_required)
+        if not time_till_hidden:
+            seen = pokemon['seen'] % 3600
+            time_till_hidden = estimate_remaining_time(self.session, spawn_id, seen)
+            mean = sum(time_till_hidden) / 2
+
+            if mean < config.TIME_REQUIRED:
+                return False, '{n} has only around {s} seconds remaining.'.format(
+                    n=name, s=mean
+                )
 
         image = create_image(pokemon_id, iv, move1, move2)
 
