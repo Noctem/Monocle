@@ -4,8 +4,9 @@ import enum
 import time
 
 from sqlalchemy import create_engine
-from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, Text, ForeignKey, UniqueConstraint, Numeric
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, ForeignKey, UniqueConstraint
+from sqlalchemy.types import TypeDecorator, Numeric, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT
@@ -31,24 +32,50 @@ for setting_name, default in OPTIONAL_SETTINGS.items():
 if config.BOUNDARIES:
     from shapely.geometry import Point
 
+
 class Team(enum.Enum):
     none = 0
     mystic = 1
     valor = 2
     instict = 3
 
+
 if DB_ENGINE.startswith('mysql'):
     TINY_TYPE = TINYINT(unsigned=True)          # 0 to 255
     MEDIUM_TYPE = MEDIUMINT(unsigned=True)      # 0 to 4294967295
     HUGE_TYPE = BIGINT(unsigned=True)           # 0 to 18446744073709551615
 elif DB_ENGINE.startswith('postgres'):
+    class NumInt(TypeDecorator):
+        '''Modify Numeric type for integers'''
+        impl = Numeric
+
+        def process_bind_param(self, value, dialect):
+            return int(value)
+
+        def process_result_value(self, value, dialect):
+            return int(value)
+
+        @property
+        def python_type(self):
+            return int
+
     TINY_TYPE = SmallInteger                    # -32768 to 32767
     MEDIUM_TYPE = Integer                       # -2147483648 to 2147483647
-    HUGE_TYPE = Numeric(precision=20, scale=0)  # up to 20 digits
+    HUGE_TYPE = NumInt(precision=20, scale=0)   # up to 20 digits
 else:
+    class TextInt(TypeDecorator):
+        '''Modify Text type for integers'''
+        impl = Text
+
+        def process_bind_param(self, value, dialect):
+            return str(value)
+
+        def process_result_value(self, value, dialect):
+            return int(value)
+
     TINY_TYPE = SmallInteger
     MEDIUM_TYPE = Integer
-    HUGE_TYPE = Text
+    HUGE_TYPE = TextInt
 
 if config.SPAWN_ID_INT:
     ID_TYPE = BigInteger
