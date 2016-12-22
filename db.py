@@ -218,13 +218,13 @@ class Sighting(Base):
     __tablename__ = 'sightings'
 
     id = Column(Integer, primary_key=True)
-    pokemon_id = Column(TINY_TYPE, index=True)
+    pokemon_id = Column(TINY_TYPE)
     spawn_id = Column(ID_TYPE)
     expire_timestamp = Column(Integer, index=True)
-    encounter_id = Column(HUGE_TYPE)
+    encounter_id = Column(HUGE_TYPE, index=True)
     normalized_timestamp = Column(Integer)
-    lat = Column(Float, index=True)
-    lon = Column(Float, index=True)
+    lat = Column(Float)
+    lon = Column(Float)
     atk_iv = Column(TINY_TYPE)
     def_iv = Column(TINY_TYPE)
     sta_iv = Column(TINY_TYPE)
