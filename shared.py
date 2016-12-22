@@ -45,30 +45,26 @@ class AccountManager(BaseManager):
 class Spawns:
     """Manage spawn points and times"""
     session = db.Session()
-    spawns = None
+    spawns = {}
+    despawn_times = {}
+    mysteries = ()
 
     def update_spawns(self, loadpickle=False):
-        if loadpickle:
-            self.spawns = load_pickle('spawns')
-            if self.spawns:
-                return
-        self.spawns = db.get_spawns(self.session)
+        self.spawns, self.despawn_times, self.mysteries = db.get_spawns(self.session)
         dump_pickle('spawns', self.spawns)
 
     def have_id(self, spawn_id):
-        return spawn_id in self.spawns
+        return spawn_id in self.despawn_times
 
     def get_despawn_seconds(self, spawn_id):
-        if self.have_id(spawn_id):
-            return self.spawns[spawn_id][2]
-        else:
-            return None
+        return self.despawn_times.get(spawn_id)
 
-    def get_despawn_time(self, spawn_id):
+    def get_despawn_time(self, spawn_id, seen=None):
         if self.have_id(spawn_id):
-            current_hour = get_current_hour()
-            despawn_time = self.get_despawn_seconds(spawn_id) + current_hour
-            if time.time() > despawn_time + 1:
+            now = seen or time.time()
+            hour = get_current_hour(now=now)
+            despawn_time = self.get_despawn_seconds(spawn_id) + hour
+            if now > despawn_time - 88:
                 despawn_time += 3600
             return despawn_time
         else:
@@ -77,7 +73,7 @@ class Spawns:
     def get_time_till_hidden(self, spawn_id):
         if not self.have_id(spawn_id):
             return None
-        despawn_seconds = self.spawns[spawn_id][2]
+        despawn_seconds = self.get_despawn_seconds(spawn_id)
         return time_until_time(despawn_seconds)
 
 

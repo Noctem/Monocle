@@ -20,6 +20,7 @@ except (ImportError, AttributeError):
     DB_ENGINE = 'sqlite:///db.sqlite'
 
 OPTIONAL_SETTINGS = {
+    'LAST_MIGRATION': 1481932800,
     'SPAWN_ID_INT': True,
     'RARE_IDS': [],
     'REPORT_SINCE': None,
@@ -272,12 +273,13 @@ class Spawnpoint(Base):
     __tablename__ = 'spawnpoints'
 
     id = Column(Integer, primary_key=True)
-    spawn_id = Column(ID_TYPE, unique=True)
+    spawn_id = Column(ID_TYPE, unique=True, index=True)
     despawn_time = Column(SmallInteger, index=True)
     lat = Column(Float)
     lon = Column(Float)
     alt = Column(SmallInteger)
-    updated = Column(Integer)
+    updated = Column(Integer, index=True)
+    duration = Column(TINY_TYPE)
 
 
 class Fort(Base):
@@ -328,23 +330,32 @@ Session = sessionmaker(bind=get_engine())
 
 def get_spawns(session):
     spawns = session.query(Spawnpoint)
-    spawn_points = []
+    mysteries = []
+    despawn_times = {}
+    spawns_dict = {}
     for spawn in spawns:
         if config.BOUNDARIES:
             point = Point((spawn.lat, spawn.lon))
             if not config.BOUNDARIES.contains(point):
                 continue
-        spawn_points.append({
-            'id': spawn.spawn_id,
-            'point': (spawn.lat, spawn.lon, spawn.alt),
-            'despawn_time': spawn.despawn_time,
-            'spawn_time': (spawn.despawn_time + 1800) % 3600
-        })
-    spawn_points = sorted(spawn_points, key=lambda k: k['spawn_time'])
-    spawns = OrderedDict()
-    for spawn in spawn_points:
-        spawns[spawn['id']] = (spawn['point'], spawn['spawn_time'], spawn['despawn_time'])
-    return spawns
+
+        point = (spawn.lat, spawn.lon, spawn.alt)
+
+        if config.LAST_MIGRATION:
+            if not spawn.updated or spawn.updated < config.LAST_MIGRATION:
+                mysteries.append(point)
+                continue
+
+        if spawn.duration == 60:
+            spawn_time = spawn.despawn_time
+        else:
+            spawn_time = (spawn.despawn_time + 1800) % 3600
+
+        despawn_times[spawn.spawn_id] = spawn.despawn_time
+        spawns_dict[spawn.spawn_id] = (point, spawn_time)
+
+    spawns = OrderedDict(sorted(spawns_dict.items(), key=lambda k: k[1][1]))
+    return spawns, despawn_times, tuple(mysteries)
 
 
 def get_spawn_locations(session):
@@ -424,7 +435,7 @@ def add_spawnpoint(session, pokemon, spawns=None):
     new_time = pokemon['expire_timestamp'] % 3600
     if spawns:
         existing_time = spawns.get_despawn_seconds(spawn_id)
-        if existing_time and abs(new_time - existing_time) < 2:
+        if existing_time and new_time == existing_time:
             return
     existing = session.query(Spawnpoint) \
         .filter(Spawnpoint.spawn_id == spawn_id) \
@@ -432,10 +443,25 @@ def add_spawnpoint(session, pokemon, spawns=None):
     now = round(time.time())
     if existing:
         existing.updated = now
-        if abs(new_time - existing.despawn_time) < 2:
+        if new_time == existing.despawn_time:
             return
+        spawns.despawn_times[spawn_id] = new_time
         existing.despawn_time = new_time
     else:
+        spawns.despawn_times[spawn_id] = new_time
+        query = session.execute('''
+            SELECT max(seen_range)
+            FROM mystery_sightings
+            WHERE spawn_id = {}
+        '''.format(spawn_id))
+        duration = None
+        try:
+            largest = query.first()[0]
+            if largest > 1710:
+                duration = 60
+        except TypeError:
+            pass
+
         altitude = utils.get_altitude((pokemon['lat'], pokemon['lon']))
         obj = Spawnpoint(
             spawn_id=spawn_id,
@@ -443,7 +469,8 @@ def add_spawnpoint(session, pokemon, spawns=None):
             lat=pokemon['lat'],
             lon=pokemon['lon'],
             alt=altitude,
-            updated=now
+            updated=now,
+            duration=duration
         )
         session.add(obj)
     session.commit()

@@ -340,8 +340,8 @@ def get_spawn_id(pokemon):
         return pokemon['spawn_point_id']
 
 
-def get_current_hour():
-    now = time.time()
+def get_current_hour(now=None):
+    now = now or time.time()
     return round(now - (now % 3600))
 
 
@@ -356,10 +356,12 @@ def get_cell_ids_for_points(points):
     return cell_ids
 
 
-def time_until_time(seconds):
-    current_seconds = time.time() % 3600
+def time_until_time(seconds, seen=None):
+    current_seconds = seen or time.time() % 3600
     if current_seconds > seconds:
         return seconds + 3600 - current_seconds
+    elif current_seconds + 3600 < seconds:
+        return seconds - 3600 - current_seconds
     else:
         return seconds - current_seconds
 

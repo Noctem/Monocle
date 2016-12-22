@@ -82,13 +82,11 @@ class Slave(BaseSlave):
         super().__init__(worker_no, proxy=proxy)
         self.visits = 0
 
-    async def travel_speed(self, point, spawn_time):
+    async def travel_speed(self, point):
         if self.busy or self.killed:
             return None
         now = time.time()
-        if spawn_time < now:
-            spawn_time = now
-        time_diff = spawn_time - self.last_visit
+        time_diff = now - self.last_visit
         if time_diff < config.SCAN_DELAY:
             return None
         elif time_diff > 60:
@@ -230,7 +228,7 @@ class Slave(BaseSlave):
                 )
                 if invalid_tth:
                     despawn_time = self.spawns.get_despawn_time(
-                        normalized['spawn_id'])
+                        normalized['spawn_id'], normalized['seen'])
                     if despawn_time:
                         normalized['expire_timestamp'] = despawn_time
                         normalized['time_till_hidden_ms'] = (
@@ -511,6 +509,7 @@ class Overseer:
 
     def get_status_message(self):
         workers_count = len(self.workers)
+        self.spawns_count = len(self.spawns.despawn_times)
 
         running_for = datetime.now() - self.start_date
 
@@ -589,7 +588,14 @@ class Overseer:
             output += ('', 'CAPTCHAs are needed to proceed.')
         return '\n'.join(output)
 
-    async def best_worker(self, point, spawn_time, give_up=False):
+    async def best_worker(self, point, spawn_time=None):
+        if spawn_time:
+            visit_time = spawn_time
+            skip_time = -600
+        else:
+            visit_time = time.time()
+            skip_time = -6
+
         worker = None
         lowest_speed = float('inf')
         self.searches_without_shuffle += 1
@@ -602,88 +608,131 @@ class Overseer:
             lowest_speed = float('inf')
             worker = None
             for w in workers:
-                if self.killed:
-                    return False, False
-                speed = await w.travel_speed(point, spawn_time)
+                speed = await w.travel_speed(point)
                 if speed is not None and speed < lowest_speed:
                     lowest_speed = speed
                     worker = w
                     if speed < 10:
                         break
-            if worker.busy:
+            if self.killed:
+                return None, None
+            if worker and worker.busy:
                 worker = None
             if lowest_speed > config.SPEED_LIMIT or worker is None:
-                time_diff = spawn_time - time.time()
-                if time_diff < -60:
+                time_diff = visit_time - time.time()
+                if time_diff < skip_time:
                     return False, False
-                await asyncio.sleep(3)
+                await asyncio.sleep(2)
         return worker, lowest_speed
 
     def launch(self):
         while not self.killed:
+            current_hour = utils.get_current_hour()
             if self.visits > 0:
                 utils.dump_pickle('accounts', self.accounts)
                 self.spawns.update_spawns()
             else:
                 self.spawns.update_spawns(loadpickle=True)
+                mysteries = deque(self.spawns.mysteries)
+                random.shuffle(mysteries)
+                self.spawns_count = len(self.spawns.despawn_times)
+                if self.spawns_count == 0:
+                    raise ValueError('No spawnpoints.')
+                smallest_diff = None
+                start = None
+                now = time.time()
+                for spawn_id, spawn in self.spawns.spawns.items():
+                    spawn_time = spawn[1] + current_hour
+                    time_diff = abs(spawn_time - now)
+                    if not smallest_diff or time_diff < smallest_diff:
+                        smallest_diff = time_diff
+                        closest = spawn_id
+                    if smallest_diff < 1:
+                        break
+                first = True
 
-            self.spawns_count = len(self.spawns.spawns)
-            current_hour = utils.get_current_hour()
             for spawn_id, spawn in self.spawns.spawns.items():
                 try:
-                    while self.captcha_queue.qsize() > config.MAX_CAPTCHAS and not self.killed:
+                    if first:
+                        if spawn_id == closest:
+                            first = False
+                        else:
+                            continue
+
+                    while (self.captcha_queue.qsize() > config.MAX_CAPTCHAS
+                            and not self.killed):
                         self.paused = True
                         time.sleep(10)
                         self.idle_seconds += 10
-                except IOError:
-                    pass
+
+                    if self.killed:
+                        return
+
+                    self.paused = False
+
+                    point = list(spawn[0])
+                    spawn_time = spawn[1] + current_hour
+
+                    # negative = already happened
+                    # positive = hasn't happened yet
+                    time_diff = spawn_time - time.time()
+
+                    while time_diff > 0 and not self.killed:
+                        try:
+                            mystery_point = list(mysteries.pop())
+
+                            self.coroutine_semaphore.acquire()
+                            asyncio.run_coroutine_threadsafe(
+                                self.try_point(mystery_point), loop=self.loop
+                            )
+                        except IndexError:
+                            mysteries = deque(self.spawns.mysteries)
+                            random.shuffle(mysteries)
+                        time_diff = spawn_time - time.time()
+
+                    if time_diff < -10 and spawn_id in self.spawn_cache:
+                        self.redundant += 1
+                    elif time_diff < -270:
+                        self.skipped += 1
+                        continue
+
+                    if self.killed:
+                        return
+                    self.coroutine_semaphore.acquire()
+                    asyncio.run_coroutine_threadsafe(
+                        self.try_point(point, spawn_time), loop=self.loop
+                    )
                 except Exception as e:
-                    self.logger.error(e)
+                    self.logger.exception(e)
 
-                if self.killed:
-                    return
+    async def try_point(self, point, spawn_time=None):
+        try:
+            point[0] = random.uniform(point[0] - 0.00033, point[0] + 0.00033)
+            point[1] = random.uniform(point[1] - 0.00033, point[1] + 0.00033)
 
-                self.paused = False
-
-                point = list(spawn[0])
-                spawn_time = spawn[1] + current_hour
-
-                # negative = already happened
-                # positive = hasn't happened yet
+            if spawn_time:
                 time_diff = spawn_time - time.time()
-                if self.visits == 0 and (time_diff < -10 or time_diff > 10):
-                    continue
-                elif time_diff < -10 and spawn_id in self.spawn_cache:
-                    self.redundant += 1
-                elif time_diff < -180:
+                if time_diff > -2:
+                    await asyncio.sleep(time_diff + 2)
+
+            worker, speed = await self.best_worker(point, spawn_time)
+            if not worker:
+                if spawn_time:
                     self.skipped += 1
-                    continue
+                return False
 
-                self.coroutine_semaphore.acquire()
-                asyncio.run_coroutine_threadsafe(
-                    self.try_point(point, spawn_time), loop=self.loop
-                )
+            worker.busy = True
+            if spawn_time:
+                worker.after_spawn = time.time() - spawn_time
+            worker.speed = speed
 
-    async def try_point(self, point, spawn_time):
-        point[0] = random.uniform(point[0] - 0.00033, point[0] + 0.00033)
-        point[1] = random.uniform(point[1] - 0.00033, point[1] + 0.00033)
-        time_diff = spawn_time - time.time()
-        if time_diff > -2:
-            await asyncio.sleep(time_diff + 2)
-
-        worker, speed = await self.best_worker(point, spawn_time)
-        if not worker:
-            self.skipped += 1
+            if await worker.visit(point):
+                self.visits += 1
+            worker.busy = False
+        except Exception as e:
+            self.logger.exception(e)
+        finally:
             self.coroutine_semaphore.release()
-            return False
-        worker.busy = True
-        worker.after_spawn = time.time() - spawn_time
-        worker.speed = speed
-
-        if await worker.visit(point):
-            self.visits += 1
-        worker.busy = False
-        self.coroutine_semaphore.release()
 
 
 if __name__ == '__main__':
