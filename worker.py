@@ -77,27 +77,40 @@ else:
 class Slave(BaseSlave):
     """Single worker walking on the map"""
 
-    process_executor = ProcessPoolExecutor()
+    process_executor = ProcessPoolExecutor(max_workers=3)
 
     def __init__(self, worker_no, proxy=None):
         super().__init__(worker_no, proxy=proxy)
         self.visits = 0
 
+    def seen_per_second(self, now):
+        try:
+            seconds_active = now - self.account_start
+            if seconds_active < 120:
+                return None
+            return self.account_seen / seconds_active
+        except TypeError:
+            return None
+
     async def travel_speed(self, point):
         if self.busy or self.killed:
             return None
         now = time.time()
-        time_diff = now - self.last_visit
-        if time_diff < config.SCAN_DELAY:
+        if now - self.last_gmo < config.SCAN_DELAY:
             return None
-        elif time_diff > 60:
+        time_diff = now - self.last_visit
+        if time_diff > 60:
             self.error_code = None
-        distance = await self.loop.run_in_executor(
-            self.process_executor,
-            partial(great_circle, self.location, point)
-        )
-        speed = (distance.miles / time_diff) * 3600
-        return speed
+        try:
+            distance = await self.loop.run_in_executor(
+                self.process_executor,
+                partial(great_circle, self.location, point)
+            )
+            speed = (distance.miles / time_diff) * 3600
+            return speed
+        except Exception as e:
+            self.logger.exception(e)
+            return None
 
     async def visit(self, point):
         """Wrapper for self.visit_point - runs it a few times before giving up
@@ -105,7 +118,7 @@ class Slave(BaseSlave):
         Also is capable of restarting in case an error occurs.
         """
         visited = False
-        for attempts in range(0, 5):
+        for attempts in range(0, 4):
             try:
                 if self.killed:
                     return False
@@ -161,7 +174,7 @@ class Slave(BaseSlave):
                 self.error_code = 'MALFORMED RESPONSE'
                 await utils.random_sleep()
             except Exception as err:
-                self.logger.exception('A wild exception appeared!')
+                self.logger.exception('A wild exception appeared! {}'.format(err))
                 self.error_code = 'EXCEPTION'
                 await utils.random_sleep()
             else:
@@ -198,6 +211,7 @@ class Slave(BaseSlave):
                                 longitude=pgoapi_utils.f2i(longitude))
 
         responses = await self.call_chain(request)
+        self.last_gmo = time.time()
 
         map_objects = responses.get('GET_MAP_OBJECTS', {})
 
@@ -272,13 +286,21 @@ class Slave(BaseSlave):
         if pokemon_seen > 0:
             self.error_code = ':'
             self.total_seen += pokemon_seen
+            self.account_seen += pokemon_seen
             self.g['seen'] += pokemon_seen
             self.empty_visits = 0
             if CIRCUIT_FAILURES:
                 CIRCUIT_FAILURES[self.proxy] = 0
         else:
-            self.error_code = ','
             self.empty_visits += 1
+            if forts_seen == 0:
+                self.error_code = 'NOTHING SEEN'
+                await self.swap_account('no Pokemon or forts seen')
+                self.logger.warning('No Pokemon or forts seen.'
+                    ' speed: {s:.2f}, consecutive: {c}'.format(
+                    s=self.speed, c=self.empty_visits))
+            else:
+                self.error_code = ','
             if self.empty_visits > 2:
                 reason = '{} empty visits'.format(self.empty_visits)
                 await self.swap_account(reason)
@@ -324,7 +346,7 @@ class Overseer:
         self.skipped = 0
         self.visits = 0
         self.searches_without_shuffle = 0
-        self.coroutine_semaphore = Semaphore(self.count - 1)
+        self.coroutine_semaphore = Semaphore(self.count)
         self.spawn_cache = db.SIGHTING_CACHE.spawn_ids
         self.redundant = 0
         self.spawns_count = 0
@@ -340,14 +362,10 @@ class Overseer:
 
         print('Setting CAPTCHA statuses.')
 
-        if self.captcha_queue.empty():
-            for account in self.accounts.keys():
-                self.accounts[account]['captcha'] = False
-        else:
-            while not self.extra_queue.empty():
-                account = self.extra_queue.get()
-                username = account.get('username')
-                self.accounts[username]['captcha'] = False
+        while not self.extra_queue.empty():
+            account = self.extra_queue.get()
+            username = account.get('username')
+            self.accounts[username] = account
 
     def start_worker(self, worker_no, first_run=False):
         if self.killed:
@@ -391,6 +409,7 @@ class Overseer:
         last_commit = now
         last_cleaned_cache = now
         last_things_found_updated = now
+        last_swap = now
         last_stats_updated = 0
 
         while not self.killed:
@@ -400,6 +419,17 @@ class Overseer:
                 if now - last_cleaned_cache > 900:  # clean cache after 15min
                     self.db_processor.clean_cache()
                     last_cleaned_cache = now
+                if now - last_swap > 600:
+                    if not self.extra_queue.empty():
+                        least = self.least_productive()
+                        if least:
+                            asyncio.run_coroutine_threadsafe(
+                                least.swap_account(
+                                    reason='it was the least productive',
+                                    busywait=True),
+                                loop=self.loop
+                            )
+                    last_swap = now
                 if now - last_commit > 8:
                     self.db_processor.commit()
                     last_commit = now
@@ -601,6 +631,17 @@ class Overseer:
             output += ('', 'CAPTCHAs are needed to proceed.')
         return '\n'.join(output)
 
+    def least_productive(self):
+        worker = None
+        lowest = float('inf')
+        workers = self.workers_list.copy()
+        now = time.time()
+        for account in workers:
+            per_second = account.seen_per_second(now)
+            if per_second and per_second < lowest:
+                worker = account
+        return worker
+
     async def best_worker(self, point, spawn_time=None):
         if spawn_time:
             visit_time = spawn_time
@@ -612,7 +653,7 @@ class Overseer:
         worker = None
         lowest_speed = float('inf')
         self.searches_without_shuffle += 1
-        if self.searches_without_shuffle > 30:
+        if self.searches_without_shuffle > 150:
             random.shuffle(self.workers_list)
             self.searches_without_shuffle = 0
         workers = self.workers_list.copy()
@@ -794,21 +835,13 @@ if __name__ == '__main__':
         print('Exiting, please wait until all tasks finish')
         overseer.kill()
 
-        print('Dumping pickles.')
         utils.dump_pickle('accounts', Slave.accounts)
         utils.dump_pickle('cells', Slave.cell_ids)
 
         pending = asyncio.Task.all_tasks(loop=loop)
-        print('Completing tasks.    ')
         loop.run_until_complete(asyncio.gather(*pending))
-        print('Shutting things down.')
-        Slave.network_executor.shutdown()
         Slave.db_processor.stop()
         if config.NOTIFY:
             Slave.notifier.session.close()
-        Slave.spawns.session.close()
-        Slave.process_executor.shutdown()
         manager.shutdown()
-        print('Stopping and closing loop.')
-        loop.stop()
         loop.close()

@@ -170,6 +170,7 @@ class BaseSlave:
         self.location = self.account.get('location', (0, 0, 0))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
         self.last_visit = self.account.get('time', 0)
+        self.last_gmo = self.last_visit
         self.items = self.account.get('items', {})
         # API setup
         self.proxy = proxy
@@ -180,6 +181,7 @@ class BaseSlave:
         # Other variables
         self.after_spawn = None
         self.speed = 0
+        self.account_start = None
         self.total_seen = 0
         self.error_code = 'INIT'
         self.item_capacity = 350
@@ -189,6 +191,7 @@ class BaseSlave:
         self.logged_in = False
         self.ever_authenticated = False
         self.empty_visits = 0
+        self.account_seen = 0
 
         self.api = PGoApi(device_info=device_info)
         if ENCRYPT_PATH:
@@ -286,10 +289,12 @@ class BaseSlave:
         self.captcha_queue.put(self.account)
         await self.new_account()
 
-    async def swap_account(self, reason=''):
+    async def swap_account(self, reason='', busywait=False):
         self.error_code = 'SWAPPING'
         self.logger.warning('Swapping out {u} because {r}.'.format(
                             u=self.username, r=reason))
+        while busywait and self.busy:
+            await asyncio.sleep(2)
         self.update_accounts_dict()
         while self.extra_queue.empty():
             if self.killed:
@@ -641,6 +646,7 @@ class BaseSlave:
         self.ever_authenticated = True
         self.logged_in = True
         self.error_code = None
+        self.account_start = time.time()
         return True
 
     async def notify(self, normalized, pokemon):
@@ -755,5 +761,6 @@ BAD_STATUSES = (
     'BENCHING',
     'REMOVING',
     'IP BANNED',
-    'MALFORMED RESPONSE'
+    'MALFORMED RESPONSE',
+    'NOTHING SEEN'
 )
