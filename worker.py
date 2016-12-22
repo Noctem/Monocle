@@ -243,21 +243,15 @@ class Slave(BaseSlave):
 
                 normalized, sent = await self.notify(normalized, pokemon)
 
-                if normalized['valid']:
-                    if (config.ENCOUNTER == 'all'
-                            and 'individual_attack' not in normalized
-                            and normalized not in db.SIGHTING_CACHE):
-                        try:
-                            normalized.update(await self.encounter(pokemon))
-                        except Exception:
-                            self.logger.warning('Exception during encounter.')
-                    pokemons.append(normalized)
-
-                if not normalized[
-                        'valid'] or db.LONGSPAWN_CACHE.in_store(normalized):
-                    long_normal = normalized.copy()
-                    long_normal['type'] = 'longspawn'
-                    pokemons.append(long_normal)
+                if (config.ENCOUNTER == 'all'
+                        and 'individual_attack' not in normalized
+                        and normalized not in db.SIGHTING_CACHE
+                        and normalized not in db.MYSTERY_CACHE):
+                    try:
+                        normalized.update(await self.encounter(pokemon))
+                    except Exception:
+                        self.logger.warning('Exception during encounter.')
+                self.db_processor.add(normalized)
             for fort in map_cell.get('forts', []):
                 if not fort.get('enabled'):
                     continue

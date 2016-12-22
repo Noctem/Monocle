@@ -91,7 +91,7 @@ def get_engine_name(session):
 
 
 def combine_key(sighting):
-    return(sighting['encounter_id'], sighting['spawn_id'])
+    return sighting['encounter_id'], sighting['spawn_id']
 
 Base = declarative_base()
 
@@ -133,8 +133,8 @@ class SightingCache(object):
             del self.store[key]
 
 
-class LongspawnCache(object):
-    """Simple cache for storing longspawns
+class MysteryCache(object):
+    """Simple cache for storing Pokemon with unknown expiration times
 
     It's used in order not to make as many queries to the database.
     It's also capable of purging old entries.
@@ -143,28 +143,39 @@ class LongspawnCache(object):
         self.store = {}
 
     def add(self, sighting):
-        self.store[combine_key(sighting)] = sighting['last_modified_timestamp_ms'] / 1000
+        self.store[combine_key(sighting)] = [sighting['seen']] * 2
 
     def __contains__(self, raw_sighting):
-        sighting_time = self.store.get(combine_key(raw_sighting))
-        if not sighting_time:
-            return False
-        raw_sighting_time = raw_sighting['last_modified_timestamp_ms'] / 1000
-        timestamp_in_range = (
-            sighting_time > raw_sighting_time - 60 and
-            sighting_time < raw_sighting_time + 60
-        )
-        return timestamp_in_range
-
-    def in_store(self, raw_sighting):
         key = combine_key(raw_sighting)
-        return key in self.store
+        try:
+            first, last = self.store[key]
+        except (KeyError, TypeError):
+            return False
+        new_time = raw_sighting['seen']
+        if new_time > last:
+            self.store[key][1] = new_time
+        return True
 
-    def clean_expired(self):
+    def clean_expired(self, session):
         to_remove = []
-        for key, timestamp in self.store.items():
-            if timestamp < time.time() - 3600:
+        for key, times in self.store.items():
+            first, last = times
+            if first < time.time() - 3600:
                 to_remove.append(key)
+                if last == first:
+                    continue
+                encounter_id, spawn_id = key
+                encounter = session.query(Mystery) \
+                            .filter(Mystery.spawn_id == spawn_id) \
+                            .filter(Mystery.encounter_id == encounter_id) \
+                            .first()
+                if not encounter:
+                    continue
+                hour = encounter.first_seen - (encounter.first_seen % 3600)
+                encounter.last_seconds = last - hour
+                encounter.seen_range = last - first
+        if to_remove:
+            session.commit()
         for key in to_remove:
             del self.store[key]
 
@@ -199,7 +210,7 @@ class FortCache(object):
 
 
 SIGHTING_CACHE = SightingCache()
-LONGSPAWN_CACHE = LongspawnCache()
+MYSTERY_CACHE = MysteryCache()
 FORT_CACHE = FortCache()
 
 
@@ -229,23 +240,30 @@ class Sighting(Base):
     )
 
 
-class Longspawn(Base):
-    __tablename__ = 'longspawns'
+class Mystery(Base):
+    __tablename__ = 'mystery_sightings'
 
     id = Column(Integer, primary_key=True)
-    pokemon_id = Column(TINY_TYPE, index=True)
-    spawn_id = Column(ID_TYPE)
-    encounter_id = Column(HUGE_TYPE)
-    lat = Column(Float, index=True)
-    lon = Column(Float, index=True)
-    time_till_hidden_ms = Column(Integer)
-    last_modified_timestamp_ms = Column(BigInteger)
+    pokemon_id = Column(TINY_TYPE)
+    spawn_id = Column(ID_TYPE, index=True)
+    encounter_id = Column(HUGE_TYPE, index=True)
+    lat = Column(Float)
+    lon = Column(Float)
+    first_seen = Column(Integer, index=True)
+    first_seconds = Column(SmallInteger)
+    last_seconds = Column(SmallInteger)
+    seen_range = Column(SmallInteger)
+    atk_iv = Column(TINY_TYPE)
+    def_iv = Column(TINY_TYPE)
+    sta_iv = Column(TINY_TYPE)
+    move_1 = Column(SmallInteger)
+    move_2 = Column(SmallInteger)
 
     __table_args__ = (
         UniqueConstraint(
             'encounter_id',
-            'last_modified_timestamp_ms',
-            name='encounter_time_unique'
+            'spawn_id',
+            name='unique_encounter'
         ),
     )
 
@@ -431,26 +449,36 @@ def add_spawnpoint(session, pokemon, spawns=None):
     session.commit()
 
 
-def add_longspawn(session, pokemon):
-    if pokemon in LONGSPAWN_CACHE:
+def add_mystery(session, pokemon):
+    if pokemon in MYSTERY_CACHE:
         return
-    obj = Longspawn(
+    existing = session.query(Mystery) \
+        .filter(Mystery.encounter_id == pokemon['encounter_id']) \
+        .filter(Mystery.spawn_id == pokemon['spawn_id']) \
+        .first()
+    if existing:
+        key = combine_key(pokemon)
+        MYSTERY_CACHE.store[key] = [existing.first_seen, pokemon['seen']]
+        return
+    seconds = pokemon['seen'] % 3600
+    obj = Mystery(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
         encounter_id=pokemon['encounter_id'],
-        expire_timestamp=pokemon['expire_timestamp'],
         lat=pokemon['lat'],
         lon=pokemon['lon'],
-        time_till_hidden_ms=pokemon['time_till_hidden_ms'],
-        last_modified_timestamp_ms=pokemon['last_modified_timestamp_ms'],
+        first_seen=pokemon['seen'],
+        first_seconds=seconds,
+        last_seconds=seconds,
+        seen_range=0,
+        atk_iv=pokemon.get('individual_attack'),
+        def_iv=pokemon.get('individual_defense'),
+        sta_iv=pokemon.get('individual_stamina'),
+        move_1=pokemon.get('move_1'),
+        move_2=pokemon.get('move_2')
     )
     session.add(obj)
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-    else:
-        LONGSPAWN_CACHE.add(pokemon)
+    MYSTERY_CACHE.add(pokemon)
 
 
 def add_fort_sighting(session, raw_fort):
@@ -596,31 +624,70 @@ def get_despawn_time(session, spawn_id):
         return None
 
 
-def estimate_remaining_time(session, spawn_id):
+def get_first_last(session, spawn_id):
     query = session.execute('''
-        SELECT min((last_modified_timestamp_ms / 1000) % 3600) as min, max((last_modified_timestamp_ms / 1000) % 3600) as max
-        FROM longspawns
-        WHERE spawn_id = {spawn_id} AND last_modified_timestamp_ms > 1477958400000
+        SELECT min(first_seconds) as min, max(last_seconds) as max
+        FROM mystery_sightings
+        WHERE spawn_id = {spawn_id}
     '''.format(spawn_id=spawn_id))
-
     result = query.first()
-    first_sight, last_sight = result
+    if result:
+        return result
+    else:
+        return None, None
 
-    if not first_sight or not last_sight:
+
+def get_widest_range(session, spawn_id):
+    query = session.execute('''
+        SELECT max(seen_range)
+        FROM mystery_sightings
+        WHERE spawn_id = {}
+    '''.format(spawn_id))
+    largest = None
+    try:
+        largest = query.first()[0]
+    except TypeError:
+        pass
+    if not largest:
+        return None, None
+    query = session.execute('''
+        SELECT first_seconds, last_seconds
+        FROM mystery_sightings
+        WHERE spawn_id = {s}
+        AND seen_range = {l}
+    '''.format(s=spawn_id, l=largest))
+    result = query.first()
+    if result:
+        return result
+    else:
+        return None, None
+
+
+def estimate_remaining_time(session, spawn_id, seen=None):
+    first, last = get_first_last(session, spawn_id)
+
+    if not first:
         return 90, 1800
 
-    val_range = last_sight - first_sight
-    if val_range > 1710:
-        return 90, 3600
+    if seen:
+        if seen > last:
+            last = seen
+        elif seen < first:
+            first = seen
 
-    if (last_sight + 89) > (first_sight + 1801):
-        return 90, 1800
+    if last - first >= 1800:
+        possible = (first + 90, last + 90, first + 1800, last + 1800)
+        estimates = []
+        for possibility in possible:
+            estimates.append(utils.time_until_time(possibility, seen))
+        soonest = min(estimates)
+        latest = max(estimates)
+        return soonest, latest
 
-    earliest_estimate = (last_sight + 89) % 3600
-    latest_estimate = (first_sight + 1801) % 3600
-
-    soonest = utils.time_until_time(earliest_estimate)
-    latest = utils.time_until_time(latest_estimate)
+    soonest = last + 90
+    latest = first + 1800
+    soonest = utils.time_until_time(soonest, seen)
+    latest = utils.time_until_time(latest, seen)
 
     return soonest, latest
 

@@ -104,7 +104,7 @@ class DatabaseProcessor(Thread):
         while self.running or self.queue:
             if self._clean_cache:
                 db.SIGHTING_CACHE.clean_expired()
-                db.LONGSPAWN_CACHE.clean_expired()
+                db.MYSTERY_CACHE.clean_expired(session)
                 self._clean_cache = False
             try:
                 item = self.queue.popleft()
@@ -117,18 +117,18 @@ class DatabaseProcessor(Thread):
                         db.add_sighting(session, item)
                         if item['valid'] == True:
                             db.add_spawnpoint(session, item, self.spawns)
-                        self.count += 1
-                    elif item['type'] == 'longspawn':
-                        db.add_longspawn(session, item)
-                        self.count += 1
-                    elif item['type'] == 'fort':
-                        db.add_fort_sighting(session, item)
-                    elif item['type'] == 'pokestop':
-                        db.add_pokestop(session, item)
-                    self.logger.debug('Item saved to db')
-                except Exception:
-                    session.rollback()
-                    self.logger.exception('A wild exception appeared!')
+                    else:
+                        db.add_mystery(session, item)
+                    self.count += 1
+                elif item['type'] == 'fort':
+                    db.add_fort_sighting(session, item)
+                elif item['type'] == 'pokestop':
+                    db.add_pokestop(session, item)
+                self.logger.debug('Item saved to db')
+            except Exception as e:
+                session.rollback()
+                self.logger.exception('A wild exception appeared! {}'.format(e))
+
         session.close()
 
     def clean_cache(self):
