@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from geopy.distance import great_circle
 from pgoapi.auth_ptc import AuthPtc
+from sqlalchemy.exc import DBAPIError
 
 from pgoapi import (
     exceptions as pgoapi_exceptions,
@@ -82,34 +83,35 @@ class DatabaseProcessor(Thread):
 
     def __init__(self):
         super().__init__()
-        self.queue = deque()
+        self.queue = Queue()
         self.logger = getLogger('dbprocessor')
         self.running = True
         self._clean_cache = False
         self.count = 0
+        self._commit = False
 
     def stop(self):
         self.running = False
 
-    def add(self, obj_list):
-        self.queue.extend(obj_list)
+    def add(self, obj):
+        self.queue.put(obj)
 
     def run(self):
         session = db.Session()
 
         while self.running or self.queue:
             if self._clean_cache:
-                db.SIGHTING_CACHE.clean_expired()
-                db.MYSTERY_CACHE.clean_expired(session)
-                self._clean_cache = False
-            try:
-                item = self.queue.popleft()
-            except IndexError:
-                self.logger.debug('No items - sleeping')
-                time.sleep(0.2)
-            else:
                 try:
-                    if item['type'] == 'pokemon':
+                    db.SIGHTING_CACHE.clean_expired()
+                    db.MYSTERY_CACHE.clean_expired(session)
+                except Exception as e:
+                    self.logger.error('Failed to clean cache. {}'.format(e))
+                finally:
+                    self._clean_cache = False
+            try:
+                item = self.queue.get()
+                if item['type'] == 'pokemon':
+                    if item['valid']:
                         db.add_sighting(session, item)
                         if item['valid'] == True:
                             db.add_spawnpoint(session, item, self.spawns)
@@ -121,14 +123,23 @@ class DatabaseProcessor(Thread):
                 elif item['type'] == 'pokestop':
                     db.add_pokestop(session, item)
                 self.logger.debug('Item saved to db')
-            except Exception as e:
+                if self._commit:
+                    session.commit()
+                    self._commit = False
+            except DBAPIError as e:
                 session.rollback()
+                self.logger.exception('A wild DB exception appeared! {}'.format(e))
+            except Exception as e:
                 self.logger.exception('A wild exception appeared! {}'.format(e))
 
+        session.commit()
         session.close()
 
     def clean_cache(self):
         self._clean_cache = True
+
+    def commit(self):
+        self._commit = True
 
 
 class BaseSlave:

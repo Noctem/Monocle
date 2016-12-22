@@ -10,6 +10,7 @@ from logging import getLogger
 from threading import Thread, active_count, Semaphore
 from os import system, makedirs
 from sys import platform
+from collections import deque
 
 from pgoapi import (
     exceptions as pgoapi_exceptions,
@@ -199,10 +200,10 @@ class Slave(BaseSlave):
         responses = await self.call_chain(request)
 
         map_objects = responses.get('GET_MAP_OBJECTS', {})
-        pokemons = []
-        forts = []
 
         sent = False
+        pokemon_seen = 0
+        forts_seen = 0
 
         if map_objects.get('status') != 1:
             self.error_code = 'UNKNOWNRESPONSE'
@@ -216,7 +217,7 @@ class Slave(BaseSlave):
         for map_cell in map_objects['map_cells']:
             request_time_ms = map_cell['current_timestamp_ms']
             for pokemon in map_cell.get('wild_pokemons', []):
-                pokemon_data = None
+                pokemon_seen += 1
                 # Accurate times only provided in the last 90 seconds
                 invalid_tth = (
                     pokemon['time_till_hidden_ms'] < 0 or
@@ -251,26 +252,24 @@ class Slave(BaseSlave):
                         self.logger.warning('Exception during encounter.')
                 self.db_processor.add(normalized)
             for fort in map_cell.get('forts', []):
+                forts_seen += 1
                 if not fort.get('enabled'):
                     continue
                 if fort.get('type') == 1:  # pokestops
                     if 'lure_info' in fort:
                         norm = utils.normalize_lured(fort, request_time_ms)
-                        pokemons.append(norm)
+                        pokemon_seen += 1
+                        self.db_processor.add(norm)
                     pokestop = utils.normalize_pokestop(fort)
-                    forts.append(pokestop)
+                    self.db_processor.add(pokestop)
                     if config.SPIN_POKESTOPS and sum(self.items.values()) < self.item_capacity:
                         cooldown = fort.get('cooldown_complete_timestamp_ms', 0)
                         if not cooldown or time.time() > cooldown / 1000:
                             await self.spin_pokestop(pokestop)
                 else:
-                    forts.append(utils.normalize_gym(fort))
-
-        self.db_processor.add(forts)
-        pokemon_seen = len(pokemons)
+                    self.db_processor.add(utils.normalize_gym(fort))
 
         if pokemon_seen > 0:
-            self.db_processor.add(pokemons)
             self.error_code = ':'
             self.total_seen += pokemon_seen
             self.g['seen'] += pokemon_seen
@@ -296,9 +295,9 @@ class Slave(BaseSlave):
                 ((latitude, longitude), start, self.speed, self.total_seen,
                 self.visits, pokemon_seen, sent))])
         self.logger.info(
-            'Point processed, %d Pokemons and %d forts seen!',
+            'Point processed, %d Pokemon and %d forts seen!',
             pokemon_seen,
-            len(forts),
+            forts_seen,
         )
         self.update_accounts_dict()
         return True
@@ -388,47 +387,61 @@ class Overseer:
         self.db_processor.start()
 
     def check(self):
-        last_cleaned_cache = time.time()
-        last_things_found_updated = time.time()
+        now = time.time()
+        last_commit = now
+        last_cleaned_cache = now
+        last_things_found_updated = now
         last_stats_updated = 0
 
         while not self.killed:
-            now = time.time()
-            # Clean cache
-            if now - last_cleaned_cache > 900:  # clean cache after 15min
-                self.db_processor.clean_cache()
-                last_cleaned_cache = now
-            # Record things found count
-            if now - last_stats_updated >= 5:
-                self.seen_stats, self.visit_stats, self.delay_stats, self.speed_stats = self.get_visit_stats()
-                self.update_coroutines_count()
-                last_stats_updated = now
-            if not self.paused and now - last_things_found_updated >= 10:
-                self.things_count = self.things_count[-9:]
-                self.things_count.append(str(self.db_processor.count))
-                last_things_found_updated = now
-            if self.status_bar:
-                if platform == 'win32':
-                    _ = system('cls')
-                else:
-                    _ = system('clear')
-                print(self.get_status_message())
-            time.sleep(.5)
-            if self.paused:
-                time.sleep(15)
+            try:
+                now = time.time()
+                # Clean cache
+                if now - last_cleaned_cache > 900:  # clean cache after 15min
+                    self.db_processor.clean_cache()
+                    last_cleaned_cache = now
+                if now - last_commit > 8:
+                    self.db_processor.commit()
+                    last_commit = now
+                # Record things found count
+                if not self.paused and now - last_stats_updated > 5:
+                    self.seen_stats, self.visit_stats, self.delay_stats, self.speed_stats = self.get_visit_stats()
+                    self.update_coroutines_count()
+                    last_stats_updated = now
+                if not self.paused and now - last_things_found_updated > 10:
+                    self.things_count = self.things_count[-9:]
+                    self.things_count.append(str(self.db_processor.count))
+                    last_things_found_updated = now
+                if self.status_bar:
+                    if platform == 'win32':
+                        _ = system('cls')
+                    else:
+                        _ = system('clear')
+                    print(self.get_status_message())
+                time.sleep(.5)
+                if self.paused:
+                    time.sleep(15)
+            except Exception as e:
+                self.logger.exception(e)
         # OK, now we're killed
-        while True:
-            self.update_coroutines_count()
-            # Spaces at the end are important, as they clear previously printed
-            # output - \r doesn't clean whole line
-            print(
-                '{} coroutines active   '.format(self.coroutines_count),
-                end='\r'
-            )
-            if self.coroutines_count == 0:
-                print('Done.                ')
-                return
-            time.sleep(.25)
+        try:
+            while (self.coroutines_count == '?' or
+                       self.coroutines_count > 0 or
+                       not self.db_processor.queue.empty()):
+                self.update_coroutines_count()
+                pending = self.db_processor.queue.qsize()
+                # Spaces at the end are important, as they clear previously printed
+                # output - \r doesn't clean whole line
+                print(
+                    '{c} coroutines active, {d} DB items pending   '.format(
+                        c=self.coroutines_count, d=pending),
+                    end='\r'
+                )
+                time.sleep(.5)
+        except Exception as e:
+            self.logger.exception(e)
+        finally:
+            print('Done.                                          ')
 
     @staticmethod
     def generate_stats(somelist):

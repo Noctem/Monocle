@@ -4,7 +4,6 @@ import enum
 import time
 
 from sqlalchemy import create_engine
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, ForeignKey, UniqueConstraint
 from sqlalchemy.types import TypeDecorator, Numeric, Text
 from sqlalchemy.ext.declarative import declarative_base
@@ -421,12 +420,7 @@ def add_sighting(session, pokemon):
         move_2=pokemon.get('move_2')
     )
     session.add(obj)
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-    else:
-        SIGHTING_CACHE.add(pokemon)
+    SIGHTING_CACHE.add(pokemon)
 
 
 def add_spawnpoint(session, pokemon, spawns=None):
@@ -473,7 +467,6 @@ def add_spawnpoint(session, pokemon, spawns=None):
             duration=duration
         )
         session.add(obj)
-    session.commit()
 
 
 def add_mystery(session, pokemon):
@@ -542,12 +535,7 @@ def add_fort_sighting(session, raw_fort):
         last_modified=raw_fort['last_modified'],
     )
     session.add(obj)
-    try:
-        session.commit()
-    except IntegrityError:  # skip adding fort this time
-        session.rollback()
-    else:
-        FORT_CACHE.add(raw_fort)
+    FORT_CACHE.add(raw_fort)
 
 
 def add_pokestop(session, raw_pokestop):
@@ -566,12 +554,7 @@ def add_pokestop(session, raw_pokestop):
         lon=raw_pokestop['lon'],
     )
     session.add(pokestop)
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-    else:
-        FORT_CACHE.add(raw_pokestop)
+    FORT_CACHE.add(raw_pokestop)
 
 
 def get_sightings(session):
