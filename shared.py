@@ -1,4 +1,4 @@
-from queue import Queue
+from queue import Queue, Empty, Full
 from multiprocessing.managers import BaseManager
 from signal import signal, SIGINT, SIG_IGN
 from collections import deque
@@ -41,6 +41,29 @@ class CaptchaException(Exception):
 
 class AccountManager(BaseManager):
     pass
+
+
+class CustomQueue(Queue):
+    def full_wait(self, maxsize=0, timeout=None):
+        '''Block until queue size falls below maxsize'''
+        starttime = time.monotonic()
+        with self.not_full:
+            if maxsize > 0:
+                if timeout is None:
+                    while self._qsize() >= maxsize:
+                        self.not_full.wait()
+                elif timeout < 0:
+                    raise ValueError("'timeout' must be a non-negative number")
+                else:
+                    endtime = time.monotonic() + timeout
+                    while self._qsize() >= maxsize:
+                        remaining = endtime - time.monotonic()
+                        if remaining <= 0.0:
+                            raise Full
+                        self.not_full.wait(remaining)
+            self.not_empty.notify()
+        endtime = time.monotonic()
+        return endtime - starttime
 
 
 class Spawns:
@@ -689,8 +712,7 @@ class BaseSlave:
         if self.ever_authenticated:
             self.update_accounts_dict()
 
-
-_captcha_queue = Queue()
+_captcha_queue = CustomQueue()
 _extra_queue = Queue()
 _worker_dict = {}
 

@@ -43,7 +43,7 @@ _optional = {
     'CONTROL_SOCKS': None,
     'ENCRYPT_PATH': None,
     'HASH_PATH': None,
-    'MAX_CAPTCHAS': 200,
+    'MAX_CAPTCHAS': 0,
     'ACCOUNTS': (),
     'SPEED_LIMIT': 19,
     'ENCOUNTER': None,
@@ -448,9 +448,11 @@ class Overseer:
                     else:
                         _ = system('clear')
                     print(self.get_status_message())
-                time.sleep(.5)
+
                 if self.paused:
                     time.sleep(15)
+                else:
+                    time.sleep(.5)
             except Exception as e:
                 self.logger.exception(e)
         # OK, now we're killed
@@ -713,16 +715,13 @@ class Overseer:
                         else:
                             continue
 
-                    while (self.captcha_queue.qsize() > config.MAX_CAPTCHAS
-                            and not self.killed):
-                        self.paused = True
-                        time.sleep(10)
-                        self.idle_seconds += 10
-
                     if self.killed:
                         return
 
-                    self.paused = False
+                    if self.captcha_queue.qsize() > config.MAX_CAPTCHAS:
+                        self.paused = True
+                        self.idle_seconds += self.captcha_queue.full_wait(maxsize=config.MAX_CAPTCHAS)
+                        self.paused = False
 
                     point = list(spawn[0])
                     spawn_time = spawn[1] + current_hour

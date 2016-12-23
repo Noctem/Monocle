@@ -20,7 +20,6 @@ from selenium.webdriver.common.by import By
 from time import sleep, time
 
 
-
 def resolve_captcha(url, api, driver, timestamp):
     driver.get(url)
     WebDriverWait(driver, 86400).until(EC.text_to_be_present_in_element_value((By.NAME, "g-recaptcha-response"), ""))
