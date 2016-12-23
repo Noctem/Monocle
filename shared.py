@@ -566,12 +566,12 @@ class BaseSlave:
         # empty request 1
         request = self.api.create_request()
         await self.loop.run_in_executor(self.network_executor, request.call)
-        await random_sleep(1, 1.5, 1.172)
+        await random_sleep(0.3, 0.5)
 
         # empty request 2
         request = self.api.create_request()
         await self.loop.run_in_executor(self.network_executor, request.call)
-        await random_sleep(1, 1.5, 1.304)
+        await random_sleep(0.2, 0.4)
 
         # request 1: get_player
         request = self.api.create_request()
@@ -593,9 +593,9 @@ class BaseSlave:
             raise pgoapi_exceptions.BannedAccountException
             return False
 
-        await random_sleep(1, 1.5, 1.356)
+        await random_sleep(.9, 1.2)
 
-        version = 4901
+        version = 5102
         # request 2: download_remote_config_version
         request = self.api.create_request()
         request.download_remote_config_version(platform=1, app_version=version)
@@ -609,14 +609,14 @@ class BaseSlave:
                 player_level = player_stats.get('level')
                 break
 
-        await random_sleep(1, 1.2, 1.072)
+        await random_sleep(.5, .7)
 
         # request 3: get_asset_digest
         request = self.api.create_request()
         request.get_asset_digest(platform=1, app_version=version)
         await self.call_chain(request, buddy=False)
 
-        await random_sleep(1, 2, 1.709)
+        await random_sleep(1.2, 1.4)
 
         if (COMPLETE_TUTORIAL and
                 tutorial_state is not None and
@@ -628,16 +628,21 @@ class BaseSlave:
             request = self.api.create_request()
             request.get_player_profile()
             await self.call_chain(request)
-            await random_sleep(1, 1.5, 1.326)
+            await random_sleep(.2, .4)
 
         if player_level:
             # request 5: level_up_rewards
             request = self.api.create_request()
             request.level_up_rewards(level=player_level)
             await self.call_chain(request)
-            await random_sleep(1, 1.5, 1.184)
+            await random_sleep(.9, 1.1)
         else:
             self.logger.warning('No player level')
+
+        request = self.api.create_request()
+        request.register_background_device(device_type='apple_watch')
+        await self.call_chain(request)
+        await random_sleep(.1, .3)
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
         self.error_code = None

@@ -647,10 +647,10 @@ class Overseer:
     async def best_worker(self, point, spawn_time=None):
         if spawn_time:
             visit_time = spawn_time
-            skip_time = -600
+            skip_time = -300
         else:
             visit_time = time.time()
-            skip_time = -6
+            skip_time = -3
 
         worker = None
         lowest_speed = float('inf')
@@ -666,14 +666,17 @@ class Overseer:
             for w in workers:
                 speed = await w.travel_speed(point)
                 if speed is not None and speed < lowest_speed:
+                    w.busy = True
+                    try:
+                        worker.busy = False
+                    except AttributeError:
+                        pass
                     lowest_speed = speed
                     worker = w
                     if speed < 10:
                         break
             if self.killed:
                 return None, None
-            if worker and worker.busy:
-                worker = None
             if lowest_speed > config.SPEED_LIMIT or worker is None:
                 time_diff = visit_time - time.time()
                 if time_diff < skip_time:
@@ -822,10 +825,10 @@ if __name__ == '__main__':
 
     overseer = Overseer(status_bar=args.status_bar, loop=loop, manager=manager)
     overseer.start()
-    overseer_thread = Thread(target=overseer.check, name='overseer')
+    overseer_thread = Thread(target=overseer.check, name='overseer', daemon=True)
     overseer_thread.start()
 
-    launcher_thread = Thread(target=overseer.launch, name='launcher')
+    launcher_thread = Thread(target=overseer.launch, name='launcher', daemon=True)
     launcher_thread.start()
 
     try:
@@ -838,9 +841,16 @@ if __name__ == '__main__':
         utils.dump_pickle('cells', Slave.cell_ids)
 
         pending = asyncio.Task.all_tasks(loop=loop)
-        loop.run_until_complete(asyncio.gather(*pending))
+        try:
+            loop.run_until_complete(asyncio.gather(*pending))
+        except Exception as e:
+            print('Exception: {}'.format(e))
         Slave.db_processor.stop()
         if config.NOTIFY:
             Slave.notifier.session.close()
+        Slave.spawns.session.close()
         manager.shutdown()
-        loop.close()
+        try:
+            loop.close()
+        except RuntimeError:
+            pass
