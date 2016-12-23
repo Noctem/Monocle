@@ -124,19 +124,14 @@ while not captcha_queue.empty():
                 account['time'] = time()
                 print('failure')
                 captcha_queue.put(account)
-    except KeyboardInterrupt:
-        captcha_queue.put(account)
-        break
-    except (WebDriverException, AttributeError):
+    except (KeyboardInterrupt, WebDriverException, AttributeError, Exception) as e:
+        print(e)
         captcha_queue.put(account)
         break
     except (exceptions.AuthException, exceptions.AuthTokenExpiredException, exceptions.AuthTokenExpiredException):
         print('Authentication error')
         captcha_queue.put(account)
         sleep(2)
-    except Exception as e:
-        captcha_queue.put(account)
-        raise
 
 try:
     driver.close()
