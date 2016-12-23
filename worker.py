@@ -666,7 +666,8 @@ class Overseer:
             worker = None
             for w in workers:
                 speed = await w.travel_speed(point)
-                if speed is not None and speed < lowest_speed:
+                if (speed and speed < lowest_speed and
+                        speed < config.SPEED_LIMIT):
                     w.busy = True
                     try:
                         worker.busy = False
@@ -674,11 +675,15 @@ class Overseer:
                         pass
                     lowest_speed = speed
                     worker = w
-                    if speed < 10:
+                    if speed < 10 and config.SPEED_LIMIT > 10:
                         break
             if self.killed:
                 return None, None
-            if lowest_speed > config.SPEED_LIMIT or worker is None:
+            if worker is None:
+                try:
+                    worker.busy = False
+                except AttributeError:
+                    pass
                 time_diff = visit_time - time.time()
                 if time_diff < skip_time:
                     return False, False
@@ -778,7 +783,6 @@ class Overseer:
                     self.skipped += 1
                 return False
 
-            worker.busy = True
             if spawn_time:
                 worker.after_spawn = time.time() - spawn_time
             worker.speed = speed
