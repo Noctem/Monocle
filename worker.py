@@ -18,6 +18,7 @@ from pgoapi import (
 )
 
 import asyncio
+import uvloop
 import random
 import time
 
@@ -816,7 +817,7 @@ if __name__ == '__main__':
     manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
     manager.start(mgr_init)
 
-
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(exception_handler)
     Slave.loop = loop
