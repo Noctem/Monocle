@@ -21,6 +21,7 @@ import time
 import pickle
 import asyncio
 import random
+import utils
 
 from utils import dump_pickle, load_pickle, get_current_hour, time_until_time, create_accounts_dict, load_accounts, random_sleep, get_device_info
 from config import NETWORK_THREADS, NOTIFY, ENCRYPT_PATH, HASH_PATH, PROXIES, CONTROL_SOCKS, COMPLETE_TUTORIAL, NOTIFY_IDS, ENCOUNTER
@@ -66,19 +67,54 @@ class CustomQueue(Queue):
         return endtime - starttime
 
 
+class BusyLock(asyncio.Lock):
+    def acquire_now(self):
+        if not self._locked and all(w.cancelled() for w in self._waiters):
+            self._locked = True
+            return True
+        else:
+            return False
+
+
 class Spawns:
     """Manage spawn points and times"""
     session = db.Session()
     spawns = {}
     despawn_times = {}
-    mysteries = ()
+    mysteries = set()
+    altitudes = {}
 
-    def update_spawns(self, loadpickle=False):
-        self.spawns, self.despawn_times, self.mysteries = db.get_spawns(self.session)
-        dump_pickle('spawns', self.spawns)
+    def __len__(self):
+        return len(self.despawn_times)
+
+    def update(self, loadpickle=False):
+        self.spawns, self.despawn_times, self.mysteries, self.altitudes = db.get_spawns(self.session)
+        self.pickle()
+
+    def pickle(self):
+        dump_pickle('spawns', self)
 
     def have_id(self, spawn_id):
         return spawn_id in self.despawn_times
+
+    def get_altitude(self, point):
+        point = utils.round_coords(point)
+        alt = self.altitudes.get(point)
+        if not alt:
+            alt = utils.get_altitude(point)
+            self.altitudes[point] = alt
+        return alt
+
+    def items(self):
+        return self.spawns.items()
+
+    def get_mysteries(self):
+        mysteries = deque(self.mysteries)
+        random.shuffle(mysteries)
+        return mysteries
+
+    def add_despawn(self, spawn_id, despawn_time):
+        self.despawn_times[spawn_id] = despawn_time
 
     def get_despawn_seconds(self, spawn_id):
         return self.despawn_times.get(spawn_id)
@@ -122,7 +158,7 @@ class DatabaseProcessor(Thread):
     def run(self):
         session = db.Session()
 
-        while self.running or self.queue:
+        while self.running or not self.queue.empty():
             if self._clean_cache:
                 try:
                     db.SIGHTING_CACHE.clean_expired()
@@ -133,6 +169,7 @@ class DatabaseProcessor(Thread):
                     self._clean_cache = False
             try:
                 item = self.queue.get()
+
                 if item['type'] == 'pokemon':
                     if item['valid']:
                         db.add_sighting(session, item)
@@ -145,6 +182,8 @@ class DatabaseProcessor(Thread):
                     db.add_fort_sighting(session, item)
                 elif item['type'] == 'pokestop':
                     db.add_pokestop(session, item)
+                elif item['type'] == 'kill':
+                    break
                 self.logger.debug('Item saved to db')
                 if self._commit:
                     session.commit()
@@ -199,7 +238,7 @@ class BaseSlave:
         self.proxy = proxy
         self.initialize_api()
         # State variables
-        self.busy = False
+        self.busy = BusyLock()
         self.killed = False
         # Other variables
         self.after_spawn = None
@@ -255,7 +294,6 @@ class BaseSlave:
         self.last_visit = time.time()
         try:
             if response.get('status_code') == 3:
-                logger.warning(self.username + ' is banned.')
                 raise pgoapi_exceptions.BannedAccountException
             responses = response.get('responses')
             delta = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
@@ -277,7 +315,7 @@ class BaseSlave:
         if self.proxy:
             self.api.set_proxy({'http': proxy, 'https': proxy})
 
-    async def new_account(self):
+    async def new_account(self, lock=False):
         while self.extra_queue.empty():
             if self.killed:
                 return False
@@ -286,6 +324,8 @@ class BaseSlave:
         self.username = self.account.get('username')
         self.initialize_api()
         self.error_code = None
+        if lock:
+            self.busy.release()
 
     def update_accounts_dict(self, captcha=False, banned=False):
         self.account['captcha'] = captcha
@@ -312,19 +352,19 @@ class BaseSlave:
         self.captcha_queue.put(self.account)
         await self.new_account()
 
-    async def swap_account(self, reason='', busywait=False):
+    async def swap_account(self, reason='', lock=False):
         self.error_code = 'SWAPPING'
         self.logger.warning('Swapping out {u} because {r}.'.format(
                             u=self.username, r=reason))
-        while busywait and self.busy:
-            await asyncio.sleep(2)
+        if lock:
+            await self.busy.acquire()
         self.update_accounts_dict()
         while self.extra_queue.empty():
             if self.killed:
                 return False
             await asyncio.sleep(15)
         self.extra_queue.put(self.account)
-        await self.new_account()
+        await self.new_account(lock)
 
     async def remove_account(self):
         self.error_code = 'REMOVING'
@@ -433,13 +473,13 @@ class BaseSlave:
             if PROXIES:
                 self.swap_proxy(reason=reason)
             return
-        time_passed = time.time() - CIRCUIT_TIME[self.proxy]
+        time_passed = time.monotonic() - CIRCUIT_TIME[self.proxy]
         if time_passed > 180:
             socket = CONTROL_SOCKS[self.proxy]
             with Controller.from_socket_file(path=socket) as controller:
                 controller.authenticate()
                 controller.signal(Signal.NEWNYM)
-            CIRCUIT_TIME[self.proxy] = time.time()
+            CIRCUIT_TIME[self.proxy] = time.monotonic()
             CIRCUIT_FAILURES[self.proxy] = 0
             self.logger.warning('Changed circuit on {p} due to {r}.'.format(
                                 p=self.proxy, r=reason))
@@ -683,12 +723,10 @@ class BaseSlave:
                 normalized.update(await self.encounter(pokemon))
             self.error_code = '*'
             notified, explanation = self.notifier.notify(normalized)
+            self.logger.info(explanation)
             if notified:
-                self.logger.info(explanation)
                 self.g['sent'] += 1
-            else:
-                self.error_code = '!'
-                self.logger.warning(explanation)
+            self.error_code = '!'
             return normalized, notified
         else:
             return normalized, False

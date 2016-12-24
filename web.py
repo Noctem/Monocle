@@ -18,16 +18,24 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # Check whether config has all necessary attributes
 REQUIRED_SETTINGS = (
-    'TRASH_IDS',
     'AREA_NAME',
-    'REPORT_SINCE',
-    'MAP_PROVIDER_URL',
-    'MAP_PROVIDER_ATTRIBUTION',
     'GOOGLE_MAPS_KEY'
 )
 for setting_name in REQUIRED_SETTINGS:
     if not hasattr(config, setting_name):
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
+
+# Set defaults for missing config options
+_optional = {
+    'TRASH_IDS': (),
+    'MAP_PROVIDER_URL': '//{s}.tile.osm.org/{z}/{x}/{y}.png'
+    'MAP_PROVIDER_ATTRIBUTION': '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors',
+    'MAP_WORKERS': True,
+    'AUTHKEY': b'm3wtw0'
+}
+for setting_name, default in _optional.items():
+    if not hasattr(config, setting_name):
+        setattr(config, setting_name, default)
 
 
 def get_args():
@@ -48,7 +56,7 @@ def get_args():
     parser.add_argument(
         '-d', '--debug', help='Debug Mode', action='store_true'
     )
-    parser.set_defaults(DEBUG=True)
+    parser.set_defaults(debug=False)
     return parser.parse_args()
 
 
@@ -58,11 +66,6 @@ app = Flask(__name__, template_folder='templates')
 @app.route('/data')
 def pokemon_data():
     return json.dumps(get_pokemarkers())
-
-
-@app.route('/workers_data')
-def workers_data():
-    return json.dumps(get_worker_markers())
 
 
 @app.route('/')
@@ -76,33 +79,67 @@ def fullmap():
         map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION,
     )
 
-@app.route('/workers')
-def workers_map():
-    map_center = utils.get_map_center()
-    return render_template(
-        'workersmap.html',
-        area_name=config.AREA_NAME,
-        map_center=map_center,
-        map_provider_url=config.MAP_PROVIDER_URL,
-        map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION
-    )
 
-if hasattr(config, 'AUTHKEY'):
-    authkey = config.AUTHKEY
-else:
-    authkey = b'm3wtw0'
+try:
+    class AccountManager(BaseManager): pass
+    AccountManager.register('worker_dict')
+    manager = AccountManager(address=utils.get_address(), authkey=authkey)
+    manager.connect()
+    worker_dict = manager.worker_dict()
+except (FileNotFoundError, AttributeError):
+    print('Unable to connect to manager for worker data.')
+    config.MAP_WORKERS = False
 
-class AccountManager(BaseManager): pass
-AccountManager.register('worker_dict')
-manager = AccountManager(address=utils.get_address(), authkey=authkey)
-manager.connect()
+
+if config.MAP_WORKERS:
+    @app.route('/workers_data')
+    def workers_data():
+        return json.dumps(get_worker_markers())
+
+
+    @app.route('/workers')
+    def workers_map():
+        map_center = utils.get_map_center()
+        return render_template(
+            'workersmap.html',
+            area_name=config.AREA_NAME,
+            map_center=map_center,
+            map_provider_url=config.MAP_PROVIDER_URL,
+            map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION
+        )
+
+    def get_worker_markers():
+        markers = []
+
+        # Worker start points
+        for worker_no, data in worker_dict.items():
+            coords = data[0]
+            unix_time = data[1]
+            speed = str(round(data[2], 1)) + 'mph'
+            total_seen = data[3]
+            visits = data[4]
+            seen_here = data[5]
+            sent_notification = data[6]
+            time = datetime.fromtimestamp(unix_time).strftime('%I:%M:%S %p').lstrip('0')
+            markers.append({
+                'lat': coords[0],
+                'lon': coords[1],
+                'type': 'worker',
+                'worker_no': worker_no,
+                'time': time,
+                'speed': speed,
+                'total_seen': total_seen,
+                'visits': visits,
+                'seen_here': seen_here,
+                'sent_notification': sent_notification
+            })
+        return markers
+
 
 def get_pokemarkers():
     markers = []
-    session = db.Session()
     pokemons = db.get_sightings(session)
     forts = db.get_forts(session)
-    session.close()
 
     for pokemon in pokemons:
         markers.append({
@@ -131,53 +168,31 @@ def get_pokemarkers():
             'lat': fort['lat'],
             'lon': fort['lon'],
         })
-    worker_dict = manager.worker_dict()
-    # Worker start points
-    for worker_no, data in worker_dict.items():
-        coords = data[0]
-        unix_time = data[1]
-        time = datetime.fromtimestamp(unix_time).strftime('%I:%M %p').lstrip('0')
-        markers.append({
-            'lat': coords[0],
-            'lon': coords[1],
-            'type': 'worker',
-            'worker_no': worker_no,
-            'time': time
-        })
-    return markers
 
-def get_worker_markers():
-    markers = []
-
-    worker_dict = manager.worker_dict()
-    # Worker start points
-    for worker_no, data in worker_dict.items():
-        coords = data[0]
-        unix_time = data[1]
-        speed = str(round(data[2], 1)) + 'mph'
-        total_seen = data[3]
-        visits = data[4]
-        seen_here = data[5]
-        sent_notification = data[6]
-        time = datetime.fromtimestamp(unix_time).strftime('%I:%M:%S %p').lstrip('0')
-        markers.append({
-            'lat': coords[0],
-            'lon': coords[1],
-            'type': 'worker',
-            'worker_no': worker_no,
-            'time': time,
-            'speed': speed,
-            'total_seen': total_seen,
-            'visits': visits,
-            'seen_here': seen_here,
-            'sent_notification': sent_notification
-        })
+    if config.MAP_WORKERS:
+        # Worker stats
+        for worker_no, data in worker_dict.items():
+            coords = data[0]
+            unix_time = data[1]
+            time = datetime.fromtimestamp(unix_time).strftime(
+                '%I:%M %p').lstrip('0')
+            markers.append({
+                'lat': coords[0],
+                'lon': coords[1],
+                'type': 'worker',
+                'worker_no': worker_no,
+                'time': time,
+                'speed': speed,
+                'total_seen': total_seen,
+                'visits': visits,
+                'seen_here': seen_here,
+                'sent_notification': sent_notification
+            })
     return markers
 
 
 @app.route('/report')
 def report_main():
-    session = db.Session()
     top_pokemon = db.get_top_pokemon(session)
     bottom_pokemon = db.get_top_pokemon(session, order='ASC')
     bottom_sightings = db.get_all_sightings(
@@ -218,7 +233,6 @@ def report_main():
         ]
     }
     session_stats = db.get_session_stats(session)
-    session.close()
 
     area = utils.get_scan_area()
 
@@ -240,7 +254,6 @@ def report_main():
 
 @app.route('/report/<int:pokemon_id>')
 def report_single(pokemon_id):
-    session = db.Session()
     session_stats = db.get_session_stats(session)
     js_data = {
         'charts_data': {
@@ -249,7 +262,6 @@ def report_single(pokemon_id):
         'map_center': utils.get_map_center(),
         'zoom': 13,
     }
-    session.close()
     return render_template(
         'report_single.html',
         current_date=datetime.now(),
@@ -276,13 +288,13 @@ def sighting_to_marker(sighting):
 
 @app.route('/report/heatmap')
 def report_heatmap():
-    session = db.Session()
     pokemon_id = request.args.get('id')
     points = db.get_all_spawn_coords(session, pokemon_id=pokemon_id)
-    session.close()
     return json.dumps(points)
 
 
 if __name__ == '__main__':
     args = get_args()
-    app.run(debug=True, threaded=True, host=args.host, port=args.port)
+    session = db.Session()
+    app.run(debug=args.debug, threaded=True, host=args.host, port=args.port)
+    session.close()

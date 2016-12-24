@@ -104,11 +104,11 @@ class SightingCache(object):
     """
     def __init__(self):
         self.store = {}
-        self.spawn_ids = set()
+        self.spawns = set()
 
     def add(self, sighting):
         self.store[combine_key(sighting)] = sighting['expire_timestamp']
-        self.spawn_ids.add(sighting['spawn_id'])
+        self.spawns.add(sighting['spawn_id'])
 
     def __contains__(self, raw_sighting):
         expire_timestamp = self.store.get(combine_key(raw_sighting))
@@ -126,7 +126,7 @@ class SightingCache(object):
             if time.time() > timestamp:
                 to_remove.append(key)
                 try:
-                    self.spawn_ids.remove(key[1])
+                    self.spawns.remove(key[1])
                 except KeyError:
                     pass
         for key in to_remove:
@@ -329,20 +329,21 @@ Session = sessionmaker(bind=get_engine())
 
 def get_spawns(session):
     spawns = session.query(Spawnpoint)
-    mysteries = []
+    mysteries = set()
     despawn_times = {}
     spawns_dict = {}
+    altitudes = {}
     for spawn in spawns:
+        point = (spawn.lat, spawn.lon)
         if config.BOUNDARIES:
-            point = Point((spawn.lat, spawn.lon))
-            if not config.BOUNDARIES.contains(point):
+            if not config.BOUNDARIES.contains(Point(point)):
                 continue
 
-        point = (spawn.lat, spawn.lon, spawn.alt)
-
+        rounded = utils.round_coords(point, precision=4)
+        altitudes[rounded] = spawn.alt
         if config.LAST_MIGRATION:
             if not spawn.updated or spawn.updated < config.LAST_MIGRATION:
-                mysteries.append(point)
+                mysteries.add(rounded)
                 continue
 
         if spawn.duration == 60:
@@ -354,7 +355,7 @@ def get_spawns(session):
         spawns_dict[spawn.spawn_id] = (point, spawn_time)
 
     spawns = OrderedDict(sorted(spawns_dict.items(), key=lambda k: k[1][1]))
-    return spawns, despawn_times, tuple(mysteries)
+    return spawns, despawn_times, mysteries, altitudes
 
 
 def get_spawn_locations(session):
@@ -423,14 +424,13 @@ def add_sighting(session, pokemon):
     SIGHTING_CACHE.add(pokemon)
 
 
-def add_spawnpoint(session, pokemon, spawns=None):
+def add_spawnpoint(session, pokemon, spawns):
     # Check if there isn't the same entry already
     spawn_id = pokemon['spawn_id']
     new_time = pokemon['expire_timestamp'] % 3600
-    if spawns:
-        existing_time = spawns.get_despawn_seconds(spawn_id)
-        if existing_time and new_time == existing_time:
-            return
+    existing_time = spawns.get_despawn_seconds(spawn_id)
+    if new_time == existing_time:
+        return
     existing = session.query(Spawnpoint) \
         .filter(Spawnpoint.spawn_id == spawn_id) \
         .first()
@@ -439,24 +439,22 @@ def add_spawnpoint(session, pokemon, spawns=None):
         existing.updated = now
         if new_time == existing.despawn_time:
             return
-        spawns.despawn_times[spawn_id] = new_time
         existing.despawn_time = new_time
+        spawns.add_despawn(spawn_id, new_time)
     else:
-        spawns.despawn_times[spawn_id] = new_time
-        query = session.execute('''
-            SELECT max(seen_range)
-            FROM mystery_sightings
-            WHERE spawn_id = {}
-        '''.format(spawn_id))
+        point = (pokemon['lat'], pokemon['lon'])
+        altitude = spawns.get_altitude(point)
+        spawns.add_despawn(spawn_id, new_time)
+
+        first, last = get_first_last(session, spawn_id)
         duration = None
+
         try:
-            largest = query.first()[0]
-            if largest > 1710:
+            if last - first > 1710:
                 duration = 60
         except TypeError:
             pass
 
-        altitude = utils.get_altitude((pokemon['lat'], pokemon['lon']))
         obj = Spawnpoint(
             spawn_id=spawn_id,
             despawn_time=new_time,
@@ -685,7 +683,7 @@ def estimate_remaining_time(session, spawn_id, seen=None):
         elif seen < first:
             first = seen
 
-    if last - first >= 1800:
+    if last - first > 1710:
         possible = (first + 90, last + 90, first + 1800, last + 1800)
         estimates = []
         for possibility in possible:

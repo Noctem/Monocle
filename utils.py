@@ -126,7 +126,7 @@ def chunks(l, n):
 
 
 def round_coords(point, precision=2):
-    return (round(point[0], precision), round(point[1], precision))
+    return round(point[0], precision), round(point[1], precision)
 
 
 def random_altitude():

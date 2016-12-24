@@ -124,7 +124,7 @@ while not captcha_queue.empty():
                 account['time'] = time()
                 print('failure')
                 captcha_queue.put(account)
-    except (KeyboardInterrupt, WebDriverException, AttributeError, Exception) as e:
+    except (KeyboardInterrupt, Exception) as e:
         print(e)
         captcha_queue.put(account)
         break

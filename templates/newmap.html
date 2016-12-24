@@ -230,7 +230,7 @@
         overlays.Pokemon.addTo(map);
         var control = L.control.layers(null, overlays).addTo(map);
         L.tileLayer('{{ map_provider_url }}', {
-            opacity: 0.5,
+            opacity: 0.55,
             attribution: '{{ map_provider_attribution|safe }}'
         }).addTo(map);
         map.whenReady(function () {

@@ -47,6 +47,8 @@ RARE_IDS = [
     83, 115, 122, 132, 144, 145, 146, 150, 151, 130, 89, 3, 9, 131, 134, 62, 148, 94, 91, 87, 71, 45, 85, 114, 80, 6, 117, 121, 2, 8, 88, 136, 73, 103, 110, 137, 55, 28, 119, 68, 139, 141, 149, 65, 61, 142, 101, 40, 99, 38
 ]
 
+MAP_WORKERS = True  # allow displaying the live location of workers on the map
+
 REPORT_SINCE = datetime(2016, 11, 1)
 GOOGLE_MAPS_KEY = 's3cr3t'
 
