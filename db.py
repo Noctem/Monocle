@@ -339,8 +339,9 @@ def get_spawns(session):
             if not config.BOUNDARIES.contains(Point(point)):
                 continue
 
-        rounded = utils.round_coords(point, precision=4)
+        rounded = utils.round_coords(point, precision=3)
         altitudes[rounded] = spawn.alt
+        rounded = utils.round_coords(point, precision=4)
         if config.LAST_MIGRATION:
             if not spawn.updated or spawn.updated < config.LAST_MIGRATION:
                 mysteries.add(rounded)
@@ -356,24 +357,6 @@ def get_spawns(session):
 
     spawns = OrderedDict(sorted(spawns_dict.items(), key=lambda k: k[1][1]))
     return spawns, despawn_times, mysteries, altitudes
-
-
-def get_spawn_locations(session):
-    spawns = session.query(Spawnpoint)
-    spawn_points = []
-    for spawn in spawns:
-        spawn_points.append({
-            'point': (spawn.lat, spawn.lon, spawn.alt),
-            'time': (spawn.despawn_time + 1800) % 3600
-        })
-    spawn_points = sorted(spawn_points, key=lambda k: k['time'])
-    return spawn_points
-
-
-def get_spawn_ids(session):
-    query = session.query(Sighting.spawn_id)
-    spawn_ids = [i[0] for i in query]
-    return spawn_ids
 
 
 def normalize_timestamp(timestamp):
@@ -425,7 +408,7 @@ def add_sighting(session, pokemon):
 
 
 def add_spawnpoint(session, pokemon, spawns):
-    # Check if there isn't the same entry already
+    # Check if the same entry already exists
     spawn_id = pokemon['spawn_id']
     new_time = pokemon['expire_timestamp'] % 3600
     existing_time = spawns.get_despawn_seconds(spawn_id)
@@ -437,8 +420,14 @@ def add_spawnpoint(session, pokemon, spawns):
     now = round(time.time())
     if existing:
         existing.updated = now
-        if new_time == existing.despawn_time:
+
+        if existing.despawn_time is None:
+            first, last = get_first_last(session, spawn_id)
+            if last - first > 1890:
+                existing.duration = 60
+        elif new_time == existing.despawn_time:
             return
+
         existing.despawn_time = new_time
         spawns.add_despawn(spawn_id, new_time)
     else:
@@ -467,9 +456,38 @@ def add_spawnpoint(session, pokemon, spawns):
         session.add(obj)
 
 
-def add_mystery(session, pokemon):
+def add_mystery_spawnpoint(session, pokemon, spawns):
+    # Check if the same entry already exists
+    spawn_id = pokemon['spawn_id']
+    point = (pokemon['lat'], pokemon['lon'])
+    if spawns.have_mystery(point):
+        return
+    if spawns.get_despawn_seconds(spawn_id):
+        return
+    existing = session.query(Spawnpoint) \
+        .filter(Spawnpoint.spawn_id == spawn_id) \
+        .first()
+    if existing:
+        return
+    altitude = spawns.get_altitude(point)
+    spawns.add_mystery(point)
+
+    obj = Spawnpoint(
+        spawn_id=spawn_id,
+        despawn_time=None,
+        lat=pokemon['lat'],
+        lon=pokemon['lon'],
+        alt=altitude,
+        updated=0,
+        duration=None
+    )
+    session.add(obj)
+
+
+def add_mystery(session, pokemon, spawns):
     if pokemon in MYSTERY_CACHE:
         return
+    add_mystery_spawnpoint(session, pokemon, spawns)
     existing = session.query(Mystery) \
         .filter(Mystery.encounter_id == pokemon['encounter_id']) \
         .filter(Mystery.spawn_id == pokemon['spawn_id']) \
@@ -625,6 +643,7 @@ def get_session_stats(session):
 def get_despawn_time(session, spawn_id):
     spawn = session.query(Spawnpoint) \
         .filter(Spawnpoint.spawn_id == spawn_id) \
+        .filter(Spawnpoint.updated > config.LAST_MIGRATION) \
         .first()
     if spawn:
         return spawn.despawn_time
