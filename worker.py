@@ -36,7 +36,6 @@ class Worker:
     """Single worker walking on the map"""
 
     network_executor = ThreadPoolExecutor(config.NETWORK_THREADS)
-    process_executor = ThreadPoolExecutor(config.COMPUTE_THREADS)
     download_hash = "d3da400db60abf79ea05abc38e2396f0bbd453f9"
     g = {'seen': 0, 'captchas': 0}
     db_processor = DatabaseProcessor()
@@ -396,6 +395,7 @@ class Worker:
         return responses
 
     def fast_speed(self, point):
+        '''Fast but inaccurate estimation of travel speed to point'''
         if self.busy.locked() or self.killed:
             return None
         now = time()
@@ -405,10 +405,12 @@ class Worker:
         if time_diff > 60:
             self.error_code = None
         distance = get_distance(self.location, point)
-        speed = distance / time_diff
+        # rough conversion from degrees/second to miles/hour
+        speed = (distance / time_diff) * 223694
         return speed
 
     def accurate_speed(self, point):
+        '''Slow but accurate estimation of travel speed to point'''
         time_diff = time() - self.last_visit
         distance = great_circle(self.location, point).miles
         speed = (distance / time_diff) * 3600
@@ -490,12 +492,12 @@ class Worker:
         self.api.set_position(latitude, longitude, altitude)
 
         rounded = round_coords(point, precision=4)
-        if rounded not in self.cell_ids:
-            self.cell_ids[rounded] = tuple(await self.loop.run_in_executor(
-                self.process_executor,
-                partial(get_cell_ids, *rounded, radius=500)
-            ))
-        cell_ids = list(self.cell_ids[rounded])
+        if rounded in self.cell_ids:
+            cell_ids = list(self.cell_ids[rounded])
+        else:
+            cell_ids = get_cell_ids(*rounded, radius=500)
+            self.cell_ids[rounded] = tuple(cell_ids)
+
         since_timestamp_ms = [0] * len(cell_ids)
 
         request = self.api.create_request()

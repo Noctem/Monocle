@@ -599,7 +599,9 @@ class Overseer:
             self.coroutine_semaphore.release()
 
     async def best_worker(self, point, spawn_time=None):
-        skip_time = uniform(60, 300)
+        skip_time = uniform(30, 90)
+        limit = config.SPEED_LIMIT * 1.18  # slight buffer for inaccuracy
+        half_limit = limit / 2
 
         worker = None
         lowest_speed = float('inf')
@@ -614,7 +616,7 @@ class Overseer:
             worker = None
             for w in workers:
                 speed = w.fast_speed(point)
-                if (speed and speed < lowest_speed):
+                if speed and speed < lowest_speed and speed < limit:
                     if not w.busy.acquire_now():
                         continue
                     try:
@@ -623,8 +625,8 @@ class Overseer:
                         pass
                     lowest_speed = speed
                     worker = w
-            if self.killed:
-                return None
+                    if speed < half_limit:
+                        break
 
             try:
                 speed = worker.accurate_speed(point)
@@ -635,12 +637,12 @@ class Overseer:
                 pass
 
             if worker is None:
-                if not spawn_time:
+                if not spawn_time or self.killed:
                     return None
                 time_diff = time.time() - spawn_time
                 if time_diff > skip_time:
                     return None
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
             else:
                 worker.speed = speed
         return worker
