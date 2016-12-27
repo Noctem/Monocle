@@ -599,12 +599,12 @@ class Overseer:
             self.coroutine_semaphore.release()
 
     async def best_worker(self, point, spawn_time=None):
-        skip_time = uniform(60, 480)
+        skip_time = uniform(60, 300)
 
         worker = None
         lowest_speed = float('inf')
         self.searches_without_shuffle += 1
-        if self.searches_without_shuffle > 100:
+        if self.searches_without_shuffle > 150:
             shuffle(self.workers_list)
             self.searches_without_shuffle = 0
         workers = self.workers_list.copy()
@@ -613,13 +613,8 @@ class Overseer:
             lowest_speed = float('inf')
             worker = None
             for w in workers:
-                try:
-                    speed = await w.travel_speed(point)
-                except Exception as e:
-                    self.logger.exception(e)
-                    continue
-                if (speed and speed < lowest_speed and
-                        speed < config.SPEED_LIMIT):
+                speed = w.fast_speed(point)
+                if (speed and speed < lowest_speed):
                     if not w.busy.acquire_now():
                         continue
                     try:
@@ -628,19 +623,26 @@ class Overseer:
                         pass
                     lowest_speed = speed
                     worker = w
-                    if speed < 10:
-                        break
             if self.killed:
                 return None
+
+            try:
+                speed = worker.accurate_speed(point)
+                if speed > config.SPEED_LIMIT:
+                    worker.busy.release()
+                    worker = None
+            except AttributeError:
+                pass
+
             if worker is None:
                 if not spawn_time:
                     return None
                 time_diff = time.time() - spawn_time
                 if time_diff > skip_time:
                     return None
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)
             else:
-                worker.speed = lowest_speed
+                worker.speed = speed
         return worker
 
     def kill(self):

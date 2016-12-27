@@ -69,8 +69,8 @@ def get_scan_area():
     p3 = Point(lat1, lon1)
     p4 = Point(lat2, lon1)
 
-    width = distance.distance(p1, p2).kilometers
-    height = distance.distance(p3, p4).kilometers
+    width = distance(p1, p2).kilometers
+    height = distance(p3, p4).kilometers
     area = int(width * height)
     return area
 

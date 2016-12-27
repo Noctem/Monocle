@@ -10,7 +10,7 @@ from random import choice, randint, uniform, triangular
 from time import time, monotonic
 
 from db import SIGHTING_CACHE, MYSTERY_CACHE
-from utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id
+from utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance
 from shared import DatabaseProcessor
 
 import config
@@ -36,7 +36,7 @@ class Worker:
     """Single worker walking on the map"""
 
     network_executor = ThreadPoolExecutor(config.NETWORK_THREADS)
-    process_executor = ProcessPoolExecutor(max_workers=3)
+    process_executor = ThreadPoolExecutor(config.COMPUTE_THREADS)
     download_hash = "d3da400db60abf79ea05abc38e2396f0bbd453f9"
     g = {'seen': 0, 'captchas': 0}
     db_processor = DatabaseProcessor()
@@ -395,7 +395,7 @@ class Worker:
             raise MalformedResponse
         return responses
 
-    async def travel_speed(self, point):
+    def fast_speed(self, point):
         if self.busy.locked() or self.killed:
             return None
         now = time()
@@ -404,9 +404,14 @@ class Worker:
         time_diff = now - self.last_visit
         if time_diff > 60:
             self.error_code = None
-        distance = await self.loop.run_in_executor(
-            self.process_executor, great_circle, self.location, point)
-        speed = (distance.miles / time_diff) * 3600
+        distance = get_distance(self.location, point)
+        speed = distance / time_diff
+        return speed
+
+    def accurate_speed(self, point):
+        time_diff = time() - self.last_visit
+        distance = great_circle(self.location, point).miles
+        speed = (distance / time_diff) * 3600
         return speed
 
     async def visit(self, point, bootstrap=False):
