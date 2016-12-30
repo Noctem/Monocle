@@ -1,19 +1,15 @@
 # pokeminer+
 
-A Pokémon Go scraper capable of scanning large areas for Pokémon spawns over long periods of time. Features spawnpoint and hexagonal scanning, Twitter and PushBullet notifications, accurate expiration times and estimates based on historical data, pokestop and gym collection, a CAPTCHA solving script, and more.
+A Pokémon Go scraper capable of scanning large areas for Pokémon spawns over long periods of time. Features spawnpoint scanning, Twitter and PushBullet notifications, accurate expiration times and estimates based on historical data, pokestop and gym collection, a CAPTCHA solving script, and more.
 
 [A demonstration of the Twitter notifications can be viewed here](https://twitter.com/SLCPokemon).
 
 
 ## How does it work?
 
-`worker.py` uses a database table of spawnpoints and expiration times to visit each point ~30 minutes before each Pokemon despawns. For each point it determines which eligible worker can reach the point with the lowest speed, or tries again if all workers would be over the configurable speed limit. This method scans very efficiently and finds Pokemon very soon after they spawn, and also leads to unpredictable account movements that look less robotic. The spawnpoint database continually expands as it discovers Pokemon with accurate expiration times. If you don't have enough accounts to keep up with the number of spawns in your database, it will automatically skip points that are unreachable within the speed limit or points that it has already seen spawn that cycle from other nearby points.
+It uses a database table of spawnpoints and expiration times to visit points soon after Pokemon spawn. For each point it determines which eligible worker can reach the point with the lowest speed, or tries again if all workers would be over the configurable speed limit. This method scans very efficiently and finds Pokemon very soon after they spawn, and also leads to unpredictable account movements that look less robotic. The spawnpoint database continually expands as it discovers Pokemon with accurate expiration times. If you don't have enough accounts to keep up with the number of spawns in your database, it will automatically skip points that are unreachable within the speed limit or points that it has already seen spawn that cycle from other nearby points.
 
-Most of my development effort goes into `worker.py`, it works better and has more features. For users that do not currently have a spawnpoint database, there is `wander.py` which works the same way as the old pokeminer. You can use `wander.py` to get started and build up your spawnpoint database, but I highly recommend switching to `worker.py` as soon as you have enough spawnpoints to keep your accounts busy.
-
-`wander.py` gets a rectangle from start/end coordinates (configured in `config.py`) and spawns *n* workers. Each of the workers use different accounts to scan their surrounding areas for Pokemon. To put it simply: **you can scan an entire city for Pokemon**. All gathered information is put into a database for further analysis. It logs in again after *X* scans just to make sure the connection with the server is in a good state. It's also capable of restarting workers that are misbehaving, so that the data-gathering process is uninterrupted.
-
-Both `worker` and `wander` use Python 3's asyncio and multithreading to employ your workers concurrently and efficiently.
+If you do not have an existing database of spawn points it will spread your workers out over the area you specify in config and collect the locations of spawn points from GetMapObjects requests. It will then visit those points whenever it doesn't have a known spawn (with its expiration time) to visit soon. So it will gradually learn the expiration times of more and more spawn points as you use it.
 
 There's also a simple interface that displays active Pokemon on a map, and can generate nice-looking reports.
 
@@ -28,9 +24,9 @@ Here it is in action:
   - references nearest landmark from your own list
 - IV/moves detection, storage, and notification
   - produces nice image of Pokémon with stats for Twitter
+  - can configure to get IVs for all Pokémon or only those eligible for notification
 - stores Pokémon, gyms, and pokestops in database
-- spawnpoint scanning with `worker`
-- hexagonal scanning with `wander`
+- spawnpoint scanning with or without an existing database of spawns
 - automatic account swapping for CAPTCHAs and other problems
 - pickle storage to improve speed and reduce database queries
 - manual CAPTCHA solving that instantly puts accounts back in rotation
@@ -40,9 +36,11 @@ Here it is in action:
 - able to map entire city (or larger area) in real time
 - reports for gathered data
 - asyncio coroutines
+- support for Bossland's hashing server
+  - displays key usage stats in real time
 
 ## Setting up
-1. Install Python 3.5 or later
+1. Install Python 3.5 or later (3.6 is recommended)
 2. `git clone https://github.com/Noctem/pokeminer.git` or download the [zip](https://github.com/Noctem/pokeminer/archive/develop.zip)
 3. Copy `config.example.py` to `config.py` and customize it with your account, location, database information, and any other relevant settings. The comments in the config example provide some information about the options.
 4. `pip3 install -r requirements.txt`
@@ -56,7 +54,7 @@ Here it is in action:
 5. Run `python3` from the command line
   1. Input `import db`
   2. then `db.Base.metadata.create_all(db.get_engine())`
-6. Run `wander.py` until you've collected enough spawnpoints for `worker.py`
+6. Run `scan.py`
   * Optionally run the live map interface and reporting system: `web.py`
 
 
@@ -87,4 +85,4 @@ The gyms statistics server is in a separate file, because it's intended to be sh
 
 See [LICENSE](LICENSE).
 
-This project is based on the coroutines branch of (now discontinued) [pokeminer](https://github.com/modrzew/pokeminer/tree/coroutines). Pokeminer was originally based on an early version of [PokemonGo-Map](https://github.com/AHAAAAAAA/PokemonGo-Map), but no longer shares any code with it. It currently uses my lightly modified fork of  [pgoapi](https://github.com/Noctem/pgoapi).
+This project is based on the coroutines branch of (now discontinued) [pokeminer](https://github.com/modrzew/pokeminer/tree/coroutines). Pokeminer was originally based on an early version of [PokemonGo-Map](https://github.com/AHAAAAAAA/PokemonGo-Map), but no longer shares any code with it. It currently uses my lightly modified fork of [pgoapi](https://github.com/Noctem/pgoapi).
