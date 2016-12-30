@@ -5,6 +5,7 @@ from logging import getLogger
 from pgoapi import exceptions, PGoApi
 from pgoapi.auth_ptc import AuthPtc
 from pgoapi.utilities import get_cell_ids
+from pgoapi.hash_server import HashServer
 from asyncio import sleep, Lock
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
@@ -154,7 +155,9 @@ class Worker:
                 else:
                     request = self.api.create_request()
                     request.download_remote_config_version(platform=1, app_version=5102)
-                    if not await self.call_chain(request, stamp=False, buddy=False, dl_hash=False):
+                    responses = await self.call_chain(request, stamp=False, buddy=False, dl_hash=False)
+                    await random_sleep(.6, 2)
+                    if not responses:
                         return False
 
         self.ever_authenticated = True
@@ -378,6 +381,20 @@ class Worker:
             request.download_settings()
         if buddy:
             request.get_buddy_walked()
+
+        try:
+            refresh = HashServer.status.get('period')
+            now = time()
+
+            while HashServer.status.get('remaining') < 7 and now < refresh:
+                self.error_code = 'HASH WAITING'
+                wait = refresh - now + 1
+                await sleep(wait)
+                now = time()
+                refresh = HashServer.status.get('period')
+            self.error_code = '!'
+        except TypeError:
+            pass
 
         response = await self.loop.run_in_executor(
             self.network_executor, request.call

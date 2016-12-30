@@ -13,6 +13,7 @@ from signal import signal, SIGINT, SIG_IGN
 from argparse import ArgumentParser
 from logging import getLogger, basicConfig, WARNING, INFO
 from collections import deque
+from pgoapi.hash_server import HashServer
 
 import asyncio
 import time
@@ -425,6 +426,17 @@ class Overseer:
                     r=captchas_per_request, h=captchas_per_hour))
         except ZeroDivisionError:
             pass
+
+        if config.HASH_KEY:
+            try:
+                refresh = HashServer.status.get('period') - time.time()
+                output.append('Hashes: {r}/{m}, refresh in {t:.0f}'.format(
+                    r=HashServer.status.get('remaining'),
+                    m=HashServer.status.get('maximum'),
+                    t=refresh
+                ))
+            except TypeError:
+                pass
 
         if sent:
             output.append('Notifications sent: {n}, per hour {p:.1f}'.format(

@@ -45,6 +45,11 @@ if hasattr(config, 'AUTHKEY'):
 else:
     authkey = b'm3wtw0'
 
+if hasattr(config, 'HASH_KEY'):
+    HASH_KEY = config.HASH_KEY
+else:
+    HASH_KEY = None
+
 class AccountManager(BaseManager): pass
 AccountManager.register('captcha_queue')
 AccountManager.register('extra_queue')
@@ -75,6 +80,8 @@ while not captcha_queue.empty():
     try:
         device_info = get_device_info(account)
         api = PGoApi(device_info=device_info)
+        if HASH_KEY:
+            api.activate_hash_server(config.HASH_KEY)
         api.set_position(lat, lon, alt)
 
         authenticated = False
