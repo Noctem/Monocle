@@ -148,8 +148,14 @@ class Worker:
             return False
         if not self.ever_authenticated:
             async with self.simulation_semaphore:
-                if not await self.app_simulation_login():
-                    return False
+                if config.APP_SIMULATION:
+                    if not await self.app_simulation_login():
+                        return False
+                else:
+                    request = self.api.create_request()
+                    request.download_remote_config_version(platform=1, app_version=5102)
+                    if not await self.call_chain(request, stamp=False, buddy=False, dl_hash=False):
+                        return False
 
         self.ever_authenticated = True
         self.logged_in = True

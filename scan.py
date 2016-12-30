@@ -50,7 +50,8 @@ _optional = {
     'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 10) + 1,
     'SPIN_POKESTOPS': False,
     'COMPLETE_TUTORIAL': False,
-    'MAP_WORKERS': True
+    'MAP_WORKERS': True,
+    'APP_SIMULATION': True
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):

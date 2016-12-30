@@ -13,6 +13,7 @@ MAP_END = (13.4567, 35.6789)
 GRID = (2, 2)  # row, column
 MAX_CAPTCHAS = 100  # stop launching new visits if this many CAPTCHAs are pending
 SCAN_DELAY = 11  # do not visit within this many seconds of the last visit
+APP_SIMULATION = True  # mimic the actual app's login requests
 
 ENCOUNTER = None  # encounter pokemon to store IVs. Options: None, 'all', or 'notifying'
 SPEED_LIMIT = 19  # do not travel over this many MPH (applies only to spawn scanning)
