@@ -3,9 +3,8 @@ from datetime import datetime
 
 DB_ENGINE = 'sqlite:///db.sqlite'
 
-# these are provided by pgoapi, or you can use your own
-#ENCRYPT_PATH = './libpcrypt.so'
-#HASH_PATH = './libniahash.so'
+# your key for the hashing server, otherwise the old hashing lib will be used
+#HASH_KEY = '9d87af14461b93cb3605'
 
 AREA_NAME = 'Salt Lake City'
 LANGUAGE = 'EN'  # ISO 639-1 codes EN, DE, FR, and ZH currently supported.

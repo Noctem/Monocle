@@ -4,7 +4,7 @@ from geopy.distance import great_circle
 from logging import getLogger
 from pgoapi import exceptions, PGoApi
 from pgoapi.auth_ptc import AuthPtc
-from pgoapi.utilities import get_cell_ids, f2i
+from pgoapi.utilities import get_cell_ids
 from asyncio import sleep, Lock
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
@@ -82,10 +82,8 @@ class Worker:
         self.account_seen = 0
 
         self.api = PGoApi(device_info=device_info)
-        if config.ENCRYPT_PATH:
-            self.api.set_signature_lib(config.ENCRYPT_PATH)
-        if config.HASH_PATH:
-            self.api.set_hash_lib(config.HASH_PATH)
+        if config.HASH_KEY:
+            self.api.activate_hash_server(config.HASH_KEY)
         self.api.set_position(*self.location)
         self.set_proxy()
         self.api.set_logger(self.logger)
@@ -505,8 +503,8 @@ class Worker:
         request = self.api.create_request()
         request.get_map_objects(cell_id=cell_ids,
                                 since_timestamp_ms=since_timestamp_ms,
-                                latitude=f2i(latitude),
-                                longitude=f2i(longitude))
+                                latitude=latitude,
+                                longitude=longitude)
 
         responses = await self.call_chain(request)
         self.last_gmo = time()
