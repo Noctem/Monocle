@@ -55,8 +55,9 @@ class Worker:
         self.username = self.account.get('username')
         self.location = self.account.get('location', (0, 0, 0))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
-        self.last_visit = self.account.get('time', 0)
-        self.last_gmo = self.last_visit
+        self.last_request = self.account.get('time', 0)
+        self.last_action = self.last_request
+        self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
         # API setup
         self.proxy = proxy
@@ -241,6 +242,7 @@ class Worker:
         request = self.api.create_request()
         request.register_background_device(device_type='apple_watch')
         await self.call_chain(request)
+        self.last_action = time()
         await random_sleep(.1, .3)
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
@@ -376,7 +378,7 @@ class Worker:
         response = await self.loop.run_in_executor(
             self.network_executor, request.call
         )
-        self.last_visit = time()
+        self.last_request = time()
         try:
             if response.get('status_code') == 3:
                 raise exceptions.BannedAccountException
@@ -401,7 +403,7 @@ class Worker:
         now = time()
         if now - self.last_gmo < config.SCAN_DELAY:
             return None
-        time_diff = now - self.last_visit
+        time_diff = now - self.last_request
         if time_diff > 60:
             self.error_code = None
         distance = get_distance(self.location, point)
@@ -411,7 +413,7 @@ class Worker:
 
     def accurate_speed(self, point):
         '''Slow but accurate estimation of travel speed to point'''
-        time_diff = time() - self.last_visit
+        time_diff = time() - self.last_request
         distance = great_circle(self.location, point).miles
         speed = (distance / time_diff) * 3600
         return speed
@@ -473,7 +475,7 @@ class Worker:
             except Exception as err:
                 self.logger.exception('A wild exception appeared! {}'.format(err))
                 self.error_code = 'EXCEPTION'
-                await random_sleep(15, 20)
+                return False
             else:
                 return visited
         return False
@@ -636,7 +638,8 @@ class Worker:
         if distance > 40:
             return False
 
-        await random_sleep(.6, 1.2, .75)
+        if time() - self.last_action < 1:
+            await sleep(1)
 
         request = self.api.create_request()
         request.fort_details(fort_id = pokestop['external_id'],
@@ -645,7 +648,7 @@ class Worker:
         responses = await self.call_chain(request)
         name = responses.get('FORT_DETAILS', {}).get('name')
 
-        await random_sleep(.6, 1.2, .75)
+        await random_sleep(.6, 1.2)
 
         request = self.api.create_request()
         request.fort_search(fort_id = pokestop['external_id'],
@@ -654,6 +657,7 @@ class Worker:
                             fort_latitude = pokestop['lat'],
                             fort_longitude = pokestop['lon'])
         responses = await self.call_chain(request)
+        self.last_action = time() + .25
 
         result = responses.get('FORT_SEARCH', {}).get('result')
         if result == 1:
@@ -679,13 +683,15 @@ class Worker:
             self.api.set_position(*self.location)
             delay_required = (distance_to_pokemon * percent) / 8
             if delay_required < 1.5:
-                delay_required = triangular(1.5, 4, 2.25)
+                delay_required = triangular(1.25, 4, 2)
         else:
             self.simulate_jitter()
-            delay_required = triangular(1.5, 4, 2.25)
+            delay_required = triangular(1.25, 4, 2)
 
-        self.error_code = '~'
-        await sleep(delay_required)
+        if time() - self.last_request < delay_required:
+            self.error_code = '~'
+            await sleep(delay_required)
+
         self.error_code = 'ENCOUNTERING'
 
         request = self.api.create_request()
@@ -695,6 +701,7 @@ class Worker:
                                     player_longitude=self.location[1])
 
         responses = await self.call_chain(request)
+        self.last_action = time() + 1.5
 
         response = responses.get('ENCOUNTER', {})
         pokemon_data = response.get('wild_pokemon', {}).get('pokemon_data', {})
@@ -721,7 +728,7 @@ class Worker:
         self.api.set_position(*self.location)
 
     async def notify(self, norm, pokemon):
-        if config.NOTIFY and norm['pokemon_id'] in self.notifier.notify_ids:
+        if config.NOTIFY and self.notifier.eligible(norm):
             if config.ENCOUNTER in ('all', 'notifying'):
                 norm.update(await self.encounter(pokemon))
             self.error_code = '*'
@@ -738,7 +745,7 @@ class Worker:
         self.account['captcha'] = captcha
         self.account['banned'] = banned
         self.account['location'] = self.location
-        self.account['time'] = self.last_visit
+        self.account['time'] = self.last_request
         self.account['inventory_timestamp'] = self.inventory_timestamp
         self.account['items'] = self.items
 
@@ -786,6 +793,12 @@ class Worker:
             await sleep(15)
         self.account = self.extra_queue.get()
         self.username = self.account.get('username')
+        self.location = self.account.get('location', (0, 0, 0))
+        self.inventory_timestamp = self.account.get('inventory_timestamp')
+        self.last_request = self.account.get('time', 0)
+        self.last_action = self.last_request
+        self.last_gmo = self.last_request
+        self.items = self.account.get('items', {})
         self.initialize_api()
         self.error_code = None
         if lock:

@@ -95,7 +95,7 @@ while not captcha_queue.empty():
                                    provider=account.get('provider'))
 
         request = api.create_request()
-        request.download_remote_config_version(platform=1, app_version=4500)
+        request.download_remote_config_version(platform=1, app_version=5102)
         request.check_challenge()
         request.get_hatched_eggs()
         request.get_inventory()
@@ -106,9 +106,7 @@ while not captcha_queue.empty():
 
         responses = response.get('responses', {})
         challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
-        download_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
-        if download_hash and download_hash != DOWNLOAD_HASH:
-            DOWNLOAD_HASH = "5296b4d9541938be20b1d1a8e8e3988b7ae2e93b"
+        DOWNLOAD_HASH = responses.get('DOWNLOAD_SETTINGS', {}).get('hash') or DOWNLOAD_HASH
         timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
         account['location'] = lat, lon, alt
         account['inventory_timestamp'] = timestamp

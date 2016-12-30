@@ -1,6 +1,6 @@
 from shapely.geometry import Point, Polygon, shape, box, LineString
 from geopy import Nominatim
-from geopy.distance import vincenty
+from geopy.distance import distance
 
 
 class FailedQuery(Exception):
@@ -108,7 +108,7 @@ class Landmark:
             nearest = self.location
         else:
             nearest = self.nearest_point(point)
-        dist = vincenty(point.coords[0], nearest.coords[0])
+        dist = distance(point.coords[0], nearest.coords[0])
         return dist.meters
 
     def nearest_point(self, point):

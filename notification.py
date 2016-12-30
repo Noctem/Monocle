@@ -2,8 +2,8 @@ from datetime import datetime, timedelta, timezone
 from collections import deque
 from os import makedirs
 from math import sqrt
+from time import monotonic
 
-import time
 import pickle
 
 from db import Session, get_pokemon_ranking, estimate_remaining_time
@@ -16,7 +16,7 @@ for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
                       'TWITTER_CONSUMER_SECRET', 'TWITTER_ACCESS_KEY',
                       'TWITTER_ACCESS_SECRET', 'LANDMARKS', 'AREA_NAME',
                       'HASHTAGS', 'TZ_OFFSET', 'NOTIFY_RANKING', 'NOTIFY_IDS'
-                      'ENCOUNTER', 'INITIAL_RANKING'):
+                      'ENCOUNTER', 'INITIAL_RANKING', 'NOTIFY'):
     if not hasattr(config, variable_name):
         setattr(config, variable_name, None)
 
@@ -30,10 +30,22 @@ for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
 
-if config.ENCOUNTER in ('all', 'notifying'):
-    import cairo
+if config.NOTIFY:
+    if not (config.PB_API_KEY or config.TWITTER_ACCESS_KEY):
+        raise ValueError('NOTIFY is enabled but no keys were provided.')
 
-PERFECT_SCORE = 15 + (sqrt(15) * 2)
+    if config.ENCOUNTER in ('all', 'notifying'):
+        import cairo
+
+    if config.TWITTER_ACCESS_KEY:
+        import twitter
+        from twitter.twitter_utils import calc_expected_status_length
+
+    if config.PB_API_KEY:
+        from pushbullet import Pushbullet
+
+    PERFECT_SCORE = 15 + (sqrt(15) * 2)
+
 
 def draw_image(ctx, image, height, width):
     """Draw a scaled image on a given context."""
@@ -264,7 +276,6 @@ class Notification:
         depending on whether or not PB_CHANNEL is set in config.
         """
 
-        from pushbullet import Pushbullet
         pb = Pushbullet(config.PB_API_KEY)
 
         if self.score < .47:
@@ -316,8 +327,6 @@ class Notification:
         """ Create message, reduce it until it fits in a tweet, and then tweet
         it with a link to Google maps and tweet location included.
         """
-        import twitter
-        from twitter.twitter_utils import calc_expected_status_length
 
         def generate_tag_string(hashtags):
             '''create hashtag string'''
@@ -414,7 +423,7 @@ class Notifier:
         self.session = Session()
         self.initial_score = config.INITIAL_SCORE
         self.minimum_score = config.MINIMUM_SCORE
-        self.last_notification = time.time() - (config.FULL_TIME / 2)
+        self.last_notification = monotonic() - (config.FULL_TIME / 2)
         self.always_notify = []
         if self.notify_ranking:
             self.set_pokemon_ranking(loadpickle=True)
@@ -430,7 +439,7 @@ class Notifier:
         self.always_notify = self.pokemon_ranking[0:config.ALWAYS_NOTIFY]
 
     def set_pokemon_ranking(self, loadpickle=False):
-        self.ranking_time = time.time()
+        self.ranking_time = monotonic()
         if loadpickle:
             try:
                 with open('pickles/ranking.pickle', 'rb') as f:
@@ -448,26 +457,48 @@ class Notifier:
         with open('pickles/ranking.pickle', 'wb') as f:
             pickle.dump(self.pokemon_ranking, f, pickle.HIGHEST_PROTOCOL)
 
-    def evaluate_pokemon(self, pokemon_id, iv):
-        attack, defense, stamina = iv
+    def get_rareness_score(self, pokemon_id):
         exclude = config.ALWAYS_NOTIFY
         total = self.notify_ranking - exclude
         ranking = self.notify_ids.index(pokemon_id) - exclude
         percentile = 1 - (ranking / total)
+        return percentile
+
+    def evaluate_pokemon(self, pokemon_id, iv):
+        attack, defense, stamina = iv
+        rareness = self.get_rareness_score(pokemon_id)
         weighted = (attack + sqrt(defense) + sqrt(stamina)) / PERFECT_SCORE
         raw = sum(iv) / 45
         iv_score = (weighted + raw) / 2
-        score = (percentile + iv_score) / 2
+        score = (rareness + iv_score) / 2
         return score, iv_score
+
+    def get_required_score(self, now=None):
+        now = now or monotonic()
+        time_passed = now - self.last_notification
+        if time_passed < config.FULL_TIME:
+            fraction = time_passed / config.FULL_TIME
+        else:
+            fraction = 1
+        subtract = (self.initial_score - self.minimum_score) * fraction
+        return self.initial_score - subtract
+
+    def eligible(self, pokemon):
+        pokemon_id = pokemon['pokemon_id']
+        if pokemon_id not in self.notify_ids:
+            return False
+        if pokemon['encounter_id'] in self.recent_notifications:
+            return False
+
+        rareness = self.get_rareness_score(pokemon_id)
+        highest_score = (rareness + 1) / 2
+        score_required = self.get_required_score()
+        return highest_score > score_required
 
     def notify(self, pokemon):
         """Send a PushBullet notification and/or a Tweet, depending on if their
         respective API keys have been set in config.
         """
-
-        # skip if no API keys have been set in config
-        if not (config.PB_API_KEY or config.TWITTER_CONSUMER_KEY):
-            return False, 'Did not notify, no Twitter/PushBullet keys set.'
 
         spawn_id = pokemon['spawn_id']
         coordinates = (pokemon['lat'], pokemon['lon'])
@@ -484,7 +515,7 @@ class Notifier:
         else:
             time_till_hidden = None
 
-        now = time.time()
+        now = monotonic()
         if self.auto:
             time_passed = now - self.ranking_time
             if time_passed > 3600:
@@ -498,13 +529,8 @@ class Notifier:
                 return False, '{n} has only {s} seconds remaining.'.format(
                     n=name, s=time_till_hidden
                 )
-            time_passed = now - self.last_notification
-            if time_passed < config.FULL_TIME:
-                fraction = time_passed / config.FULL_TIME
-            else:
-                fraction = 1
-            subtract = (self.initial_score - self.minimum_score) * fraction
-            score_required = self.initial_score - subtract
+            score_required = self.get_required_score(now)
+
 
         if pokemon.get('individual_attack') is None:
             return False, '{} has no IVs.'.format(name)
@@ -540,7 +566,7 @@ class Notifier:
             name, coordinates, time_till_hidden, iv, iv_score, image).notify()
 
         if tweeted or pushed:
-            self.last_notification = time.time()
+            self.last_notification = monotonic()
             self.recent_notifications.append(encounter_id)
             if tweeted and pushed:
                 explanation = 'Tweeted and pushed '

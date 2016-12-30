@@ -421,9 +421,10 @@ def add_spawnpoint(session, pokemon, spawns):
     if existing:
         existing.updated = now
 
-        if existing.despawn_time is None:
-            first, last = get_first_last(session, spawn_id)
-            if last - first > 1890:
+        if (existing.despawn_time is None or
+                existing.updated < config.LAST_MIGRATION):
+            widest = get_widest_range(session, spawn_id)
+            if widest and widest > 1710:
                 existing.duration = 60
         elif new_time == existing.despawn_time:
             return
@@ -435,14 +436,12 @@ def add_spawnpoint(session, pokemon, spawns):
         altitude = spawns.get_altitude(point)
         spawns.add_despawn(spawn_id, new_time)
 
-        first, last = get_first_last(session, spawn_id)
-        duration = None
+        widest = get_widest_range(session, spawn_id)
 
-        try:
-            if last - first > 1710:
-                duration = 60
-        except TypeError:
-            pass
+        if widest and widest > 1710:
+            duration = 60
+        else:
+            duration = None
 
         obj = Spawnpoint(
             spawn_id=spawn_id,
@@ -655,8 +654,9 @@ def get_first_last(session, spawn_id):
     query = session.execute('''
         SELECT min(first_seconds) as min, max(last_seconds) as max
         FROM mystery_sightings
-        WHERE spawn_id = {spawn_id}
-    '''.format(spawn_id=spawn_id))
+        WHERE spawn_id = {i}
+        AND first_seen > {m}
+    '''.format(i=spawn_id, m=config.LAST_MIGRATION))
     result = query.first()
     if result:
         return result
@@ -668,26 +668,15 @@ def get_widest_range(session, spawn_id):
     query = session.execute('''
         SELECT max(seen_range)
         FROM mystery_sightings
-        WHERE spawn_id = {}
-    '''.format(spawn_id))
+        WHERE spawn_id = {i}
+        AND first_seen > {m}
+    '''.format(i=spawn_id, m=config.LAST_MIGRATION))
     largest = None
     try:
         largest = query.first()[0]
     except TypeError:
         pass
-    if not largest:
-        return None, None
-    query = session.execute('''
-        SELECT first_seconds, last_seconds
-        FROM mystery_sightings
-        WHERE spawn_id = {s}
-        AND seen_range = {l}
-    '''.format(s=spawn_id, l=largest))
-    result = query.first()
-    if result:
-        return result
-    else:
-        return None, None
+    return largest
 
 
 def estimate_remaining_time(session, spawn_id, seen=None):
