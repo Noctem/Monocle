@@ -83,7 +83,7 @@ def fullmap():
 try:
     class AccountManager(BaseManager): pass
     AccountManager.register('worker_dict')
-    manager = AccountManager(address=utils.get_address(), authkey=authkey)
+    manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
     manager.connect()
     worker_dict = manager.worker_dict()
 except (FileNotFoundError, AttributeError):
@@ -138,8 +138,10 @@ if config.MAP_WORKERS:
 
 def get_pokemarkers():
     markers = []
-    pokemons = db.get_sightings(session)
-    forts = db.get_forts(session)
+    ses = db.Session()
+    pokemons = db.get_sightings(ses)
+    forts = db.get_forts(ses)
+    ses.close()
 
     for pokemon in pokemons:
         markers.append({

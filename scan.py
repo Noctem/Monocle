@@ -66,7 +66,7 @@ if config.PROXIES:
     if isinstance(config.PROXIES, (tuple, list)):
         config.PROXIES = set(config.PROXIES)
     elif isinstance(config.PROXIES, str):
-        config.proxies = {config.PROXIES}
+        config.PROXIES = {config.PROXIES}
     elif not isinstance(config.PROXIES, set):
         raise ValueError('PROXIES must be either a list, set, tuple, or str.')
 
@@ -532,7 +532,7 @@ class Overseer:
                     try:
                         self.idle_seconds += self.captcha_queue.full_wait(
                             maxsize=config.MAX_CAPTCHAS)
-                    except EOFError:
+                    except (EOFError, BrokenPipeError):
                         pass
                     self.paused = False
 
@@ -612,7 +612,12 @@ class Overseer:
             self.coroutine_semaphore.release()
 
     async def best_worker(self, point, spawn_time=None):
-        skip_time = uniform(30, 90)
+        if spawn_time:
+            skip_time = uniform(30, 90)
+            start = spawn_time
+        else:
+            skip_time = 20
+            start = time()
         limit = config.SPEED_LIMIT * 1.18  # slight buffer for inaccuracy
         half_limit = limit / 2
 
@@ -650,9 +655,9 @@ class Overseer:
                 pass
 
             if worker is None:
-                if not spawn_time or self.killed:
+                if self.killed:
                     return None
-                time_diff = time.time() - spawn_time
+                time_diff = time.time() - start
                 if time_diff > skip_time:
                     return None
                 await asyncio.sleep(3)

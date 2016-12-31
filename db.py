@@ -469,7 +469,11 @@ def add_mystery_spawnpoint(session, pokemon, spawns):
     if existing:
         return
     altitude = spawns.get_altitude(point)
-    spawns.add_mystery(point)
+    if config.BOUNDARIES:
+        if config.BOUNDARIES.contains(Point(point)):
+            spawns.add_mystery(point)
+    else:
+        spawns.add_mystery(point)
 
     obj = Spawnpoint(
         spawn_id=spawn_id,

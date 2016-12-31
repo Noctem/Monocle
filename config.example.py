@@ -1,32 +1,44 @@
-# coding: utf-8
-from datetime import datetime
+### All lines that are commented out (and some that aren't) are optional ###
 
 DB_ENGINE = 'sqlite:///db.sqlite'
+#DB_ENGINE = 'mysql://user:pass@localhost/pokeminer'
+#DB_ENGINE = 'postgresql://user:pass@localhost/pokeminer
 
-AREA_NAME = 'Salt Lake City'
+AREA_NAME = 'SLC'  # the city or region you are scanning
 LANGUAGE = 'EN'  # ISO 639-1 codes EN, DE, FR, and ZH currently supported for Pokemon names.
-MAP_START = (12.3456, 34.5678)
-MAP_END = (13.4567, 35.6789)
-GRID = (2, 2)  # row, column. ideally provide more accounts than the product of these numbers so that they can be swapped
 MAX_CAPTCHAS = 100  # stop launching new visits if this many CAPTCHAs are pending
-SCAN_DELAY = 10.1  # do not visit within this many seconds of the last visit
-SPEED_LIMIT = 19  # do not travel over this many MPH
+SCAN_DELAY = 10.1  # wait at least this many seconds before scanning with the same account
+SPEED_LIMIT = 19  # do not travel over this many miles per hour
 
-# your key for the hashing server, otherwise the old hashing lib will be used
+# the corner points of a rectangle for your workers to spread out over before
+# any spawn points have been discovered
+MAP_START = (40.7913, -111.9398)
+MAP_END = (40.7143, -111.8046)
+
+# key for Bossland's hashing server, otherwise the old hashing lib will be used
 #HASH_KEY = '9d87af14461b93cb3605'  # this key is fake
 
-### these options use more requests but will make you look more like the real client
+### these options use more requests but will look more like the real client
 APP_SIMULATION = True  # mimic the actual app's login requests
 ENCOUNTER = None  # encounter pokemon to store IVs. (currently must be 'notifying' or 'all' to use notifications)
+COMPLETE_TUTORIAL = True  # run through the tutorial process and configure avatar for all accounts that haven't yet
 #SPIN_POKESTOPS = False  # spin all pokestops that are within range (until inventory is full)
-#COMPLETE_TUTORIAL = False  # run through the tutorial process and configure avatar for all accounts that haven't yet
+
 
 # If accounts use the same provider and password you can set defaults here
 # and omit them from the accounts list.
 #PASS = 'pik4chu'
 #PROVIDER = 'ptc'
 
-## Device information will be generated for you if you do not provide it.
+# The number of simultaneous accounts will be these two numbers multiplied.
+# Before any spawn points are known, workers will place themselves according to
+# the number of rows and columns specified.
+# The rows/columns will also be used for the dot grid in the console output.
+# Provide more accounts than the product of your grid to allow swapping.
+GRID = (2, 2)  # rows, columns
+
+### Device information will be generated for you if you do not provide it.
+### Account details are automatically retained in pickles/accounts.pickle
 ## valid account formats (without PASS and PROVIDER set):
 # (username, password, provider, iPhone, iOS, device_id)
 # (username, password, provider)
@@ -52,9 +64,10 @@ RARE_IDS = (
 
 MAP_WORKERS = True  # allow displaying the live location of workers on the map
 
+from datetime import datetime
 REPORT_SINCE = datetime(2016, 11, 1)
-GOOGLE_MAPS_KEY = 's3cr3t'
 
+GOOGLE_MAPS_KEY = 's3cr3t'
 #ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
 
 #LAST_MIGRATION = 1481932800  # unix timestamp of last spawn point migration
@@ -83,7 +96,6 @@ GOOGLE_MAPS_KEY = 's3cr3t'
 
 '''
 ### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
-from landmarks import Landmarks
 
 NOTIFY = True  # enable notifications
 
@@ -126,10 +138,12 @@ TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'
 # time if you are using queries. An example script for this is available at:
 # scripts/pickle_landmarks.example.py
 
-# if you pickle it, just load the pickle and omit the rest
+### if you do pickle it, just load the pickle and omit the rest
+#from pickle import load
 #with open('pickles/landmarks.pickle', 'rb') as f:
 #    LANDMARKS = load(f)
 
+from landmarks import Landmarks
 LANDMARKS = Landmarks(query_suffix=AREA_NAME)
 
 # Landmarks to reference when Pokémon are nearby
