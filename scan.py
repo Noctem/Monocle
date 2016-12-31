@@ -617,7 +617,7 @@ class Overseer:
             start = spawn_time
         else:
             skip_time = 20
-            start = time()
+            start = time.time()
         limit = config.SPEED_LIMIT * 1.18  # slight buffer for inaccuracy
         half_limit = limit / 2
 

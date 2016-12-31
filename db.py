@@ -300,7 +300,7 @@ class FortSighting(Base):
     __tablename__ = 'fort_sightings'
 
     id = Column(Integer, primary_key=True)
-    fort_id = Column(SmallInteger, ForeignKey('forts.id'))
+    fort_id = Column(Integer, ForeignKey('forts.id'))
     last_modified = Column(Integer)
     team = Column(TINY_TYPE)
     prestige = Column(MEDIUM_TYPE)
