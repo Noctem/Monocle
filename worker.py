@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from geopy.distance import great_circle
 from logging import getLogger
-from pgoapi import exceptions, PGoApi
+from pgoapi import PGoApi, exceptions as ex
 from pgoapi.auth_ptc import AuthPtc
 from pgoapi.utilities import get_cell_ids
 from pgoapi.hash_server import HashServer
@@ -44,11 +44,19 @@ class Worker:
     accounts = load_accounts()
     cell_ids = load_pickle('cells') or {}
 
+    proxies = None
+    proxy = None
+    if config.PROXIES:
+        if len(config.PROXIES) == 1:
+            proxy = config.PROXIES.pop()
+        else:
+            proxies = config.PROXIES.copy()
+
     if config.NOTIFY:
         notifier = Notifier(spawns)
         g['sent'] = 0
 
-    def __init__(self, worker_no, proxy=None):
+    def __init__(self, worker_no):
         self.worker_no = worker_no
         self.logger = getLogger('worker-{}'.format(worker_no))
         # account information
@@ -61,7 +69,8 @@ class Worker:
         self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
         # API setup
-        self.proxy = proxy
+        if self.proxies:
+            self.new_proxy(set_api=False)
         self.initialize_api()
         # State variables
         self.busy = BusyLock()
@@ -86,7 +95,8 @@ class Worker:
         if config.HASH_KEY:
             self.api.activate_hash_server(config.HASH_KEY)
         self.api.set_position(*self.location)
-        self.set_proxy()
+        if self.proxy:
+            self.api.set_proxy({'http': self.proxy, 'https': self.proxy})
         self.api.set_logger(self.logger)
         if self.account.get('provider') == 'ptc' and self.account.get('refresh'):
             self.api._auth_provider = AuthPtc()
@@ -98,22 +108,14 @@ class Worker:
                 self.logged_in = True
                 self.ever_authenticated = True
 
-    def set_proxy(self, proxy=None):
-        if proxy:
-            self.proxy = proxy
-        if self.proxy:
-            self.api.set_proxy({'http': proxy, 'https': proxy})
-
-    def swap_proxy(self, reason=''):
-        self.set_proxy(choice(config.PROXIES))
-        self.logger.warning('Swapped out {p} due to {r}.'.format(
-                            p=self.proxy, r=reason))
+    def new_proxy(self, set_api=True):
+        self.proxy = self.proxies.pop()
+        if not self.proxies:
+            self.proxies.update(config.PROXIES)
+        if set_api:
+            self.api.set_proxy({'http': self.proxy, 'https': self.proxy})
 
     def swap_circuit(self, reason=''):
-        if not config.CONTROL_SOCKS:
-            if config.PROXIES:
-                self.swap_proxy(reason=reason)
-            return
         time_passed = monotonic() - CIRCUIT_TIME[self.proxy]
         if time_passed > 180:
             socket = config.CONTROL_SOCKS[self.proxy]
@@ -197,8 +199,7 @@ class Worker:
         self.item_capacity = get_player.get('player_data', {}).get('max_item_storage', 350)
 
         if get_player.get('banned', False):
-            raise exceptions.BannedAccountException
-            return False
+            raise ex.BannedAccountException
 
         await random_sleep(.9, 1.2)
 
@@ -386,7 +387,7 @@ class Worker:
             refresh = HashServer.status.get('period')
             now = time()
 
-            while HashServer.status.get('remaining') < 7 and now < refresh:
+            while HashServer.status.get('remaining') < 3 and now < refresh:
                 self.error_code = 'HASH WAITING'
                 wait = refresh - now + 1
                 await sleep(wait)
@@ -401,8 +402,6 @@ class Worker:
         )
         self.last_request = time()
         try:
-            if response.get('status_code') == 3:
-                raise exceptions.BannedAccountException
             responses = response.get('responses')
             delta = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
             timestamp = delta.get('new_timestamp_ms')
@@ -414,7 +413,7 @@ class Worker:
             self.download_hash = d_hash or self.download_hash
             self.check_captcha(responses)
         except (TypeError, AttributeError):
-            raise MalformedResponse
+            raise ex.MalformedNianticResponseException
         return responses
 
     def fast_speed(self, point):
@@ -453,49 +452,75 @@ class Worker:
                         await sleep(2)
                         continue
                 visited = await self.visit_point(point, bootstrap=bootstrap)
-            except exceptions.ServerSideAccessForbiddenException:
-                err = 'Banned IP.'
-                if self.proxy:
-                    err += ' ' + self.proxy
-                self.logger.error(err)
+            except ex.NianticIPBannedException:
                 self.error_code = 'IP BANNED'
-                self.swap_circuit(reason='ban')
+
+                if config.CONTROL_SOCKS:
+                    self.swap_circuit('IP ban')
+                elif self.proxies:
+                    self.logger.warning('Swapping out {} due to IP ban.'.format(
+                                        self.proxy))
+                    proxy = self.proxy
+                    while proxy == self.proxy:
+                        self.new_proxy()
+                else:
+                    self.logger.error('IP banned.')
+                    await sleep(150)
+
                 await random_sleep(minimum=25, maximum=35)
-            except exceptions.AuthException:
-                self.logger.warning('Login failed: {}'.format(self.username))
-                self.error_code = 'FAILED LOGIN'
+                return False
+            except (ex.AuthException, ex.NotLoggedInException):
+                self.logger.warning('{} is not authenticated.'.format(self.username))
+                self.error_code = 'NOT AUTHENTICATED'
+                await sleep(1)
                 await self.swap_account(reason='login failed')
                 return False
-            except exceptions.NotLoggedInException:
-                self.logger.error('{} is not logged in.'.format(self.username))
-                self.error_code = 'NOT AUTHENTICATED'
-                await self.swap_account(reason='not logged in')
-                return False
-            except exceptions.ServerBusyOrOfflineException:
-                self.logger.info('Server too busy - restarting')
-                self.error_code = 'RETRYING'
-                await random_sleep()
-            except exceptions.ServerSideRequestThrottlingException:
+            except ex.HashingOfflineException:
+                self.logger.info('Hashing server busy or offline.')
+                self.error_code = 'HASHING OFFLINE'
+                await random_sleep(5, 10)
+            except ex.HashingQuotaExceededException:
+                self.logger.warning('Exceeded your hashing quota, sleeping.')
+                self.error_code = 'QUOTA EXCEEDED'
+                refresh = HashServer.status.get('period')
+                now = time()
+                if refresh and refresh > now:
+                    await sleep(refresh - now + 1)
+                else:
+                    await random_sleep(10, 20)
+            except ex.NianticThrottlingException:
                 self.logger.warning('Server throttling - sleeping for a bit')
                 self.error_code = 'THROTTLE'
-                await random_sleep(11, 30)
-            except exceptions.BannedAccountException:
-                self.error_code = 'BANNED?'
-                self.logger.warning('Account appears to be banned')
+                await random_sleep(11, 22)
+            except ex.BannedAccountException:
+                self.error_code = 'BANNED'
+                self.logger.warning('{} is banned'.format(self.username))
+                await sleep(1)
                 await self.remove_account()
                 return False
             except CaptchaException:
                 self.error_code = 'CAPTCHA'
-                await self.bench_account()
                 self.g['captchas'] += 1
+                await sleep(1)
+                await self.bench_account()
                 return False
-            except MalformedResponse:
+            except ex.MalformedResponseException:
                 self.logger.warning('Malformed response received!')
                 self.error_code = 'MALFORMED RESPONSE'
-                await random_sleep()
-            except Exception as err:
-                self.logger.exception('A wild exception appeared! {}'.format(err))
+                await random_sleep(10, 14)
+            except ex.UnexpectedResponseException:
+                self.logger.warning('Unexpected response received!')
+                self.error_code = 'UNEXPECTED RESPONSE'
+                await random_sleep(10, 14)
+            except ex.PgoapiError as e:
+                self.logger.error('A pgoapi error occurred. {}'.format(e))
+                self.error_code = 'PGOAPI ERROR'
+                await sleep(1)
+                return False
+            except Exception as e:
+                self.logger.exception('A wild exception appeared! {}'.format(e))
                 self.error_code = 'EXCEPTION'
+                await sleep(1)
                 return False
             else:
                 return visited
@@ -539,14 +564,13 @@ class Worker:
         forts_seen = 0
 
         if map_objects.get('status') != 1:
-            self.error_code = 'UNKNOWNRESPONSE'
             self.logger.warning(
-                'Response code: {}'.format(map_objects.get('status')))
+                'MapObjects code: {}'.format(map_objects.get('status')))
             self.empty_visits += 1
-            if self.empty_visits > 2:
+            if self.empty_visits > 3:
                 reason = '{} empty visits'.format(self.empty_visits)
                 await self.swap_account(reason)
-            return False
+            raise ex.UnexpectedResponseException
         for map_cell in map_objects['map_cells']:
             request_time_ms = map_cell['current_timestamp_ms']
             for pokemon in map_cell.get('wild_pokemons', []):
@@ -649,7 +673,7 @@ class Worker:
             pokemon_seen,
             forts_seen,
         )
-        self.update_accounts_dict()
+        self.update_accounts_dict(auth=False)
         return True
 
     async def spin_pokestop(self, pokestop):
@@ -762,7 +786,7 @@ class Worker:
         else:
             return norm, False
 
-    def update_accounts_dict(self, captcha=False, banned=False):
+    def update_accounts_dict(self, captcha=False, banned=False, auth=True):
         self.account['captcha'] = captcha
         self.account['banned'] = banned
         self.account['location'] = self.location
@@ -770,7 +794,7 @@ class Worker:
         self.account['inventory_timestamp'] = self.inventory_timestamp
         self.account['items'] = self.items
 
-        if self.api._auth_provider:
+        if auth and self.api._auth_provider:
             self.account['refresh'] = self.api._auth_provider._refresh_token
             if self.api._auth_provider.check_access_token():
                 self.account['auth'] = self.api._auth_provider._access_token
@@ -925,10 +949,6 @@ class BusyLock(Lock):
             return True
         else:
             return False
-
-
-class MalformedResponse(Exception):
-    """Raised when server response is malformed"""
 
 
 class CaptchaException(Exception):

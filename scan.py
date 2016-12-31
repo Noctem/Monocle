@@ -62,6 +62,14 @@ for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
 
+if config.PROXIES:
+    if isinstance(config.PROXIES, (tuple, list)):
+        config.PROXIES = set(config.PROXIES)
+    elif isinstance(config.PROXIES, str):
+        config.proxies = {config.PROXIES}
+    elif not isinstance(config.PROXIES, set):
+        raise ValueError('PROXIES must be either a list, set, tuple, or str.')
+
 from worker import Worker
 
 BAD_STATUSES = (
@@ -69,7 +77,7 @@ BAD_STATUSES = (
     'EXCEPTION',
     'NOT AUTHENTICATED'
     'BAD LOGIN',
-    'RETRYING',
+    'HASHING OFFLINE',
     'THROTTLE',
     'CAPTCHA',
     'BANNED',
@@ -77,7 +85,9 @@ BAD_STATUSES = (
     'REMOVING',
     'IP BANNED',
     'MALFORMED RESPONSE',
-    'NOTHING SEEN'
+    'UNEXPECTED RESPONSE',
+    'NOTHING SEEN',
+    'PGOAPI ERROR'
 )
 
 
@@ -185,8 +195,6 @@ class Overseer:
         self.all_seen = False
         self.idle_seconds = 0
         self.logger.info('Overseer initialized')
-        if config.PROXIES:
-            self.last_proxy = 0
 
     def start(self):
         self.captcha_queue = self.manager.captcha_queue()
@@ -204,23 +212,12 @@ class Overseer:
                 self.extra_queue.put(account)
 
         for worker_no in range(self.count):
-            self.start_worker(worker_no, first_run=True)
+            self.start_worker(worker_no)
         self.workers_list = list(self.workers.values())
         self.db_processor.start()
 
-    def start_worker(self, worker_no, first_run=False):
-        if isinstance(config.PROXIES, (tuple, list)):
-            if self.last_proxy >= len(config.PROXIES) - 1:
-                self.last_proxy = 0
-            else:
-                self.last_proxy += 1
-            proxy = config.PROXIES[self.last_proxy]
-        elif isinstance(config.PROXIES, str):
-            proxy = config.PROXIES
-        else:
-            proxy = None
-
-        worker = Worker(worker_no=worker_no, proxy=proxy)
+    def start_worker(self, worker_no):
+        worker = Worker(worker_no=worker_no)
         self.workers[worker_no] = worker
 
     def check(self):
