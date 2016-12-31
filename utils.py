@@ -125,7 +125,7 @@ def get_gains():
     Gain is space between circles.
     """
     start = Point(*get_map_center())
-    base = config.SCAN_RADIUS * sqrt(3)
+    base = 70 * sqrt(3)
     height = base * sqrt(3) / 2
     dis_a = distance(meters=base)
     dis_h = distance(meters=height)

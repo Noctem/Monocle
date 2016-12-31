@@ -50,6 +50,7 @@ Here it is in action:
     * *stem* is required for proxy circuit swapping
     * *shapely* is required for landmarks or spawnpoint scan boundaries
     * *selenium* (and [ChromeDriver](https://sites.google.com/a/chromium.org/chromedriver/)) are required for solving CAPTCHAs
+	* *uvloop* provides better event loop performance
     * *pycairo* is required for generating IV/move images
 5. Run `python3` from the command line
   1. Input `import db`

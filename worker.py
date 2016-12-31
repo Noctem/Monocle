@@ -1,4 +1,4 @@
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from geopy.distance import great_circle
 from logging import getLogger
@@ -626,10 +626,10 @@ class Worker:
             self.empty_visits += 1
             if forts_seen == 0:
                 self.error_code = 'NOTHING SEEN'
-                await self.swap_account('no Pokemon or forts seen')
+                await random_sleep(30, 60)
             else:
                 self.error_code = ','
-            if self.empty_visits > 2:
+            if self.empty_visits > 3:
                 reason = '{} empty visits'.format(self.empty_visits)
                 await self.swap_account(reason)
             if CIRCUIT_FAILURES:

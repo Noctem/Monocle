@@ -6,7 +6,6 @@ from statistics import median
 from threading import Thread, active_count, Semaphore
 from os import system, makedirs
 from sys import platform
-from uvloop import EventLoopPolicy
 from random import uniform, shuffle
 from queue import Queue, Full
 from signal import signal, SIGINT, SIG_IGN
@@ -14,6 +13,11 @@ from argparse import ArgumentParser
 from logging import getLogger, basicConfig, WARNING, INFO
 from collections import deque
 from pgoapi.hash_server import HashServer
+try:
+    from uvloop import EventLoopPolicy
+    HAS_UV = True
+except ImportError:
+    HAS_UV = False
 
 import asyncio
 import time
@@ -414,7 +418,7 @@ class Overseer:
         try:
             seen = Worker.g['seen']
             captchas = Worker.g['captchas']
-            sent = Worker.g['sent']
+            sent = Worker.g.get('sent')
             output.append('Seen per visit: {v:.2f}, per minute: {m:.0f}'.format(
                 v=seen / self.visits, m=seen / (seconds_since_start / 60)))
 
@@ -698,7 +702,8 @@ if __name__ == '__main__':
     manager = AccountManager(address=get_address(), authkey=config.AUTHKEY)
     manager.start(mgr_init)
 
-    asyncio.set_event_loop_policy(EventLoopPolicy())
+    if HAS_UV:
+        asyncio.set_event_loop_policy(EventLoopPolicy())
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(exception_handler)
     Worker.loop = loop
