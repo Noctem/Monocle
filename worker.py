@@ -558,6 +558,9 @@ class Worker:
         responses = await self.call_chain(request)
         self.last_gmo = time()
 
+        if sum(self.items.values()) > self.item_capacity:
+            self.clean_bag()
+
         map_objects = responses.get('GET_MAP_OBJECTS', {})
 
         sent = False
@@ -762,6 +765,33 @@ class Worker:
                 'capture_probability', {}).get('capture_probability')
         self.error_code = '!'
         return pokemon_data
+
+    def clean_bag(self):
+        rec_items = dict(self.items)
+        limits = config.ITEM_LIMITS
+        for item, num in rec_items.items():
+            if item in limits and num > limits[item]:
+                if limits[item] > 10:
+                    rec_items[item] = num-randint(limits[item]-10,limits[item])
+                else:
+                    rec_items[item] = num-limits[item]
+            else:
+                rec_items[item] = 0
+
+        # save requests by limiting it to 50
+        removed = 0
+        for item, num in sorted(rec_items.items(), key=lambda x: x[1], reverse=True):
+            if num < 1:
+                break;
+
+            response = self.api.recycle_inventory_item(item_id=item, count=num)
+            if response.get('responses', {}).get('RECYCLE_INVENTORY_ITEM', {}).get('result', 0) != 1:
+                self.logger.warning("Failed to remove item %d", item)
+            else:
+                removed += num
+                if removed > 50:
+                    break
+        self.logger.info("Removed %d items", removed)
 
     def simulate_jitter(self, amount=0.00002):
         self.location = [

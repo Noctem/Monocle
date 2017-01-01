@@ -70,6 +70,19 @@ RARE_IDS = (
     83, 115, 122, 132, 144, 145, 146, 150, 151, 130, 89, 3, 9, 131, 134, 62, 148, 94, 91, 87, 71, 45, 85, 114, 80, 6, 117, 121, 2, 8, 88, 136, 73, 103, 110, 137, 55, 28, 119, 68, 139, 141, 149, 65, 61, 142, 101, 40, 99, 38
 )
 
+# minium number of items to keep, if the bag is cleaned
+ITEM_LIMITS = {
+    1:    30, # Pokeball
+    2:    20, # Greatball
+    3:   100, # Ultraball
+    101:   0, # Potion
+    102:   0, # Super Potion
+    103:   0, # Hyper Potion
+    104:  50, # Max Potion
+    201:   0, # Revive
+    202:  50, # Max Revive
+}
+
 # the number of threads to use for simultaneous API requests
 #NETWORK_THREADS = round((GRID[0] * GRID[1]) / 15) + 1
 
