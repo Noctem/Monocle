@@ -27,7 +27,7 @@ for setting_name in REQUIRED_SETTINGS:
 # Set defaults for missing config options
 _optional = {
     'TRASH_IDS': (),
-    'MAP_PROVIDER_URL': '//{s}.tile.osm.org/{z}/{x}/{y}.png'
+    'MAP_PROVIDER_URL': '//{s}.tile.osm.org/{z}/{x}/{y}.png',
     'MAP_PROVIDER_ATTRIBUTION': '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors',
     'MAP_WORKERS': True,
     'AUTHKEY': b'm3wtw0'
@@ -114,7 +114,7 @@ if config.MAP_WORKERS:
         for worker_no, data in worker_dict.items():
             coords = data[0]
             unix_time = data[1]
-            speed = str(round(data[2], 1)) + 'mph'
+            speed = '{:.1f}mph'.format(data[2])
             total_seen = data[3]
             visits = data[4]
             seen_here = data[5]
@@ -137,10 +137,10 @@ if config.MAP_WORKERS:
 
 def get_pokemarkers():
     markers = []
-    ses = db.Session()
-    pokemons = db.get_sightings(ses)
-    forts = db.get_forts(ses)
-    ses.close()
+    session = db.Session()
+    pokemons = db.get_sightings(session)
+    forts = db.get_forts(session)
+    session.close()
 
     for pokemon in pokemons:
         markers.append({
@@ -172,28 +172,13 @@ def get_pokemarkers():
 
     if config.MAP_WORKERS:
         # Worker stats
-        for worker_no, data in worker_dict.items():
-            coords = data[0]
-            unix_time = data[1]
-            time = datetime.fromtimestamp(unix_time).strftime(
-                '%I:%M %p').lstrip('0')
-            markers.append({
-                'lat': coords[0],
-                'lon': coords[1],
-                'type': 'worker',
-                'worker_no': worker_no,
-                'time': time,
-                'speed': speed,
-                'total_seen': total_seen,
-                'visits': visits,
-                'seen_here': seen_here,
-                'sent_notification': sent_notification
-            })
+        markers.extend(get_worker_markers())
     return markers
 
 
 @app.route('/report')
 def report_main():
+    session = db.Session()
     top_pokemon = db.get_top_pokemon(session)
     bottom_pokemon = db.get_top_pokemon(session, order='ASC')
     bottom_sightings = db.get_all_sightings(
@@ -234,6 +219,7 @@ def report_main():
         ]
     }
     session_stats = db.get_session_stats(session)
+    session.close()
 
     area = utils.get_scan_area()
 
@@ -255,6 +241,7 @@ def report_main():
 
 @app.route('/report/<int:pokemon_id>')
 def report_single(pokemon_id):
+    session = db.Session()
     session_stats = db.get_session_stats(session)
     js_data = {
         'charts_data': {
@@ -263,6 +250,7 @@ def report_single(pokemon_id):
         'map_center': utils.get_map_center(),
         'zoom': 13,
     }
+    session.close()
     return render_template(
         'report_single.html',
         current_date=datetime.now(),
@@ -289,13 +277,13 @@ def sighting_to_marker(sighting):
 
 @app.route('/report/heatmap')
 def report_heatmap():
+    session = db.Session()
     pokemon_id = request.args.get('id')
     points = db.get_all_spawn_coords(session, pokemon_id=pokemon_id)
+    session.close()
     return json.dumps(points)
 
 
 if __name__ == '__main__':
     args = get_args()
-    session = db.Session()
     app.run(debug=args.debug, threaded=True, host=args.host, port=args.port)
-    session.close()

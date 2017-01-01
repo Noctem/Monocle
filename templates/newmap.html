@@ -76,6 +76,13 @@
                 iconUrl: '/static/img/pokeball.png'
             }
         });
+        var NotificationIcon = L.Icon.extend({
+            options: {
+                iconSize: [35, 35],
+                className: 'notification-icon',
+                iconUrl: '/static/img/masterball.png'
+            }
+        });
 
         function getMarkers () {
             return new Promise(function (resolve, reject) {
@@ -161,11 +168,15 @@
         }
 
         function WorkerMarker (raw) {
-            var icon = new WorkerIcon();
-            var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: .7});
+            if (raw.sent_notification === true) {
+                var icon = new NotificationIcon();
+            } else {
+                var icon = new WorkerIcon();
+            }
+            var marker = L.marker([raw.lat, raw.lon], {icon: icon});
             marker.raw = raw;
             markers[raw.worker_no] = marker;
-            marker.bindPopup('Worker ' + raw.worker_no + ', time: ' + raw.time);
+            marker.bindPopup('<b>Worker ' + raw.worker_no + '</b><br>time: ' + raw.time + '<br>speed: ' + raw.speed + '<br>total seen: ' + raw.total_seen + '<br>visits: ' + raw.visits + '<br>seen here: ' + raw.seen_here);
             return marker;
         }
 
