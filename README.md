@@ -7,15 +7,17 @@ A Pokémon Go scraper capable of scanning large areas for Pokémon spawns over l
 
 ## How does it work?
 
-It uses a database table of spawnpoints and expiration times to visit points soon after Pokemon spawn. For each point it determines which eligible worker can reach the point with the lowest speed, or tries again if all workers would be over the configurable speed limit. This method scans very efficiently and finds Pokemon very soon after they spawn, and also leads to unpredictable account movements that look less robotic. The spawnpoint database continually expands as it discovers Pokemon with accurate expiration times. If you don't have enough accounts to keep up with the number of spawns in your database, it will automatically skip points that are unreachable within the speed limit or points that it has already seen spawn that cycle from other nearby points.
+It uses a database table of spawnpoints and expiration times to visit points soon after Pokemon spawn. For each point it determines which eligible worker can reach the point with the lowest speed, or tries again if all workers would be over the configurable speed limit. This method scans very efficiently and finds Pokemon very soon after they spawn, and also leads to unpredictable worker movements that look less robotic. The spawnpoint database continually expands as Pokemon are discovered. If you don't have enough accounts to keep up with the number of spawns in your database, it will automatically skip points that are unreachable within the speed limit or points that it has already seen spawn that cycle from other nearby points.
 
-If you do not have an existing database of spawn points it will spread your workers out over the area you specify in config and collect the locations of spawn points from GetMapObjects requests. It will then visit those points whenever it doesn't have a known spawn (with its expiration time) to visit soon. So it will gradually learn the expiration times of more and more spawn points as you use it.
+If you don't have an existing database of spawn points it will spread your workers out over the area you specify in config and collect the locations of spawn points from GetMapObjects requests. It will then visit those points whenever it doesn't have a known spawn (with its expiration time) to visit soon. So it will gradually learn the expiration times of more and more spawn points as you use it.
 
 There's also a simple interface that displays active Pokemon on a map, and can generate nice-looking reports.
 
 Here it is in action:
 
 ![in action](static/demo/map.png)
+
+Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and data source can easily be configured to match [any of these](https://leaflet-extras.github.io/leaflet-providers/preview/) with the `MAP_PROVIDER_URL` config option.
 
 ## Features
 
@@ -42,7 +44,7 @@ Here it is in action:
 ## Setting up
 1. Install Python 3.5 or later (3.6 is recommended)
 2. `git clone https://github.com/Noctem/pokeminer.git` or download the [zip](https://github.com/Noctem/pokeminer/archive/develop.zip)
-3. Copy `config.example.py` to `config.py` and customize it with your account, location, database information, and any other relevant settings. The comments in the config example provide some information about the options.
+3. Copy `config.example.py` to `config.py` and customize it with your accounts, location, database information, and any other relevant settings. The comments in the config example provide some information about the options.
 4. `pip3 install -r requirements.txt`
   * Optionally `pip3 install` additional packages listed in optional-requirements
     * *pushbullet.py* is required for pushbullet notifications
@@ -50,7 +52,7 @@ Here it is in action:
     * *stem* is required for proxy circuit swapping
     * *shapely* is required for landmarks or spawnpoint scan boundaries
     * *selenium* (and [ChromeDriver](https://sites.google.com/a/chromium.org/chromedriver/)) are required for solving CAPTCHAs
-	* *uvloop* provides better event loop performance
+    * *uvloop* provides better event loop performance
     * *pycairo* is required for generating IV/move images
 5. Run `python3` from the command line
   1. Input `import db`
@@ -72,7 +74,7 @@ There are three reports, all available as web pages on the same server as the li
 2. Single species report, available at `/report/<pokemon_id>`
 3. Gym statistics page, available by running `gyms.py`
 
-The current location and stats of workers can be viewed from the main map by enabling the workers layer, or at `/workers` (communicates directly with the worker process and requires no DB queries).
+The workers' live locations and stats can be viewed from the main map by enabling the workers layer, or at `/workers` (communicates directly with the worker process and requires no DB queries).
 
 Here's what the overall report looks like:
 
