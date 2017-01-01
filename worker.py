@@ -10,7 +10,7 @@ from asyncio import sleep, Lock
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
 
-from db import SIGHTING_CACHE, MYSTERY_CACHE
+from db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance
 from shared import DatabaseProcessor
 
@@ -32,6 +32,7 @@ if config.CONTROL_SOCKS:
 else:
     CIRCUIT_TIME = None
     CIRCUIT_FAILURES = None
+
 
 class Worker:
     """Single worker walking on the map"""
@@ -633,11 +634,12 @@ class Worker:
                 for point in map_cell.get('spawn_points', []):
                     point = (point.get('latitude'), point.get('longitude'))
                     try:
+                        if not Bounds.contain(point):
+                            continue
                         rounded = round_coords(point, precision=4)
+                        self.spawns.mysteries.add(rounded)
                     except TypeError:
                         pass
-                    else:
-                        self.spawns.mysteries.add(rounded)
 
         if pokemon_seen > 0:
             self.error_code = ':'

@@ -52,7 +52,7 @@ _optional = {
     'ENCOUNTER': None,
     'NOTIFY': False,
     'AUTHKEY': b'm3wtw0',
-    'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 10) + 1,
+    'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 15) + 1,
     'SPIN_POKESTOPS': False,
     'COMPLETE_TUTORIAL': False,
     'MAP_WORKERS': True,
@@ -69,6 +69,11 @@ if config.PROXIES:
         config.PROXIES = {config.PROXIES}
     elif not isinstance(config.PROXIES, set):
         raise ValueError('PROXIES must be either a list, set, tuple, or str.')
+
+if config.MAP_START[0] == config.MAP_END[0]:
+    raise ValueError('The latitudes of your MAP_START and MAP_END must differ.')
+if config.MAP_START[1] == config.MAP_END[1]:
+    raise ValueError('The longitudes of your MAP_START and MAP_END must differ.')
 
 from worker import Worker
 

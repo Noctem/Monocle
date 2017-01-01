@@ -23,14 +23,21 @@ OPTIONAL_SETTINGS = {
     'SPAWN_ID_INT': True,
     'RARE_IDS': [],
     'REPORT_SINCE': None,
-    'BOUNDARIES': None
+    'BOUNDARIES': None,
+    'STAY_WITHIN_MAP': True
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
 
 if config.BOUNDARIES:
-    from shapely.geometry import Point
+    try:
+        from shapely.geometry import Polygon, Point
+
+        if not isinstance(config.BOUNDARIES, Polygon):
+            raise ValueError('BOUNDARIES must be a shapely Polygon.')
+    except ImportError as e:
+        raise ValueError('BOUNDARIES is set but shapely is not available.') from e
 
 
 class Team(enum.Enum):
@@ -82,6 +89,7 @@ if config.SPAWN_ID_INT:
 else:
     ID_TYPE = String(11)
 
+
 def get_engine():
     return create_engine(DB_ENGINE)
 
@@ -94,6 +102,30 @@ def combine_key(sighting):
     return sighting['encounter_id'], sighting['spawn_id']
 
 Base = declarative_base()
+
+
+class Bounds:
+    if config.BOUNDARIES:
+        boundaries = config.BOUNDARIES
+
+        @classmethod
+        def contain(cls, p):
+            return cls.boundaries.contains(Point(p))
+    elif config.STAY_WITHIN_MAP:
+        north = max(config.MAP_START[0], config.MAP_END[0])
+        south = min(config.MAP_START[0], config.MAP_END[0])
+        east = max(config.MAP_START[1], config.MAP_END[1])
+        west = min(config.MAP_START[1], config.MAP_END[1])
+
+        @classmethod
+        def contain(cls, p):
+            lat, lon = p
+            return (cls.south <= lat <= cls.north and
+                    cls.west <= lon <= cls.east)
+    else:
+        @staticmethod
+        def contain(p):
+            return True
 
 
 class SightingCache(object):
@@ -335,9 +367,10 @@ def get_spawns(session):
     altitudes = {}
     for spawn in spawns:
         point = (spawn.lat, spawn.lon)
-        if config.BOUNDARIES:
-            if not config.BOUNDARIES.contains(Point(point)):
-                continue
+
+        # skip if point is not within boundaries (if applicable)
+        if not Bounds.contain(point):
+            continue
 
         rounded = utils.round_coords(point, precision=3)
         altitudes[rounded] = spawn.alt
@@ -469,11 +502,6 @@ def add_mystery_spawnpoint(session, pokemon, spawns):
     if existing:
         return
     altitude = spawns.get_altitude(point)
-    if config.BOUNDARIES:
-        if config.BOUNDARIES.contains(Point(point)):
-            spawns.add_mystery(point)
-    else:
-        spawns.add_mystery(point)
 
     obj = Spawnpoint(
         spawn_id=spawn_id,
@@ -485,6 +513,9 @@ def add_mystery_spawnpoint(session, pokemon, spawns):
         duration=None
     )
     session.add(obj)
+
+    if Bounds.contain(point):
+        spawns.add_mystery(point)
 
 
 def add_mystery(session, pokemon, spawns):
