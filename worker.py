@@ -142,7 +142,6 @@ class Worker:
         self.error_code = 'LOGIN'
 
         async with self.login_semaphore:
-            await random_sleep(minimum=0.5, maximum=1.5)
             await self.loop.run_in_executor(
                 self.network_executor,
                 partial(
@@ -162,7 +161,7 @@ class Worker:
                 else:
                     request = self.api.create_request()
                     request.download_remote_config_version(platform=1, app_version=5102)
-                    responses = await self.call_chain(request, stamp=False, buddy=False, dl_hash=False)
+                    responses = await self.call(request, stamp=False, buddy=False, dl_hash=False)
                     await random_sleep(.6, 2)
                     if not responses:
                         return False
@@ -177,15 +176,10 @@ class Worker:
         self.error_code = 'APP SIMULATION'
         self.logger.info('Starting RPC login sequence (iOS app simulation)')
 
-        # empty request 1
+        # empty request
         request = self.api.create_request()
-        await self.loop.run_in_executor(self.network_executor, request.call)
+        await self.call(request, chain=False)
         await random_sleep(0.3, 0.5)
-
-        # empty request 2
-        request = self.api.create_request()
-        await self.loop.run_in_executor(self.network_executor, request.call)
-        await random_sleep(0.2, 0.4)
 
         # request 1: get_player
         request = self.api.create_request()
@@ -195,11 +189,9 @@ class Worker:
                 'language': 'en',
                 'timezone': 'America/Denver'})
 
-        response = await self.loop.run_in_executor(
-            self.network_executor, request.call
-        )
+        responses = await self.call(request, chain=False)
 
-        get_player = response.get('responses', {}).get('GET_PLAYER', {})
+        get_player = responses.get('GET_PLAYER', {})
         tutorial_state = get_player.get('player_data', {}).get('tutorial_state', [])
         self.item_capacity = get_player.get('player_data', {}).get('max_item_storage', 350)
 
@@ -212,7 +204,7 @@ class Worker:
         # request 2: download_remote_config_version
         request = self.api.create_request()
         request.download_remote_config_version(platform=1, app_version=version)
-        responses = await self.call_chain(request, stamp=False, buddy=False, dl_hash=False)
+        responses = await self.call(request, stamp=False, buddy=False, dl_hash=False)
 
         inventory_items = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('inventory_items', [])
         player_level = None
@@ -227,7 +219,7 @@ class Worker:
         # request 3: get_asset_digest
         request = self.api.create_request()
         request.get_asset_digest(platform=1, app_version=version)
-        await self.call_chain(request, buddy=False)
+        await self.call(request, buddy=False)
 
         await random_sleep(1.2, 1.4)
 
@@ -240,14 +232,14 @@ class Worker:
             # request 4: get_player_profile
             request = self.api.create_request()
             request.get_player_profile()
-            await self.call_chain(request)
+            await self.call(request)
             await random_sleep(.2, .4)
 
         if player_level:
             # request 5: level_up_rewards
             request = self.api.create_request()
             request.level_up_rewards(level=player_level)
-            await self.call_chain(request)
+            await self.call(request)
             await random_sleep(.9, 1.1)
         else:
             self.logger.warning('No player level')
@@ -255,7 +247,7 @@ class Worker:
         request = self.api.create_request()
         request.register_background_device(device_type='apple_watch')
         # treat the login process like an action
-        await self.call_chain(request, action=0.1)
+        await self.call(request, action=0.1)
         await random_sleep(.1, .3)
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
@@ -268,7 +260,7 @@ class Worker:
             await random_sleep(1, 5)
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=0)
-            await self.call_chain(request, buddy=False)
+            await self.call(request, buddy=False)
 
         if 1 not in tutorial_state:
             await random_sleep(5, 12)
@@ -282,18 +274,18 @@ class Worker:
                     'eyes': randint(1,4),
                     'backpack': randint(1,5)
                 })
-            await self.call_chain(request, buddy=False)
+            await self.call(request, buddy=False)
 
             await random_sleep(.3, .5)
 
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=1)
-            await self.call_chain(request, buddy=False)
+            await self.call(request, buddy=False, action=1)
 
         await random_sleep(.5, .6)
         request = self.api.create_request()
         request.get_player_profile()
-        await self.call_chain(request)
+        await self.call(request)
 
         starter_id = None
         if 3 not in tutorial_state:
@@ -302,17 +294,17 @@ class Worker:
             request.get_download_urls(asset_id=['1a3c2816-65fa-4b97-90eb-0b301c064b7a/1477084786906000',
                                                 'aa8f7687-a022-4773-b900-3a8c170e9aea/1477084794890000',
                                                 'e89109b0-9a54-40fe-8431-12f7826c8194/1477084802881000'])
-            await self.call_chain(request)
+            await self.call(request)
 
             await random_sleep(1, 1.6)
             request = self.api.create_request()
-            await self.loop.run_in_executor(self.network_executor, request.call)
+            await self.call(request, chain=False)
 
             await random_sleep(6, 13)
             request = self.api.create_request()
             starter = choice((1, 4, 7))
-            request.encounter_tutorial_complete(pokemon_id=starter)
-            await self.call_chain(request)
+            request.encounter_tutorial_complete(pokemon_id=starter, action=1)
+            await self.call(request)
 
             await random_sleep(.5, .6)
             request = self.api.create_request()
@@ -321,7 +313,7 @@ class Worker:
                     'country': 'US',
                     'language': 'en',
                     'timezone': 'America/Denver'})
-            responses = await self.call_chain(request)
+            responses = await self.call(request)
 
             inventory = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('inventory_items', [])
             for item in inventory:
@@ -334,12 +326,12 @@ class Worker:
             await random_sleep(5, 12)
             request = self.api.create_request()
             request.claim_codename(codename=self.username)
-            await self.call_chain(request)
+            await self.call(request, action=1)
 
             await random_sleep(1, 1.3)
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=4)
-            await self.call_chain(request, buddy=False)
+            await self.call(request, buddy=False)
 
             await sleep(.1)
             request = self.api.create_request()
@@ -348,18 +340,18 @@ class Worker:
                     'country': 'US',
                     'language': 'en',
                     'timezone': 'America/Denver'})
-            await self.call_chain(request)
+            await self.call(request)
 
         if 7 not in tutorial_state:
             await random_sleep(4, 10)
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=7)
-            await self.call_chain(request)
+            await self.call(request)
 
         if starter_id:
             await random_sleep(3, 5)
             request = self.api.create_request()
-            request.set_buddy_pokemon(pokemon_id=starter_id)
+            request.set_buddy_pokemon(pokemon_id=starter_id, action=1)
             await random_sleep(.8, 1.8)
 
         await sleep(.2)
@@ -373,25 +365,26 @@ class Worker:
             item_id = item.get('item_id')
             self.items[item_id] = item.get('count', 0)
 
-    async def call_chain(self, request, stamp=True, buddy=True, dl_hash=True, action=None):
-        request.check_challenge()
-        request.get_hatched_eggs()
-        if stamp and self.inventory_timestamp:
-            request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
-        else:
-            request.get_inventory()
-        request.check_awarded_badges()
-        if dl_hash:
-            request.download_settings(hash=self.download_hash)
-        else:
-            request.download_settings()
-        if buddy:
-            request.get_buddy_walked()
+    async def call(self, request, chain=True, stamp=True, buddy=True, dl_hash=True, action=None):
+        if chain:
+            request.check_challenge()
+            request.get_hatched_eggs()
+            if stamp and self.inventory_timestamp:
+                request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
+            else:
+                request.get_inventory()
+            request.check_awarded_badges()
+            if dl_hash:
+                request.download_settings(hash=self.download_hash)
+            else:
+                request.download_settings()
+            if buddy:
+                request.get_buddy_walked()
 
         try:
             refresh = HashServer.status.get('period')
 
-            while HashServer.status.get('remaining') < 7 and time() < refresh:
+            while HashServer.status.get('remaining') < 5 and time() < refresh:
                 self.error_code = 'HASH WAITING'
                 wait = refresh - time() + 1
                 await sleep(wait)
@@ -404,15 +397,58 @@ class Worker:
             # wait for the time required, or at least a half-second
             await sleep(self.last_action  - now)
 
-        response = await self.loop.run_in_executor(
-            self.network_executor, request.call
-        )
+        exceptions = 0
+        while True:
+            try:
+                response = await self.loop.run_in_executor(
+                    self.network_executor, request.call
+                )
+            except ex.HashingOfflineException:
+                self.logger.warning('Hashing server busy or offline.')
+                self.error_code = 'HASHING OFFLINE'
+                await sleep(5)
+            except ex.NianticOfflineException:
+                self.logger.warning('Niantic busy or offline.')
+                self.error_code = 'NIANTIC OFFLINE'
+                await random_sleep()
+            except ex.HashingQuotaExceededException:
+                self.logger.warning('Exceeded your hashing quota, sleeping.')
+                self.error_code = 'QUOTA EXCEEDED'
+                refresh = HashServer.status.get('period')
+                now = time()
+                if refresh:
+                    if refresh > now:
+                        await sleep(refresh - now + 1)
+                    else:
+                        await sleep(5)
+                else:
+                    await sleep(30)
+            except ex.NianticThrottlingException:
+                self.logger.warning('Server throttling - sleeping for a bit')
+                self.error_code = 'THROTTLE'
+                await random_sleep(11, 22, 12)
+            except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
+                self.logger.warning(e)
+                self.error_code = 'MALFORMED RESPONSE'
+                await random_sleep(10, 14, 11)
+            except ex.HashServerException as e:
+                self.logger.warning(e)
+                self.error_code = 'HASHING ERROR'
+                await sleep(5)
+            else:
+                if response:
+                    break
+            exceptions += 1
+            if exceptions >= config.MAX_RETRIES:
+                raise MaxRetriesException
+
         self.last_request = time()
         if action:
             # pad for time that action would require
             self.last_action = self.last_request + action
-        try:
-            responses = response.get('responses')
+
+        responses = response.get('responses')
+        if chain:
             delta = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
             timestamp = delta.get('new_timestamp_ms')
             inventory_items = delta.get('inventory_items', [])
@@ -422,8 +458,6 @@ class Worker:
             d_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
             self.download_hash = d_hash or self.download_hash
             self.check_captcha(responses)
-        except (TypeError, AttributeError):
-            raise ex.MalformedNianticResponseException
         return responses
 
     def fast_speed(self, point):
@@ -454,99 +488,63 @@ class Worker:
         Also is capable of restarting in case an error occurs.
         """
         visited = False
-        for attempts in range(0, 4):
-            try:
-                if not self.logged_in:
-                    self.api.set_position(*point)
-                    if not await self.login():
-                        await sleep(2)
-                        continue
-                return await self.visit_point(point, bootstrap=bootstrap)
-            except ex.NianticIPBannedException:
-                self.error_code = 'IP BANNED'
+        try:
+            altitude = self.spawns.get_altitude(round_coords(point, precision=3))
+            altitude = uniform(altitude - 1, altitude + 1)
+            self.location = point + [altitude]
+            self.api.set_position(*self.location)
+            if not self.logged_in:
+                if not await self.login():
+                    raise ex.NotLoggedInException
+            return await self.visit_point(point, bootstrap=bootstrap)
+        except ex.NianticIPBannedException:
+            self.error_code = 'IP BANNED'
 
-                if config.CONTROL_SOCKS:
-                    self.swap_circuit('IP ban')
-                elif self.proxies:
-                    self.logger.warning('Swapping out {} due to IP ban.'.format(
-                                        self.proxy))
-                    proxy = self.proxy
-                    while proxy == self.proxy:
-                        self.new_proxy()
-                else:
-                    self.logger.error('IP banned.')
-                    await sleep(150)
-
+            if config.CONTROL_SOCKS:
+                self.swap_circuit('IP ban')
                 await random_sleep(minimum=25, maximum=35)
-                return False
-            except (ex.AuthException, ex.NotLoggedInException):
-                self.logger.warning('{} is not authenticated.'.format(self.username))
-                self.error_code = 'NOT AUTHENTICATED'
-                await sleep(1)
-                await self.swap_account(reason='login failed')
-                return False
-            except ex.HashingOfflineException:
-                self.logger.info('Hashing server busy or offline.')
-                self.error_code = 'HASHING OFFLINE'
-                await random_sleep(5, 10)
-            except ex.HashingQuotaExceededException:
-                self.logger.warning('Exceeded your hashing quota, sleeping.')
-                self.error_code = 'QUOTA EXCEEDED'
-                refresh = HashServer.status.get('period')
-                now = time()
-                if refresh and refresh > now:
-                    await sleep(refresh - now + 1)
-                else:
-                    await random_sleep(15, 30)
-            except ex.NianticThrottlingException:
-                self.logger.warning('Server throttling - sleeping for a bit')
-                self.error_code = 'THROTTLE'
-                await random_sleep(11, 22)
-            except ex.BannedAccountException:
-                self.error_code = 'BANNED'
-                self.logger.warning('{} is banned'.format(self.username))
-                await sleep(1)
-                await self.remove_account()
-                return False
-            except CaptchaException:
-                self.error_code = 'CAPTCHA'
-                self.g['captchas'] += 1
-                await sleep(1)
-                await self.bench_account()
-                return False
-            except ex.MalformedResponseException:
-                self.logger.warning('Malformed response received!')
-                self.error_code = 'MALFORMED RESPONSE'
-                await random_sleep(10, 14)
-            except ex.UnexpectedResponseException:
-                self.logger.warning('Unexpected response received!')
-                self.error_code = 'UNEXPECTED RESPONSE'
-                await random_sleep()
-            except ex.PgoapiError as e:
-                self.logger.error('pgoapi error: {}'.format(e))
-                self.error_code = 'PGOAPI ERROR'
-                await sleep(1)
-                return False
-            except Exception as e:
-                self.logger.exception('A wild exception appeared! {}'.format(e))
-                self.error_code = 'EXCEPTION'
-                await sleep(1)
-                return False
-        self.error_code = 'MAX RETRIES'
+            elif self.proxies:
+                self.logger.warning('Swapping out {} due to IP ban.'.format(
+                                    self.proxy))
+                proxy = self.proxy
+                while proxy == self.proxy:
+                    self.new_proxy()
+                await random_sleep(minimum=12, maximum=20)
+            else:
+                self.logger.error('IP banned.')
+                await sleep(150)
+        except (ex.AuthException, ex.NotLoggedInException):
+            self.logger.warning('{} is not authenticated.'.format(self.username))
+            self.error_code = 'NOT AUTHENTICATED'
+            await sleep(1)
+            await self.swap_account(reason='login failed')
+        except ex.BannedAccountException:
+            self.error_code = 'BANNED'
+            self.logger.warning('{} is banned'.format(self.username))
+            await sleep(1)
+            await self.remove_account()
+        except CaptchaException:
+            self.error_code = 'CAPTCHA'
+            self.g['captchas'] += 1
+            await sleep(1)
+            await self.bench_account()
+        except MaxRetriesException:
+            self.logger.warning('Hit the maximum number of attempt retries.')
+            self.error_code = 'MAX RETRIES'
+        except ex.PgoapiError as e:
+            self.logger.error('pgoapi error: {}'.format(e))
+            self.error_code = 'PGOAPI ERROR'
+        except Exception as e:
+            self.logger.exception('A wild exception appeared! {}'.format(e))
+            self.error_code = 'EXCEPTION'
+        await sleep(1)
         return False
 
     async def visit_point(self, point, bootstrap=False):
         self.error_code = '!'
         latitude, longitude = point
-        rounded = round_coords(point, precision=3)
-        altitude = self.spawns.get_altitude(rounded)
-        altitude = uniform(altitude - 1, altitude + 1)
-        self.logger.info(
-            'Visiting {0[0]:.4f},{0[1]:.4f}'.format(point))
+        self.logger.info('Visiting {0[0]:.4f},{0[1]:.4f}'.format(point))
         start = time()
-        self.location = point + [altitude]
-
-        self.api.set_position(latitude, longitude, altitude)
 
         rounded = round_coords(point, precision=4)
         if rounded in self.cell_ids:
@@ -563,7 +561,7 @@ class Worker:
                                 latitude=latitude,
                                 longitude=longitude)
 
-        responses = await self.call_chain(request)
+        responses = await self.call(request)
         self.last_gmo = time()
 
         map_objects = responses.get('GET_MAP_OBJECTS', {})
@@ -704,7 +702,7 @@ class Worker:
         request.fort_details(fort_id = pokestop['external_id'],
                              latitude = pokestop['lat'],
                              longitude = pokestop['lon'])
-        responses = await self.call_chain(request, action=1)
+        responses = await self.call(request, action=1.5)
         name = responses.get('FORT_DETAILS', {}).get('name')
 
         request = self.api.create_request()
@@ -713,7 +711,7 @@ class Worker:
                             player_longitude = self.location[1],
                             fort_latitude = pokestop['lat'],
                             fort_longitude = pokestop['lon'])
-        responses = await self.call_chain(request, action=1)
+        responses = await self.call(request, action=1)
 
         result = responses.get('FORT_SEARCH', {}).get('result', 0)
         if result == 1:
@@ -766,7 +764,7 @@ class Worker:
                                     player_latitude=self.location[0],
                                     player_longitude=self.location[1])
 
-        responses = await self.call_chain(request, action=1.75)
+        responses = await self.call(request, action=2.25)
 
         response = responses.get('ENCOUNTER', {})
         pokemon_data = response.get('wild_pokemon', {}).get('pokemon_data', {})
@@ -800,7 +798,7 @@ class Worker:
         for item, count in rec_items.items():
             request = self.api.create_request()
             request.recycle_inventory_item(item_id=item, count=count)
-            responses = await self.call_chain(request, action=1.5)
+            responses = await self.call(request, action=2)
 
             if responses.get('RECYCLE_INVENTORY_ITEM', {}).get('result', 0) != 1:
                 self.logger.warning("Failed to remove item %d", item)
@@ -1000,6 +998,8 @@ class BusyLock(Lock):
         else:
             return False
 
+class MaxRetriesException(Exception):
+    """Raised when the maximum number of request retries is reached"""
 
 class CaptchaException(Exception):
     """Raised when a CAPTCHA is needed."""

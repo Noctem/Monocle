@@ -15,7 +15,7 @@ SPEED_LIMIT = 19    # don't travel over this many miles per hour (sorry non-Amer
 # rectangle you defined with MAP_START and MAP_END.
 # The rows/columns will also be used for the dot grid in the console output.
 # Provide more accounts than the product of your grid to allow swapping.
-GRID = (2, 2)  # rows, columns
+GRID = (4, 4)  # rows, columns
 
 # the corner points of a rectangle for your workers to spread out over before
 # any spawn points have been discovered
@@ -55,7 +55,7 @@ ACCOUNTS = [
 #HASH_KEY = '9d87af14461b93cb3605'  # this key is fake
 
 
-### these options use more requests but look more like the real client
+### these next 5 options use more requests but look more like the real client
 APP_SIMULATION = True     # mimic the actual app's login requests
 COMPLETE_TUTORIAL = True  # complete the tutorial process and configure avatar for all accounts that haven't yet
 
@@ -83,6 +83,11 @@ ITEM_LIMITS = {
     201:   0,  # Revive
     202:  40,  # Max Revive
 }
+
+
+# retry a request after failure this many times before giving up
+MAX_RETRIES = 3
+
 
 # exclude these Pokémon from the map by default (only visible in trash layer)
 TRASH_IDS = (

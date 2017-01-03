@@ -241,7 +241,7 @@ def create_account_dict(account):
     if isinstance(account, (tuple, list)):
         length = len(account)
     else:
-        raise TypeError('Account must be a tuple/list or string.')
+        raise TypeError('Account must be a tuple or list.')
 
     if not (length == 1 or length == 3 or length == 4 or length == 6):
         raise ValueError('Each account should have either 3 (account info only) or 6 values (account and device info).')
@@ -345,7 +345,7 @@ def load_accounts():
     return accounts
 
 
-async def random_sleep(minimum=8, maximum=14, mode=10):
+async def random_sleep(minimum=10, maximum=13, mode=None):
     """Sleeps for a bit"""
     if mode:
         await sleep(random.triangular(minimum, maximum, mode))

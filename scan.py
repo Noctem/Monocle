@@ -60,7 +60,8 @@ _optional = {
     'COMPLETE_TUTORIAL': False,
     'MAP_WORKERS': True,
     'APP_SIMULATION': True,
-    'ITEM_LIMITS': None
+    'ITEM_LIMITS': None,
+    'MAX_RETRIES': 3
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -92,6 +93,7 @@ BAD_STATUSES = (
     'NOT AUTHENTICATED'
     'BAD LOGIN',
     'HASHING OFFLINE',
+    'NIANTIC OFFLINE',
     'THROTTLE',
     'CAPTCHA',
     'BANNED',
@@ -99,10 +101,10 @@ BAD_STATUSES = (
     'REMOVING',
     'IP BANNED',
     'MALFORMED RESPONSE',
-    'UNEXPECTED RESPONSE',
     'NOTHING SEEN',
     'PGOAPI ERROR',
-    'MAX RETRIES'
+    'MAX RETRIES',
+    'HASHING ERROR'
 )
 
 
