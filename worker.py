@@ -613,13 +613,15 @@ class Worker:
                 if (normalized not in SIGHTING_CACHE and
                         normalized not in MYSTERY_CACHE):
                     self.account_seen += 1
-                    self.db_processor.add(normalized)
                     if (config.ENCOUNTER == 'all' and
                             'individual_attack' not in normalized):
                         try:
                             normalized.update(await self.encounter(pokemon))
                         except Exception:
                             self.logger.warning('Exception during encounter.')
+
+                self.db_processor.add(normalized)
+
             for fort in map_cell.get('forts', []):
                 if not fort.get('enabled'):
                     continue
