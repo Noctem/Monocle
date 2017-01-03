@@ -58,6 +58,7 @@ _optional = {
     'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 15) + 1,
     'SPIN_POKESTOPS': False,
     'COMPLETE_TUTORIAL': False,
+    'INCUBATE_EGGS': False,
     'MAP_WORKERS': True,
     'APP_SIMULATION': True,
     'ITEM_LIMITS': None,
