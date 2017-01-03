@@ -65,8 +65,11 @@ class Worker:
         self.username = self.account.get('username')
         self.location = self.account.get('location', (0, 0, 0))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
+        # last time of any request
         self.last_request = self.account.get('time', 0)
+        # last time of a request that requires user interaction in the game
         self.last_action = self.last_request
+        # last time of a GetMapObjects request
         self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
         # API setup
@@ -84,6 +87,7 @@ class Worker:
         self.error_code = 'INIT'
         self.item_capacity = 350
         self.visits = 0
+        self.pokestops = config.SPIN_POKESTOPS
 
     def initialize_api(self):
         device_info = get_device_info(self.account)
@@ -250,8 +254,8 @@ class Worker:
 
         request = self.api.create_request()
         request.register_background_device(device_type='apple_watch')
-        await self.call_chain(request)
-        self.last_action = time()
+        # treat the login process like an action
+        await self.call_chain(request, action=0.1)
         await random_sleep(.1, .3)
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
@@ -369,7 +373,7 @@ class Worker:
             item_id = item.get('item_id')
             self.items[item_id] = item.get('count', 0)
 
-    async def call_chain(self, request, stamp=True, buddy=True, dl_hash=True):
+    async def call_chain(self, request, stamp=True, buddy=True, dl_hash=True, action=None):
         request.check_challenge()
         request.get_hatched_eggs()
         if stamp and self.inventory_timestamp:
@@ -386,22 +390,27 @@ class Worker:
 
         try:
             refresh = HashServer.status.get('period')
-            now = time()
 
-            while HashServer.status.get('remaining') < 3 and now < refresh:
+            while HashServer.status.get('remaining') < 7 and time() < refresh:
                 self.error_code = 'HASH WAITING'
-                wait = refresh - now + 1
+                wait = refresh - time() + 1
                 await sleep(wait)
-                now = time()
                 refresh = HashServer.status.get('period')
-            self.error_code = '!'
         except TypeError:
             pass
+
+        now = time()
+        if action and self.last_action > now:
+            # wait for the time required, or at least a half-second
+            await sleep(self.last_action  - now)
 
         response = await self.loop.run_in_executor(
             self.network_executor, request.call
         )
         self.last_request = time()
+        if action:
+            # pad for time that action would require
+            self.last_action = self.last_request + action
         try:
             responses = response.get('responses')
             delta = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
@@ -452,7 +461,7 @@ class Worker:
                     if not await self.login():
                         await sleep(2)
                         continue
-                visited = await self.visit_point(point, bootstrap=bootstrap)
+                return await self.visit_point(point, bootstrap=bootstrap)
             except ex.NianticIPBannedException:
                 self.error_code = 'IP BANNED'
 
@@ -488,7 +497,7 @@ class Worker:
                 if refresh and refresh > now:
                     await sleep(refresh - now + 1)
                 else:
-                    await random_sleep(10, 20)
+                    await random_sleep(15, 30)
             except ex.NianticThrottlingException:
                 self.logger.warning('Server throttling - sleeping for a bit')
                 self.error_code = 'THROTTLE'
@@ -512,9 +521,9 @@ class Worker:
             except ex.UnexpectedResponseException:
                 self.logger.warning('Unexpected response received!')
                 self.error_code = 'UNEXPECTED RESPONSE'
-                await random_sleep(10, 14)
+                await random_sleep()
             except ex.PgoapiError as e:
-                self.logger.error('A pgoapi error occurred. {}'.format(e))
+                self.logger.error('pgoapi error: {}'.format(e))
                 self.error_code = 'PGOAPI ERROR'
                 await sleep(1)
                 return False
@@ -523,16 +532,15 @@ class Worker:
                 self.error_code = 'EXCEPTION'
                 await sleep(1)
                 return False
-            else:
-                return visited
+        self.error_code = 'MAX RETRIES'
         return False
 
     async def visit_point(self, point, bootstrap=False):
+        self.error_code = '!'
         latitude, longitude = point
         rounded = round_coords(point, precision=3)
         altitude = self.spawns.get_altitude(rounded)
         altitude = uniform(altitude - 1, altitude + 1)
-        self.error_code = '!'
         self.logger.info(
             'Visiting {0[0]:.4f},{0[1]:.4f}'.format(point))
         start = time()
@@ -558,9 +566,6 @@ class Worker:
         responses = await self.call_chain(request)
         self.last_gmo = time()
 
-        if sum(self.items.values()) > self.item_capacity:
-            self.clean_bag()
-
         map_objects = responses.get('GET_MAP_OBJECTS', {})
 
         sent = False
@@ -575,6 +580,10 @@ class Worker:
                 reason = '{} empty visits'.format(self.empty_visits)
                 await self.swap_account(reason)
             raise ex.UnexpectedResponseException
+
+        if config.ITEM_LIMITS and self.bag_full():
+            await self.clean_bag()
+
         for map_cell in map_objects['map_cells']:
             request_time_ms = map_cell['current_timestamp_ms']
             for pokemon in map_cell.get('wild_pokemons', []):
@@ -626,8 +635,7 @@ class Worker:
                             self.db_processor.add(norm)
                     pokestop = self.normalize_pokestop(fort)
                     self.db_processor.add(pokestop)
-                    if (config.SPIN_POKESTOPS and
-                            sum(self.items.values()) < self.item_capacity):
+                    if self.pokestops and not self.bag_full():
                         cooldown = fort.get('cooldown_complete_timestamp_ms')
                         if not cooldown or time() > cooldown / 1000:
                             await self.spin_pokestop(pokestop)
@@ -655,7 +663,6 @@ class Worker:
             self.empty_visits += 1
             if forts_seen == 0:
                 self.error_code = 'NOTHING SEEN'
-                await random_sleep(30, 60)
             else:
                 self.error_code = ','
             if self.empty_visits > 3:
@@ -685,20 +692,20 @@ class Worker:
         self.error_code = '$'
         pokestop_location = pokestop['lat'], pokestop['lon']
         distance = great_circle(self.location, pokestop_location).meters
-        if distance > 40:
+        # permitted interaction distance - 2 (for some jitter leeway)
+        # estimation of spinning speed limit
+        if distance > 38 or self.speed > 22:
             return False
 
-        if time() - self.last_action < 1:
-            await sleep(1)
+        # randomize location up to ~1.4 meters
+        self.simulate_jitter(amount=0.00001)
 
         request = self.api.create_request()
         request.fort_details(fort_id = pokestop['external_id'],
                              latitude = pokestop['lat'],
                              longitude = pokestop['lon'])
-        responses = await self.call_chain(request)
+        responses = await self.call_chain(request, action=1)
         name = responses.get('FORT_DETAILS', {}).get('name')
-
-        await random_sleep(.6, 1.2)
 
         request = self.api.create_request()
         request.fort_search(fort_id = pokestop['external_id'],
@@ -706,12 +713,22 @@ class Worker:
                             player_longitude = self.location[1],
                             fort_latitude = pokestop['lat'],
                             fort_longitude = pokestop['lon'])
-        responses = await self.call_chain(request)
-        self.last_action = time() + .25
+        responses = await self.call_chain(request, action=1)
 
-        result = responses.get('FORT_SEARCH', {}).get('result')
+        result = responses.get('FORT_SEARCH', {}).get('result', 0)
         if result == 1:
-            self.logger.info('Spun {n}: {r}'.format(n=name, r=result))
+            self.logger.info('Spun {}.'.format(name))
+        elif result == 2:
+            self.logger.info('The server said {n} was out of spinning range. {d:.1f}m {s:.1f}MPH'.format(
+                n=name, d=distance, s=self.speed))
+        elif result == 3:
+            self.logger.warning('{} was in the cooldown period.'.format(name))
+        elif result == 4:
+            self.logger.warning('Could not spin {n} because inventory was full. {s}'.format(
+                n=name, s=sum(self.items.values())))
+        elif result == 5:
+            self.logger.warning('Could not spin {} because the daily limit was reached.'.format(name))
+            self.pokestops = False
         else:
             self.logger.warning('Failed spinning {n}: {r}'.format(n=name, r=result))
         self.error_code = '!'
@@ -720,6 +737,8 @@ class Worker:
     async def encounter(self, pokemon):
         pokemon_point = pokemon['latitude'], pokemon['longitude']
         distance_to_pokemon = great_circle(self.location, pokemon_point).meters
+
+        self.error_code = '~'
 
         if distance_to_pokemon > 47:
             percent = 1 - (46 / distance_to_pokemon)
@@ -739,10 +758,7 @@ class Worker:
             delay_required = triangular(1.25, 4, 2)
 
         if time() - self.last_request < delay_required:
-            self.error_code = '~'
             await sleep(delay_required)
-
-        self.error_code = 'ENCOUNTERING'
 
         request = self.api.create_request()
         request = request.encounter(encounter_id=pokemon['encounter_id'],
@@ -750,8 +766,7 @@ class Worker:
                                     player_latitude=self.location[0],
                                     player_longitude=self.location[1])
 
-        responses = await self.call_chain(request)
-        self.last_action = time() + 1.5
+        responses = await self.call_chain(request, action=1.75)
 
         response = responses.get('ENCOUNTER', {})
         pokemon_data = response.get('wild_pokemon', {}).get('pokemon_data', {})
@@ -766,41 +781,43 @@ class Worker:
         self.error_code = '!'
         return pokemon_data
 
-    def clean_bag(self):
-        rec_items = dict(self.items)
+    def bag_full(self):
+        return sum(self.items.values()) >= self.item_capacity
+
+    async def clean_bag(self):
+        self.error_code = '|'
+        rec_items = {}
         limits = config.ITEM_LIMITS
-        for item, num in rec_items.items():
-            if item in limits and num > limits[item]:
-                if limits[item] > 10:
-                    rec_items[item] = num-randint(limits[item]-10,limits[item])
+        for item, count in self.items.items():
+            if item in limits and count > limits[item]:
+                discard = count - limits[item]
+                if discard > 50:
+                    rec_items[item] = randint(50, discard)
                 else:
-                    rec_items[item] = num-limits[item]
-            else:
-                rec_items[item] = 0
+                    rec_items[item] = discard
 
-        # save requests by limiting it to 50
         removed = 0
-        for item, num in sorted(rec_items.items(), key=lambda x: x[1], reverse=True):
-            if num < 1:
-                break;
+        for item, count in rec_items.items():
+            request = self.api.create_request()
+            request.recycle_inventory_item(item_id=item, count=count)
+            responses = await self.call_chain(request, action=1.5)
 
-            response = self.api.recycle_inventory_item(item_id=item, count=num)
-            if response.get('responses', {}).get('RECYCLE_INVENTORY_ITEM', {}).get('result', 0) != 1:
+            if responses.get('RECYCLE_INVENTORY_ITEM', {}).get('result', 0) != 1:
                 self.logger.warning("Failed to remove item %d", item)
             else:
-                removed += num
-                if removed > 50:
-                    break
+                removed += count
         self.logger.info("Removed %d items", removed)
+        self.error_code = '!'
 
     def simulate_jitter(self, amount=0.00002):
+        '''Slightly randomize location, by up to ~2.8 meters by default.'''
         self.location = [
             uniform(self.location[0] - amount,
-                           self.location[0] + amount),
+                    self.location[0] + amount),
             uniform(self.location[1] - amount,
-                           self.location[1] + amount),
-            uniform(self.location[2] - 1.5,
-                           self.location[2] + 1.5)
+                    self.location[1] + amount),
+            uniform(self.location[2] - 1,
+                    self.location[2] + 1)
         ]
         self.api.set_position(*self.location)
 
@@ -876,6 +893,7 @@ class Worker:
         self.last_action = self.last_request
         self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
+        self.pokestops = config.SPIN_POKESTOPS
         self.initialize_api()
         self.error_code = None
         if lock:

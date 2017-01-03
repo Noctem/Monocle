@@ -35,9 +35,9 @@ if config.BOUNDARIES:
         from shapely.geometry import Polygon, Point
 
         if not isinstance(config.BOUNDARIES, Polygon):
-            raise ValueError('BOUNDARIES must be a shapely Polygon.')
+            raise TypeError('BOUNDARIES must be a shapely Polygon.')
     except ImportError as e:
-        raise ValueError('BOUNDARIES is set but shapely is not available.') from e
+        raise ImportError('BOUNDARIES is set but shapely is not available.') from e
 
 
 class Team(enum.Enum):

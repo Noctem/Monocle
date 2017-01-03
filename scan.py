@@ -25,7 +25,10 @@ import time
 from db import SIGHTING_CACHE
 from utils import get_current_hour, dump_pickle, get_address, get_start_coords
 
-import config
+try:
+    import config
+except ModuleNotFoundError as e:
+    raise ModuleNotFoundError('Please copy config.example.py to config.py and customize it.') from e
 
 # Check whether config has all necessary attributes
 _required = (
@@ -56,12 +59,14 @@ _optional = {
     'SPIN_POKESTOPS': False,
     'COMPLETE_TUTORIAL': False,
     'MAP_WORKERS': True,
-    'APP_SIMULATION': True
+    'APP_SIMULATION': True,
+    'ITEM_LIMITS': None
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
 
+# validate PROXIES input and cast to set if needed
 if config.PROXIES:
     if isinstance(config.PROXIES, (tuple, list)):
         config.PROXIES = set(config.PROXIES)
@@ -70,10 +75,14 @@ if config.PROXIES:
     elif not isinstance(config.PROXIES, set):
         raise ValueError('PROXIES must be either a list, set, tuple, or str.')
 
-if config.MAP_START[0] == config.MAP_END[0]:
-    raise ValueError('The latitudes of your MAP_START and MAP_END must differ.')
-if config.MAP_START[1] == config.MAP_END[1]:
-    raise ValueError('The longitudes of your MAP_START and MAP_END must differ.')
+# ensure that user's latitudes and longitudes are different
+if (config.MAP_START[0] == config.MAP_END[0]
+        or config.MAP_START[1] == config.MAP_END[1]):
+    raise ValueError('The latitudes and longitudes of your MAP_START and MAP_END must differ.')
+
+# disable bag cleaning if not spinning PokéStops
+if config.ITEM_LIMITS and not config.SPIN_POKESTOPS:
+    config.ITEM_LIMITS = None
 
 from worker import Worker
 
@@ -92,7 +101,8 @@ BAD_STATUSES = (
     'MALFORMED RESPONSE',
     'UNEXPECTED RESPONSE',
     'NOTHING SEEN',
-    'PGOAPI ERROR'
+    'PGOAPI ERROR',
+    'MAX RETRIES'
 )
 
 
@@ -341,13 +351,16 @@ class Overseer:
         , = visited less than a minute ago, nothing seen
         : = visited less than a minute ago, pokemon seen
         ! = currently visiting
+        | = cleaning bag
+        $ = spinning a PokéStop
         * = sending a notification
-        ~ = waiting to encounter
-        E = currently encountering
+        ~ = encountering a Pokémon
         I = initial, haven't done anything yet
         L = logging in
         A = simulating app startup
+        T = completing the tutorial
         X = something bad happened
+        H = waiting for the next period on the hashing server
         C = CAPTCHA
 
         Other letters: various errors and procedures

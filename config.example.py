@@ -4,11 +4,11 @@ DB_ENGINE = 'sqlite:///db.sqlite'
 #DB_ENGINE = 'mysql://user:pass@localhost/pokeminer'
 #DB_ENGINE = 'postgresql://user:pass@localhost/pokeminer
 
-AREA_NAME = 'SLC'  # the city or region you are scanning
-LANGUAGE = 'EN'  # ISO 639-1 codes EN, DE, FR, and ZH currently supported for Pokemon names.
+AREA_NAME = 'SLC'   # the city or region you are scanning
+LANGUAGE = 'EN'     # ISO 639-1 codes EN, DE, FR, and ZH for Pokémon names.
 MAX_CAPTCHAS = 100  # stop launching new visits if this many CAPTCHAs are pending
-SCAN_DELAY = 10.1  # wait at least this many seconds before scanning with the same account
-SPEED_LIMIT = 19  # do not travel over this many miles per hour
+SCAN_DELAY = 10.1   # wait at least this many seconds before scanning with the same account
+SPEED_LIMIT = 19    # don't travel over this many miles per hour (sorry non-Americans)
 
 # The number of simultaneous workers will be these two numbers multiplied.
 # On the initial run, workers will arrange themselves in a grid across the
@@ -26,16 +26,10 @@ MAP_END = (40.7143, -111.8046)
 # the boundaries will be the rectangle created by MAP_START and MAP_END, unless
 STAY_WITHIN_MAP = True
 
-### alternatively define a polygon to use as boundaries (requires shapely)
-### if BOUNDARIES is set, STAY_WITHIN_MAP will be ignored
+## alternatively define a polygon to use as boundaries (requires shapely)
+## if BOUNDARIES is set, STAY_WITHIN_MAP will be ignored
 #from shapely.geometry import Polygon
 #BOUNDARIES = Polygon(((40.799609, -111.948556), (40.792749, -111.887341), (40.779264, -111.838078), (40.761410, -111.817908), (40.728636, -111.805293), (40.688833, -111.785564), (40.689768, -111.919389), (40.750461, -111.949938)))
-
-### these options use more requests but will look more like the real client
-APP_SIMULATION = True  # mimic the actual app's login requests
-COMPLETE_TUTORIAL = True  # run through the tutorial process and configure avatar for all accounts that haven't yet
-ENCOUNTER = None  # encounter pokemon to store IVs. (currently must be 'notifying' or 'all' to use notifications)
-SPIN_POKESTOPS = False  # spin all pokestops that are within range (until inventory is full)
 
 # If accounts use the same provider and password you can set defaults here
 # and omit them from the accounts list.
@@ -49,7 +43,7 @@ SPIN_POKESTOPS = False  # spin all pokestops that are within range (until invent
 # (username, password, provider)
 ## valid account formats (with PASS and PROVIDER set):
 # (username, iPhone, iOS, device_id)
-# (username,)
+# [username]
 ACCOUNTS = [
     ('ash_ketchum', 'pik4chu', 'ptc'),
     ('ziemniak_kalafior', 'ogorek', 'google'),
@@ -60,34 +54,51 @@ ACCOUNTS = [
 # key for Bossland's hashing server, otherwise the old hashing lib will be used
 #HASH_KEY = '9d87af14461b93cb3605'  # this key is fake
 
-# only show these when enabling the trash layer on the map
-TRASH_IDS = (
-    16, 19, 21, 29, 32, 41, 46, 48, 50, 52, 56, 58, 74, 77, 81, 96, 111, 133
-)
 
-# include these on the "rare" report
-RARE_IDS = (
-    83, 115, 122, 132, 144, 145, 146, 150, 151, 130, 89, 3, 9, 131, 134, 62, 148, 94, 91, 87, 71, 45, 85, 114, 80, 6, 117, 121, 2, 8, 88, 136, 73, 103, 110, 137, 55, 28, 119, 68, 139, 141, 149, 65, 61, 142, 101, 40, 99, 38
-)
+### these options use more requests but look more like the real client
+APP_SIMULATION = True     # mimic the actual app's login requests
+COMPLETE_TUTORIAL = True  # complete the tutorial process and configure avatar for all accounts that haven't yet
 
-# minium number of items to keep, if the bag is cleaned
+## encounter Pokémon to store IVs.
+## valid options:
+# 'all' will encounter every Pokémon that hasn't been already been encountered
+# 'notifying' will encounter Pokémon that are eligible for notifications
+# None will never encounter Pokémon
+ENCOUNTER = None
+
+# spin all PokéStops that are within range
+SPIN_POKESTOPS = False
+
+# minimum number of each item to keep if the bag is cleaned
+# remove or set to None to disable bag cleaning
+# automatically disabled if SPIN_POKESTOPS is disabled
 ITEM_LIMITS = {
-    1:    30, # Pokeball
-    2:    20, # Greatball
-    3:   100, # Ultraball
-    101:   0, # Potion
-    102:   0, # Super Potion
-    103:   0, # Hyper Potion
-    104:  50, # Max Potion
-    201:   0, # Revive
-    202:  50, # Max Revive
+    1:    20,  # Poké Ball
+    2:    50,  # Great Ball
+    3:   100,  # Ultra Ball
+    101:   0,  # Potion
+    102:   0,  # Super Potion
+    103:   0,  # Hyper Potion
+    104:  40,  # Max Potion
+    201:   0,  # Revive
+    202:  40,  # Max Revive
 }
+
+# exclude these Pokémon from the map by default (only visible in trash layer)
+TRASH_IDS = (
+    16, 19, 21, 29, 32, 41, 46, 48, 50, 52, 56, 74, 77, 96, 111, 133
+)
+
+# include these Pokémon on the "rare" report
+RARE_IDS = (
+    3, 6, 9, 45, 62, 71, 80, 85, 87, 89, 91, 94, 114, 130, 131, 134
+)
 
 # the number of threads to use for simultaneous API requests
 #NETWORK_THREADS = round((GRID[0] * GRID[1]) / 15) + 1
 
 from datetime import datetime
-REPORT_SINCE = datetime(2016, 11, 1)
+REPORT_SINCE = datetime(2016, 12, 17)  # base reports on data from after this date
 
 # used for altitude queries and maps in reports
 GOOGLE_MAPS_KEY = 'OYOgW1wryrp2RKJ81u7BLvHfYUA6aArIyuQCXu4'  # this key is fake
@@ -98,12 +109,12 @@ MAP_WORKERS = True  # allow displaying the live location of workers on the map
 # unix timestamp of last spawn point migration, spawn times learned before this will be ignored
 LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 
-### Map data provider and appearance, previews available at:
-### https://leaflet-extras.github.io/leaflet-providers/preview/
+## Map data provider and appearance, previews available at:
+## https://leaflet-extras.github.io/leaflet-providers/preview/
 #MAP_PROVIDER_URL = '//{s}.tile.osm.org/{z}/{x}/{y}.png'
 #MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 
-# set of proxy addresses and ports.
+# set of proxy addresses and ports
 #PROXIES = {'socks5://127.0.0.1:1080', 'socks5://127.0.0.1:1081'}
 
 # convert spawn_id to integer for more efficient DB storage, set to False if
@@ -128,14 +139,14 @@ TIME_REQUIRED = 600  # 10 minutes
 # Sightings of the top (x) will always be notified about, even if below TIME_REQUIRED
 ALWAYS_NOTIFY = 14
 
-# The (x) rarest pokemon will be eligible for notification. Whether a 
-# notification is sent or not depends on its score, as explained below
+# The (x) rarest Pokémon will be eligible for notification. Whether a
+# notification is sent or not depends on its score, as explained below.
 NOTIFY_RANKING = 90
 
-# The Pokemon score required to notify is on a sliding scale from INITIAL_SCORE
+# The Pokémon score required to notify is on a sliding scale from INITIAL_SCORE
 # to MAXIMUM_SCORE over the course of FULL_TIME seconds following a notification
-# Pokemon scores are an average of the Pokemon's rarity score and IV score (from 0 to 1)
-# If NOTIFY_RANKING is 90, the 90th most common Pokemon will have a rarity of score 0, the rarest will be 1.
+# Pokémon scores are an average of the Pokémon's rarity score and IV score (from 0 to 1)
+# If NOTIFY_RANKING is 90, the 90th most common Pokémon will have a rarity of score 0, the rarest will be 1.
 # Perfect IVs have a score of 1, the worst IVs have a score of 0. Attack IV is weighted more heavily.
 FULL_TIME = 1680  # the number of seconds from last notification before only MINIMUM_SCORE will be required 
 INITIAL_SCORE = 0.7  # the score required to notify immediately after a notification
