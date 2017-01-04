@@ -32,8 +32,10 @@ STAY_WITHIN_MAP = True
 # accounts and arousing suspicion.
 SIMULTANEOUS_LOGINS = 4
 
-## alternatively define a polygon to use as boundaries (requires shapely)
+## alternatively define a Polygon to use as boundaries (requires shapely)
 ## if BOUNDARIES is set, STAY_WITHIN_MAP will be ignored
+## more information available in the shapely manual:
+## http://toblerity.org/shapely/manual.html#polygons
 #from shapely.geometry import Polygon
 #BOUNDARIES = Polygon(((40.799609, -111.948556), (40.792749, -111.887341), (40.779264, -111.838078), (40.761410, -111.817908), (40.728636, -111.805293), (40.688833, -111.785564), (40.689768, -111.919389), (40.750461, -111.949938)))
 

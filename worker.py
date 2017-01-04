@@ -303,8 +303,8 @@ class Worker:
             await random_sleep(6, 13)
             request = self.api.create_request()
             starter = choice((1, 4, 7))
-            request.encounter_tutorial_complete(pokemon_id=starter, action=1)
-            await self.call(request)
+            request.encounter_tutorial_complete(pokemon_id=starter)
+            await self.call(request, action=1)
 
             await random_sleep(.5, .6)
             request = self.api.create_request()
@@ -351,7 +351,8 @@ class Worker:
         if starter_id:
             await random_sleep(3, 5)
             request = self.api.create_request()
-            request.set_buddy_pokemon(pokemon_id=starter_id, action=1)
+            request.set_buddy_pokemon(pokemon_id=starter_id)
+            await self.call(request, action=1)
             await random_sleep(.8, 1.8)
 
         await sleep(.2)
