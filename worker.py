@@ -431,10 +431,6 @@ class Worker:
                 self.logger.warning(e)
                 self.error_code = 'MALFORMED RESPONSE'
                 await random_sleep(10, 14, 11)
-            except ex.HashServerException as e:
-                self.logger.warning(e)
-                self.error_code = 'HASHING ERROR'
-                await sleep(5)
             else:
                 if response:
                     break
@@ -535,6 +531,9 @@ class Worker:
             else:
                 self.logger.error('IP banned.')
                 await sleep(150)
+        except ex.HashServerException as e:
+            self.logger.warning(e)
+            self.error_code = 'HASHING ERROR'
         except ex.PgoapiError as e:
             self.logger.error('pgoapi error: {}'.format(e))
             self.error_code = 'PGOAPI ERROR'
