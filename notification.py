@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from collections import deque
-from os import makedirs
+from os import mkdir
 from math import sqrt
 from time import monotonic
 
@@ -168,8 +168,8 @@ def create_image(pokemon_id, iv, move1, move2):
         draw_name(context, name)
         image = 'notification-images/{}-notification.png'.format(name)
         try:
-            makedirs('notification-images')
-        except OSError:
+            mkdir('notification-images')
+        except FileExistsError:
             pass
         ims.write_to_png(image)
         return image

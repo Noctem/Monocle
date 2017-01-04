@@ -4,7 +4,7 @@ from datetime import datetime
 from multiprocessing.managers import BaseManager, DictProxy
 from statistics import median
 from threading import Thread, active_count, Semaphore
-from os import system, makedirs
+from os import system, mkdir
 from sys import platform
 from random import uniform, shuffle
 from queue import Queue, Full
@@ -702,9 +702,11 @@ if __name__ == '__main__':
     START_TIME = time.monotonic()
 
     try:
-        makedirs('pickles')
-    except OSError:
+        mkdir('pickles')
+    except FileExistsError:
         pass
+    except Exception as e:
+        raise OSError("Failed to create 'pickles' folder, please create it manually") from e
 
     args = parse_args()
     logger = getLogger()
