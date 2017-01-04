@@ -4,7 +4,7 @@ from datetime import datetime
 from multiprocessing.managers import BaseManager, DictProxy
 from statistics import median
 from threading import Thread, active_count, Semaphore
-from os import system, mkdir
+from os import system
 from sys import platform
 from random import uniform, shuffle
 from queue import Queue, Full
@@ -13,14 +13,16 @@ from argparse import ArgumentParser
 from logging import getLogger, basicConfig, WARNING, INFO
 from collections import deque
 from pgoapi.hash_server import HashServer
-try:
-    from uvloop import EventLoopPolicy
-    HAS_UV = True
-except ImportError:
-    HAS_UV = False
 
 import asyncio
 import time
+
+try:
+    from uvloop import EventLoopPolicy
+
+    asyncio.set_event_loop_policy(EventLoopPolicy())
+except ImportError:
+    pass
 
 from db import SIGHTING_CACHE
 from utils import get_current_hour, dump_pickle, get_address, get_start_coords
@@ -44,14 +46,12 @@ for setting_name in _required:
 # Set defaults for missing config options
 _optional = {
     'PROXIES': None,
-    'SCAN_DELAY': 11,
     'NOTIFY_IDS': None,
     'NOTIFY_RANKING': None,
     'CONTROL_SOCKS': None,
     'HASH_KEY': None,
     'MAX_CAPTCHAS': 0,
     'ACCOUNTS': (),
-    'SPEED_LIMIT': 19,
     'ENCOUNTER': None,
     'NOTIFY': False,
     'AUTHKEY': b'm3wtw0',
@@ -61,7 +61,7 @@ _optional = {
     'MAP_WORKERS': True,
     'APP_SIMULATION': True,
     'ITEM_LIMITS': None,
-    'MAX_RETRIES': 3
+    'MAX_RETRIES': 3,
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -84,6 +84,24 @@ if (config.MAP_START[0] == config.MAP_END[0]
 # disable bag cleaning if not spinning PokéStops
 if config.ITEM_LIMITS and not config.SPIN_POKESTOPS:
     config.ITEM_LIMITS = None
+
+# ensure that numbers are valid
+try:
+    if config.SCAN_DELAY < 10:
+        raise ValueError('SCAN_DELAY must be at least 10.')
+except (TypeError, AttributeError):
+    config.SCAN_DELAY = 10
+try:
+    if config.SPEED_LIMIT > 25:
+        raise ValueError('Speeds over 25MPH would probably cause problems.')
+except (TypeError, AttributeError):
+    config.SPEED_LIMIT = 19
+try:
+    if config.SIMULTANEOUS_LOGINS < 1:
+        raise ValueError('SIMULTANEOUS_LOGINS must be at least 1.')
+except (TypeError, AttributeError):
+    config.SIMULTANEOUS_LOGINS = 4
+
 
 from worker import Worker
 
@@ -190,11 +208,11 @@ class Overseer:
     db_processor = Worker.db_processor
     spawns = Worker.spawns
     accounts = Worker.accounts
+    loop = asyncio.get_event_loop()
 
-    def __init__(self, status_bar, loop, manager):
+    def __init__(self, status_bar, manager):
         self.logger = getLogger('overseer')
         self.workers = {}
-        self.loop = loop
         self.manager = manager
         self.count = config.GRID[0] * config.GRID[1]
         self.start_date = datetime.now()
@@ -358,6 +376,7 @@ class Overseer:
         * = sending a notification
         ~ = encountering a Pokémon
         I = initial, haven't done anything yet
+        ^ = waiting to log in (limited by SIMULTANEOUS_LOGINS)
         L = logging in
         A = simulating app startup
         T = completing the tutorial
@@ -701,17 +720,10 @@ class Overseer:
 if __name__ == '__main__':
     START_TIME = time.monotonic()
 
-    try:
-        mkdir('pickles')
-    except FileExistsError:
-        pass
-    except Exception as e:
-        raise OSError("Failed to create 'pickles' folder, please create it manually") from e
-
     args = parse_args()
     logger = getLogger()
     if args.status_bar:
-        configure_logger(filename='worker.log')
+        configure_logger(filename='scan.log')
         logger.info('-' * 30)
         logger.info('Starting up!')
     else:
@@ -726,15 +738,10 @@ if __name__ == '__main__':
     manager = AccountManager(address=get_address(), authkey=config.AUTHKEY)
     manager.start(mgr_init)
 
-    if HAS_UV:
-        asyncio.set_event_loop_policy(EventLoopPolicy())
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(exception_handler)
-    Worker.loop = loop
-    Worker.login_semaphore = asyncio.Semaphore(1, loop=loop)
-    Worker.simulation_semaphore = asyncio.Semaphore(2, loop=loop)
 
-    overseer = Overseer(status_bar=args.status_bar, loop=loop, manager=manager)
+    overseer = Overseer(status_bar=args.status_bar, manager=manager)
     overseer.start()
     overseer_thread = Thread(target=overseer.check, name='overseer', daemon=True)
     overseer_thread.start()

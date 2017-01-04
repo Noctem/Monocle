@@ -5,6 +5,7 @@ import time
 import socket
 import pickle
 
+from os import mkdir
 from math import ceil, sqrt, hypot
 from uuid import uuid4
 from geopy import Point
@@ -323,6 +324,13 @@ def load_pickle(name):
 
 
 def dump_pickle(name, var):
+    try:
+        mkdir('pickles')
+    except FileExistsError:
+        pass
+    except Exception as e:
+        raise OSError("Failed to create 'pickles' folder, please create it manually") from e
+
     location = 'pickles/{}.pickle'.format(name)
     with open(location, 'wb') as f:
         pickle.dump(var, f, pickle.HIGHEST_PROTOCOL)

@@ -6,7 +6,7 @@ from pgoapi import PGoApi, exceptions as ex
 from pgoapi.auth_ptc import AuthPtc
 from pgoapi.utilities import get_cell_ids
 from pgoapi.hash_server import HashServer
-from asyncio import sleep, Lock
+from asyncio import sleep, Lock, Semaphore, get_event_loop
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
 
@@ -44,6 +44,8 @@ class Worker:
     spawns = db_processor.spawns
     accounts = load_accounts()
     cell_ids = load_pickle('cells') or {}
+    loop = get_event_loop()
+    login_semaphore = Semaphore(config.SIMULTANEOUS_LOGINS)
 
     proxies = None
     proxy = None
@@ -139,9 +141,12 @@ class Worker:
     async def login(self):
         """Logs worker in and prepares for scanning"""
         self.logger.info('Trying to log in')
-        self.error_code = 'LOGIN'
+        self.error_code = '^'
 
         async with self.login_semaphore:
+            if self.killed:
+                return False
+            self.error_code = 'LOGIN'
             await self.loop.run_in_executor(
                 self.network_executor,
                 partial(
@@ -151,20 +156,16 @@ class Worker:
                     provider=self.account.get('provider'),
                 )
             )
-        if self.killed:
-            return False
-        if not self.ever_authenticated:
-            async with self.simulation_semaphore:
+            if not self.ever_authenticated:
                 if config.APP_SIMULATION:
-                    if not await self.app_simulation_login():
-                        return False
+                    await self.app_simulation_login()
                 else:
+                    # do one startup request instead of the whole login flow
+                    # will receive the full inventory and the download_hash
                     request = self.api.create_request()
                     request.download_remote_config_version(platform=1, app_version=5102)
-                    responses = await self.call(request, stamp=False, buddy=False, dl_hash=False)
-                    await random_sleep(.6, 2)
-                    if not responses:
-                        return False
+                    await self.call(request, stamp=False, buddy=False, dl_hash=False)
+        await random_sleep(.2, .4)
 
         self.ever_authenticated = True
         self.logged_in = True
@@ -248,7 +249,6 @@ class Worker:
         request.register_background_device(device_type='apple_watch')
         # treat the login process like an action
         await self.call(request, action=0.1)
-        await random_sleep(.1, .3)
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
         self.error_code = None
@@ -491,7 +491,7 @@ class Worker:
             self.api.set_position(*self.location)
             if not self.logged_in:
                 if not await self.login():
-                    raise ex.NotLoggedInException
+                    return False
             return await self.visit_point(point, bootstrap=bootstrap)
         except (ex.AuthException, ex.NotLoggedInException):
             self.logger.warning('{} is not authenticated.'.format(self.username))

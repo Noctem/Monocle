@@ -26,6 +26,12 @@ MAP_END = (40.7143, -111.8046)
 # the boundaries will be the rectangle created by MAP_START and MAP_END, unless
 STAY_WITHIN_MAP = True
 
+# Limit the number of simultaneous logins (and app simulations) to this many.
+# Lower numbers will increase the amount of time it takes for all workers to
+# get started but are recommended to avoid suddenly flooding the servers with
+# accounts and arousing suspicion.
+SIMULTANEOUS_LOGINS = 4
+
 ## alternatively define a polygon to use as boundaries (requires shapely)
 ## if BOUNDARIES is set, STAY_WITHIN_MAP will be ignored
 #from shapely.geometry import Polygon
