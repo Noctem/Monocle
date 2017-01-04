@@ -57,6 +57,7 @@ _optional = {
     'AUTHKEY': b'm3wtw0',
     'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 15) + 1,
     'SPIN_POKESTOPS': False,
+    'SPIN_COOLDOWN': 300,
     'COMPLETE_TUTORIAL': False,
     'MAP_WORKERS': True,
     'APP_SIMULATION': True,

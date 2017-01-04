@@ -66,8 +66,9 @@ COMPLETE_TUTORIAL = True  # complete the tutorial process and configure avatar f
 # None will never encounter Pokémon
 ENCOUNTER = None
 
-# spin all PokéStops that are within range
-SPIN_POKESTOPS = False
+# PokéStops
+SPIN_POKESTOPS = False # spin all PokéStops that are within range
+SPIN_COOLDOWN = 300    # spin only one PokéStop every n seconds (default 300)
 
 # minimum number of each item to keep if the bag is cleaned
 # remove or set to None to disable bag cleaning
