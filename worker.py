@@ -497,6 +497,28 @@ class Worker:
                 if not await self.login():
                     raise ex.NotLoggedInException
             return await self.visit_point(point, bootstrap=bootstrap)
+        except (ex.AuthException, ex.NotLoggedInException):
+            self.logger.warning('{} is not authenticated.'.format(self.username))
+            self.error_code = 'NOT AUTHENTICATED'
+            await sleep(1)
+            await self.swap_account(reason='login failed')
+        except CaptchaException:
+            self.error_code = 'CAPTCHA'
+            self.g['captchas'] += 1
+            await sleep(1)
+            await self.bench_account()
+        except MaxRetriesException:
+            self.logger.warning('Hit the maximum number of attempt retries.')
+            self.error_code = 'MAX RETRIES'
+        except ex.TempHashingBanException:
+            self.error_code = 'HASHING BAN'
+            self.logger.error('Temporarily banned from hashing server for using invalid keys.')
+            await sleep(185)
+        except ex.BannedAccountException:
+            self.error_code = 'BANNED'
+            self.logger.warning('{} is banned'.format(self.username))
+            await sleep(1)
+            await self.remove_account()
         except ex.NianticIPBannedException:
             self.error_code = 'IP BANNED'
 
@@ -513,24 +535,6 @@ class Worker:
             else:
                 self.logger.error('IP banned.')
                 await sleep(150)
-        except (ex.AuthException, ex.NotLoggedInException):
-            self.logger.warning('{} is not authenticated.'.format(self.username))
-            self.error_code = 'NOT AUTHENTICATED'
-            await sleep(1)
-            await self.swap_account(reason='login failed')
-        except ex.BannedAccountException:
-            self.error_code = 'BANNED'
-            self.logger.warning('{} is banned'.format(self.username))
-            await sleep(1)
-            await self.remove_account()
-        except CaptchaException:
-            self.error_code = 'CAPTCHA'
-            self.g['captchas'] += 1
-            await sleep(1)
-            await self.bench_account()
-        except MaxRetriesException:
-            self.logger.warning('Hit the maximum number of attempt retries.')
-            self.error_code = 'MAX RETRIES'
         except ex.PgoapiError as e:
             self.logger.error('pgoapi error: {}'.format(e))
             self.error_code = 'PGOAPI ERROR'
