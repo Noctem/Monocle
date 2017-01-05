@@ -62,6 +62,7 @@ _optional = {
     'APP_SIMULATION': True,
     'ITEM_LIMITS': None,
     'MAX_RETRIES': 3,
+    'MORE_POINTS': True
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -561,6 +562,7 @@ class Overseer:
 
             if self.spawns.after_last():
                 current_hour += 3600
+                initial = False
 
             for spawn_id, spawn in self.spawns.items():
                 if initial:

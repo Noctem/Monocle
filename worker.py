@@ -647,15 +647,16 @@ class Worker:
                 else:
                     self.db_processor.add(self.normalize_gym(fort))
 
-            for point in map_cell.get('spawn_points', []):
-                try:
-                    p = (point['latitude'], point['longitude'])
-                    if self.spawns.have_mystery(p) or not Bounds.contain(p):
-                        continue
-                    self.spawns.add_mystery(p)
-                except (KeyError, TypeError):
-                    self.logger.warning('Spawn point exception ignored. {}'.format(point))
-                    pass
+            if config.MORE_POINTS:
+                for point in map_cell.get('spawn_points', []):
+                    try:
+                        p = (point['latitude'], point['longitude'])
+                        if p in self.spawns.known_points or not Bounds.contain(p):
+                            continue
+                        self.spawns.add_mystery(p)
+                    except (KeyError, TypeError):
+                        self.logger.warning('Spawn point exception ignored. {}'.format(point))
+                        pass
 
         if pokemon_seen > 0:
             self.error_code = ':'

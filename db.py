@@ -24,7 +24,8 @@ OPTIONAL_SETTINGS = {
     'RARE_IDS': [],
     'REPORT_SINCE': None,
     'BOUNDARIES': None,
-    'STAY_WITHIN_MAP': True
+    'STAY_WITHIN_MAP': True,
+    'MORE_POINTS': True
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -368,6 +369,10 @@ Session = sessionmaker(bind=get_engine())
 def get_spawns(session):
     spawns = session.query(Spawnpoint)
     mysteries = set()
+    if config.MORE_POINTS:
+        known_points = set()
+    else:
+        known_points = None
     despawn_times = {}
     spawns_dict = {}
     altitudes = {}
@@ -390,11 +395,13 @@ def get_spawns(session):
         else:
             spawn_time = (spawn.despawn_time + 1800) % 3600
 
+        if known_points is not None:
+            known_points.add(point)
         despawn_times[spawn.spawn_id] = spawn.despawn_time
         spawns_dict[spawn.spawn_id] = (point, spawn_time)
 
     spawns = OrderedDict(sorted(spawns_dict.items(), key=lambda k: k[1][1]))
-    return spawns, despawn_times, mysteries, altitudes
+    return spawns, despawn_times, mysteries, altitudes, known_points
 
 
 def normalize_timestamp(timestamp):

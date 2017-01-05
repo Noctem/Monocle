@@ -9,6 +9,7 @@ from random import shuffle
 import asyncio
 
 from utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_point_altitudes
+from config import MORE_POINTS
 
 import db
 
@@ -19,14 +20,19 @@ class Spawns:
     despawn_times = {}
     mysteries = set()
     altitudes = {}
+    known_points = set()
 
     def __len__(self):
         return len(self.despawn_times)
 
     def update(self):
-        self.spawns, self.despawn_times, m, a = db.get_spawns(self.session)
+        self.spawns, self.despawn_times, m, a, k = db.get_spawns(self.session)
         self.mysteries.update(m)
         self.altitudes.update(a)
+        try:
+            self.known_points.update()
+        except TypeError:
+            pass
         if not self.altitudes:
             self.altitudes = get_point_altitudes()
 

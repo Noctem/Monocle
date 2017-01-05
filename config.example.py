@@ -96,6 +96,9 @@ ITEM_LIMITS = {
 # retry a request after failure this many times before giving up
 MAX_RETRIES = 3
 
+# add spawn points reported in cell_ids to the unknown spawns list
+# disable if your workers already have more than enough points to visit
+MORE_POINTS = True
 
 # exclude these Pokémon from the map by default (only visible in trash layer)
 TRASH_IDS = (
