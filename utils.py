@@ -22,7 +22,9 @@ OPTIONAL_SETTINGS = {
     'MAP_START': None,
     'MAP_END': None,
     'BOUNDARIES': None,
-    'SPAWN_ID_INT': True
+    'SPAWN_ID_INT': True,
+    'PASS': None,
+    'PROVIDER': None
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -247,7 +249,7 @@ def create_account_dict(account):
     if not (length == 1 or length == 3 or length == 4 or length == 6):
         raise ValueError('Each account should have either 3 (account info only) or 6 values (account and device info).')
     if (length == 1 or length == 4) and (not config.PASS or not config.PROVIDER):
-        raise ValueError('No default PASS or PROVIDER are set.')
+        raise AttributeError('No default PASS or PROVIDER are set.')
 
     username = account[0]
     entry = {}

@@ -380,7 +380,6 @@ def get_spawns(session):
 
         rounded = utils.round_coords(point, precision=3)
         altitudes[rounded] = spawn.alt
-        rounded = utils.round_coords(point, precision=4)
 
         if not spawn.updated or spawn.updated < config.LAST_MIGRATION:
             mysteries.add(rounded)
@@ -474,6 +473,7 @@ def add_spawnpoint(session, pokemon, spawns):
         point = (pokemon['lat'], pokemon['lon'])
         altitude = spawns.get_altitude(point)
         spawns.add_despawn(spawn_id, new_time)
+        spawns.remove_mystery(spawn_id)
 
         widest = get_widest_range(session, spawn_id)
 

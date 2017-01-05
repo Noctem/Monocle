@@ -559,6 +559,10 @@ class Overseer:
             else:
                 dump_pickle('accounts', self.accounts)
 
+            if self.spawns.after_last():
+                current_hour += 3600
+                initial = False
+
             for spawn_id, spawn in self.spawns.items():
                 if initial:
                     if spawn_id == start_point:
@@ -611,7 +615,7 @@ class Overseer:
     def bootstrap(self):
         async def visit_release(worker, point):
             try:
-                await worker.visit(point, bootstrap=True)
+                await worker.visit(point)
             finally:
                 self.coroutine_semaphore.release()
 

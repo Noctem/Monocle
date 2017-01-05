@@ -2,17 +2,13 @@ from datetime import datetime
 import argparse
 import json
 
-import requests
 from flask import Flask, request, render_template
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from multiprocessing.managers import BaseManager
 
 import config
 import db
 import utils
 from names import POKEMON_NAMES
-
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
 # Check whether config has all necessary attributes

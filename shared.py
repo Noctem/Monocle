@@ -30,9 +30,6 @@ class Spawns:
         if not self.altitudes:
             self.altitudes = get_point_altitudes()
 
-    def have_id(self, spawn_id):
-        return spawn_id in self.despawn_times
-
     def get_altitude(self, point):
         point = round_coords(point)
         alt = self.altitudes.get(point)
@@ -49,13 +46,20 @@ class Spawns:
         shuffle(mysteries)
         return mysteries
 
+    def after_last(self):
+        k = next(reversed(self.spawns))
+        seconds = self.spawns[k][1]
+        current_seconds = time() % 3600
+        return current_seconds > seconds
+
     def add_mystery(self, point):
-        rounded = round_coords(point, precision=4)
-        self.mysteries.add(rounded)
+        self.mysteries.add(point)
+
+    def remove_mystery(self, point):
+        self.mysteries.discard(point)
 
     def have_mystery(self, point):
-        rounded = round_coords(point, precision=4)
-        return rounded in self.mysteries
+        return point in self.mysteries
 
     def add_despawn(self, spawn_id, despawn_time):
         self.despawn_times[spawn_id] = despawn_time
@@ -64,18 +68,18 @@ class Spawns:
         return self.despawn_times.get(spawn_id)
 
     def get_despawn_time(self, spawn_id, seen=None):
-        if self.have_id(spawn_id):
-            now = seen or time()
-            hour = get_current_hour(now=now)
+        now = seen or time()
+        hour = get_current_hour(now=now)
+        try:
             despawn_time = self.get_despawn_seconds(spawn_id) + hour
-            if now > despawn_time - 88:
+            if now > despawn_time - 89:
                 despawn_time += 3600
             return despawn_time
-        else:
+        except TypeError:
             return None
 
     def get_time_till_hidden(self, spawn_id):
-        if not self.have_id(spawn_id):
+        if spawn_id not in self:
             return None
         despawn_seconds = self.get_despawn_seconds(spawn_id)
         return time_until_time(despawn_seconds)

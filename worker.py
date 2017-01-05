@@ -64,7 +64,7 @@ class Worker:
         self.worker_no = worker_no
         self.logger = getLogger('worker-{}'.format(worker_no))
         # account information
-        self.account = self.extra_queue.get()
+        self.account = self.extra_queue.get_nowait()
         self.username = self.account.get('username')
         self.location = self.account.get('location', (0, 0, 0))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
@@ -480,21 +480,21 @@ class Worker:
         speed = (distance / time_diff) * 3600
         return speed
 
-    async def visit(self, point, bootstrap=False):
+    async def visit(self, point):
         """Wrapper for self.visit_point - runs it a few times before giving up
 
         Also is capable of restarting in case an error occurs.
         """
         visited = False
         try:
-            altitude = self.spawns.get_altitude(round_coords(point, precision=3))
+            altitude = self.spawns.get_altitude(point)
             altitude = uniform(altitude - 1, altitude + 1)
             self.location = point + [altitude]
             self.api.set_position(*self.location)
             if not self.logged_in:
                 if not await self.login():
                     return False
-            return await self.visit_point(point, bootstrap=bootstrap)
+            return await self.visit_point(point)
         except (ex.AuthException, ex.NotLoggedInException):
             self.logger.warning('{} is not authenticated.'.format(self.username))
             self.error_code = 'NOT AUTHENTICATED'
@@ -545,7 +545,7 @@ class Worker:
         await sleep(1)
         return False
 
-    async def visit_point(self, point, bootstrap=False):
+    async def visit_point(self, point):
         self.error_code = '!'
         latitude, longitude = point
         self.logger.info('Visiting {0[0]:.4f},{0[1]:.4f}'.format(point))
@@ -646,16 +646,15 @@ class Worker:
                             await self.spin_pokestop(pokestop)
                 else:
                     self.db_processor.add(self.normalize_gym(fort))
-            if bootstrap:
-                for point in map_cell.get('spawn_points', []):
-                    point = (point.get('latitude'), point.get('longitude'))
-                    try:
-                        if not Bounds.contain(point):
-                            continue
-                        rounded = round_coords(point, precision=4)
-                        self.spawns.mysteries.add(rounded)
-                    except TypeError:
-                        pass
+
+            for point in map_cell.get('spawn_points', []):
+                try:
+                    point = (point['latitude'], point['longitude'])
+                    if self.spawns.have_mystery(point) or not Bounds.contain(point):
+                        continue
+                    self.spawns.mysteries.add(point)
+                except (KeyError, TypeError):
+                    pass
 
         if pokemon_seen > 0:
             self.error_code = ':'
