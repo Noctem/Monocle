@@ -39,6 +39,12 @@ if config.BOUNDARIES:
     except ImportError as e:
         raise ImportError('BOUNDARIES is set but shapely is not available.') from e
 
+try:
+    if config.LAST_MIGRATION > time.time():
+        raise ValueError('LAST_MIGRATION must be a timestamp from the past.')
+except TypeError as e:
+    raise TypeError('LAST_MIGRATION must be a numeric timestamp.') from e
+
 
 class Team(enum.Enum):
     none = 0
@@ -375,10 +381,10 @@ def get_spawns(session):
         rounded = utils.round_coords(point, precision=3)
         altitudes[rounded] = spawn.alt
         rounded = utils.round_coords(point, precision=4)
-        if config.LAST_MIGRATION:
-            if not spawn.updated or spawn.updated < config.LAST_MIGRATION:
-                mysteries.add(rounded)
-                continue
+
+        if not spawn.updated or spawn.updated < config.LAST_MIGRATION:
+            mysteries.add(rounded)
+            continue
 
         if spawn.duration == 60:
             spawn_time = spawn.despawn_time
