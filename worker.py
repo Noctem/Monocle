@@ -9,6 +9,7 @@ from pgoapi.hash_server import HashServer
 from asyncio import sleep, Lock, Semaphore, get_event_loop
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
+from array import array
 
 from db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance
@@ -555,7 +556,7 @@ class Worker:
             cell_ids = list(self.cell_ids[rounded])
         else:
             cell_ids = get_cell_ids(*rounded, radius=500)
-            self.cell_ids[rounded] = tuple(cell_ids)
+            self.cell_ids[rounded] = array('L', cell_ids)
 
         since_timestamp_ms = [0] * len(cell_ids)
 
