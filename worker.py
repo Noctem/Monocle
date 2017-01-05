@@ -649,11 +649,12 @@ class Worker:
 
             for point in map_cell.get('spawn_points', []):
                 try:
-                    point = (point['latitude'], point['longitude'])
-                    if self.spawns.have_mystery(point) or not Bounds.contain(point):
+                    p = (point['latitude'], point['longitude'])
+                    if self.spawns.have_mystery(p) or not Bounds.contain(p):
                         continue
-                    self.spawns.mysteries.add(point)
+                    self.spawns.add_mystery(p)
                 except (KeyError, TypeError):
+                    self.logger.warning('Spawn point exception ignored. {}'.format(point))
                     pass
 
         if pokemon_seen > 0:

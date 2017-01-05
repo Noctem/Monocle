@@ -382,7 +382,7 @@ def get_spawns(session):
         altitudes[rounded] = spawn.alt
 
         if not spawn.updated or spawn.updated < config.LAST_MIGRATION:
-            mysteries.add(rounded)
+            mysteries.add(point)
             continue
 
         if spawn.duration == 60:
@@ -450,6 +450,8 @@ def add_spawnpoint(session, pokemon, spawns):
     spawn_id = pokemon['spawn_id']
     new_time = pokemon['expire_timestamp'] % 3600
     existing_time = spawns.get_despawn_seconds(spawn_id)
+    point = (pokemon['lat'], pokemon['lon'])
+    spawns.remove_mystery(point)
     if new_time == existing_time:
         return
     existing = session.query(Spawnpoint) \
@@ -470,10 +472,8 @@ def add_spawnpoint(session, pokemon, spawns):
         existing.despawn_time = new_time
         spawns.add_despawn(spawn_id, new_time)
     else:
-        point = (pokemon['lat'], pokemon['lon'])
         altitude = spawns.get_altitude(point)
         spawns.add_despawn(spawn_id, new_time)
-        spawns.remove_mystery(spawn_id)
 
         widest = get_widest_range(session, spawn_id)
 

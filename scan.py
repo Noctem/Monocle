@@ -561,7 +561,6 @@ class Overseer:
 
             if self.spawns.after_last():
                 current_hour += 3600
-                initial = False
 
             for spawn_id, spawn in self.spawns.items():
                 if initial:
@@ -659,7 +658,7 @@ class Overseer:
             skip_time = uniform(30, 90)
             start = spawn_time
         else:
-            skip_time = 20
+            skip_time = 1
             start = time.time()
         limit = config.SPEED_LIMIT * 1.18  # slight buffer for inaccuracy
         half_limit = limit / 2
@@ -703,7 +702,7 @@ class Overseer:
                 time_diff = time.time() - start
                 if time_diff > skip_time:
                     return None
-                await asyncio.sleep(3)
+                await asyncio.sleep(2)
             else:
                 worker.speed = speed
         return worker
