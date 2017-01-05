@@ -556,7 +556,10 @@ class Worker:
             cell_ids = list(self.cell_ids[rounded])
         else:
             cell_ids = get_cell_ids(*rounded, radius=500)
-            self.cell_ids[rounded] = array('L', cell_ids)
+            try:
+                self.cell_ids[rounded] = array('L', cell_ids)
+            except OverflowError:
+                self.cell_ids[rounded] = tuple(cell_ids)
 
         since_timestamp_ms = [0] * len(cell_ids)
 
