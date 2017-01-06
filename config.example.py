@@ -26,6 +26,12 @@ MAP_END = (40.7143, -111.8046)
 # the boundaries will be the rectangle created by MAP_START and MAP_END, unless
 STAY_WITHIN_MAP = True
 
+
+GIVE_UP_KNOWN = 90   # try to find a worker for a known spawn for this many seconds before giving up
+GIVE_UP_UNKNOWN = 5  # try to find a worker for an unknown point for this many seconds before giving up
+SKIP_SPAWN = 60      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
+
+
 # Limit the number of simultaneous logins (and app simulations) to this many.
 # Lower numbers will increase the amount of time it takes for all workers to
 # get started but are recommended to avoid suddenly flooding the servers with
@@ -139,6 +145,10 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 
 # Bytestring key to authenticate with manager for inter-process communication
 #AUTHKEY = b'm3wtw0'
+# Address to use for manager, leave unset or set to None if you're note sure.
+#MANAGER_ADDRESS = r'\\.\pipe\pokeminer'  # must be in this format for Windows
+#MANAGER_ADDRESS = 'pokeminer.sock'       # the socket name for Unix systems
+#MANAGER_ADDRESS = ('127.0.0.1', 5001)    # could be used for CAPTCHA solving and live worker maps on remote systems
 
 ### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
 '''

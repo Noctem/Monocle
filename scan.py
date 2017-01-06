@@ -62,7 +62,10 @@ _optional = {
     'APP_SIMULATION': True,
     'ITEM_LIMITS': None,
     'MAX_RETRIES': 3,
-    'MORE_POINTS': True
+    'MORE_POINTS': True,
+    'GIVE_UP_KNOWN': 60,
+    'GIVE_UP_UNKNOWN:' 5,
+    'SKIP_SPAWN': 90
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -602,7 +605,7 @@ class Overseer:
                 if time_diff > 5 and spawn_id in SIGHTING_CACHE.spawns:
                     self.redundant += 1
                     continue
-                elif time_diff > 20:
+                elif time_diff > config.SKIP_SPAWN:
                     self.skipped += 1
                     continue
 
@@ -643,7 +646,7 @@ class Overseer:
             try:
                 if spawn_time:
                     if time.time() - spawn_time < 1:
-                        asyncio.sleep(1)
+                        await asyncio.sleep(1)
                     worker.after_spawn = time.time() - spawn_time
 
                 if await worker.visit(point):
@@ -656,12 +659,12 @@ class Overseer:
             self.coroutine_semaphore.release()
 
     async def best_worker(self, point, spawn_time=None):
+        start = time.time()
         if spawn_time:
-            skip_time = uniform(30, 90)
-            start = spawn_time
+            skip_time = config.GIVE_UP_KNOWN
         else:
-            skip_time = 1
-            start = time.time()
+            skip_time = config.GIVE_UP_UNKNOWN
+
         limit = config.SPEED_LIMIT * 1.18  # slight buffer for inaccuracy
         half_limit = limit / 2
 

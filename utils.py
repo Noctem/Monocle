@@ -24,7 +24,8 @@ OPTIONAL_SETTINGS = {
     'BOUNDARIES': None,
     'SPAWN_ID_INT': True,
     'PASS': None,
-    'PROVIDER': None
+    'PROVIDER': None,
+    'MANAGER_ADDRESS': None
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -307,12 +308,14 @@ def time_until_time(seconds, seen=None):
 
 
 def get_address():
+    if config.MANAGER_ADDRESS:
+        return config.MANAGER_ADDRESS
     if platform == 'win32':
         address=r'\\.\pipe\pokeminer'
     elif hasattr(socket, 'AF_UNIX'):
         address='pokeminer.sock'
     else:
-        address=('127.0.0.1', 5000)
+        address=('127.0.0.1', 5001)
     return address
 
 
