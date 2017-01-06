@@ -91,6 +91,7 @@ class Worker:
         self.item_capacity = 350
         self.visits = 0
         self.pokestops = config.SPIN_POKESTOPS
+        self.next_spin = 0
 
     def initialize_api(self):
         device_info = get_device_info(self.account)
@@ -643,7 +644,7 @@ class Worker:
                             self.db_processor.add(norm)
                     pokestop = self.normalize_pokestop(fort)
                     self.db_processor.add(pokestop)
-                    if self.pokestops and not self.bag_full():
+                    if self.pokestops and not self.bag_full() and time() > self.next_spin:
                         cooldown = fort.get('cooldown_complete_timestamp_ms')
                         if not cooldown or time() > cooldown / 1000:
                             await self.spin_pokestop(pokestop)
@@ -740,6 +741,8 @@ class Worker:
             self.pokestops = False
         else:
             self.logger.warning('Failed spinning {n}: {r}'.format(n=name, r=result))
+
+        self.next_spin = time() + config.SPIN_COOLDOWN
         self.error_code = '!'
         return responses
 
