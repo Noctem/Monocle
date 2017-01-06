@@ -1,11 +1,10 @@
-from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from geopy.distance import great_circle
 from logging import getLogger
-from pgoapi import PGoApi, exceptions as ex
-from pgoapi.auth_ptc import AuthPtc
-from pgoapi.utilities import get_cell_ids
-from pgoapi.hash_server import HashServer
+from pogo_async import PGoApi, exceptions as ex
+from pogo_async.auth_ptc import AuthPtc
+from pogo_async.utilities import get_cell_ids
+from pogo_async.hash_server import HashServer
 from asyncio import sleep, Lock, Semaphore, get_event_loop
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
@@ -38,7 +37,6 @@ else:
 class Worker:
     """Single worker walking on the map"""
 
-    network_executor = ThreadPoolExecutor(config.NETWORK_THREADS)
     download_hash = "d3da400db60abf79ea05abc38e2396f0bbd453f9"
     g = {'seen': 0, 'captchas': 0}
     db_processor = DatabaseProcessor()
@@ -148,15 +146,12 @@ class Worker:
             if self.killed:
                 return False
             self.error_code = 'LOGIN'
-            await self.loop.run_in_executor(
-                self.network_executor,
-                partial(
-                    self.api.set_authentication,
+            await self.api.set_authentication(
                     username=self.username,
                     password=self.account.get('password'),
                     provider=self.account.get('provider'),
                 )
-            )
+
             if not self.ever_authenticated:
                 if config.APP_SIMULATION:
                     await self.app_simulation_login()
@@ -402,9 +397,7 @@ class Worker:
         exceptions = 0
         while True:
             try:
-                response = await self.loop.run_in_executor(
-                    self.network_executor, request.call
-                )
+                response = await request.call()
             except ex.HashingOfflineException:
                 self.logger.warning('Hashing server busy or offline.')
                 self.error_code = 'HASHING OFFLINE'

@@ -10,7 +10,7 @@ from math import ceil, sqrt, hypot
 from uuid import uuid4
 from geopy import Point
 from geopy.distance import distance
-from pgoapi import utilities as pgoapi_utils
+from pogo_async import utilities as pgoapi_utils
 from sys import platform
 from asyncio import sleep
 

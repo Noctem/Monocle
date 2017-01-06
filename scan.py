@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 
+import asyncio
+try:
+    from uvloop import EventLoopPolicy
+
+    asyncio.set_event_loop_policy(EventLoopPolicy())
+except ImportError:
+    pass
+
 from datetime import datetime
 from multiprocessing.managers import BaseManager, DictProxy
 from statistics import median
@@ -12,17 +20,10 @@ from signal import signal, SIGINT, SIG_IGN
 from argparse import ArgumentParser
 from logging import getLogger, basicConfig, WARNING, INFO
 from collections import deque
-from pgoapi.hash_server import HashServer
+from pogo_async.hash_server import HashServer
+from pogo_async.session import Session
 
-import asyncio
 import time
-
-try:
-    from uvloop import EventLoopPolicy
-
-    asyncio.set_event_loop_policy(EventLoopPolicy())
-except ImportError:
-    pass
 
 from db import SIGHTING_CACHE
 from utils import get_current_hour, dump_pickle, get_address, get_start_coords
@@ -55,7 +56,6 @@ _optional = {
     'ENCOUNTER': None,
     'NOTIFY': False,
     'AUTHKEY': b'm3wtw0',
-    'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 15) + 1,
     'SPIN_POKESTOPS': False,
     'COMPLETE_TUTORIAL': False,
     'MAP_WORKERS': True,
@@ -773,6 +773,7 @@ if __name__ == '__main__':
             Worker.notifier.session.close()
         Worker.spawns.session.close()
         manager.shutdown()
+        Session.close()
         try:
             loop.close()
         except RuntimeError:
