@@ -65,7 +65,7 @@ _optional = {
     'MAX_RETRIES': 3,
     'MORE_POINTS': True,
     'GIVE_UP_KNOWN': 60,
-    'GIVE_UP_UNKNOWN:' 5,
+    'GIVE_UP_UNKNOWN': 5,
     'SKIP_SPAWN': 90
 }
 for setting_name, default in _optional.items():
