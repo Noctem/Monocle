@@ -75,18 +75,24 @@ def fullmap():
     )
 
 
-try:
-    class AccountManager(BaseManager): pass
-    AccountManager.register('worker_dict')
-    manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
-    manager.connect()
-    worker_dict = manager.worker_dict()
-except (FileNotFoundError, AttributeError):
-    print('Unable to connect to manager for worker data.')
-    config.MAP_WORKERS = False
-
+class AccountManager(BaseManager): pass
+AccountManager.register('worker_dict')
+manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
+manager.connect()
+worker_dict = manager.worker_dict()
 
 if config.MAP_WORKERS:
+    def manager_connect():
+        global worker_dict
+        global manager
+        try:
+            manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
+            manager.connect()
+            worker_dict = manager.worker_dict()
+        except (FileNotFoundError, AttributeError):
+            print('Unable to connect to manager for worker data.')
+            worker_dict = {}
+
     @app.route('/workers_data')
     def workers_data():
         return json.dumps(get_worker_markers())
@@ -105,6 +111,11 @@ if config.MAP_WORKERS:
 
     def get_worker_markers():
         markers = []
+        try:
+            if not worker_dict:
+                manager_connect()
+        except FileNotFoundError:
+            manager_connect()
 
         # Worker start points
         for worker_no, data in worker_dict.items():

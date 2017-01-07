@@ -10,6 +10,7 @@ from asyncio import sleep, Lock, Semaphore, get_event_loop
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
 from array import array
+from queue import Empty
 
 from db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance
@@ -64,8 +65,14 @@ class Worker:
         self.worker_no = worker_no
         self.logger = getLogger('worker-{}'.format(worker_no))
         # account information
-        self.account = self.extra_queue.get_nowait()
-        self.username = self.account.get('username')
+        try:
+            self.account = self.extra_queue.get_nowait()
+        except Empty as e:
+            raise ValueError("You don't have enough accounts for the number of workers specified in GRID.") from e
+        try:
+            self.username = self.account['username']
+        except KeyError as e:
+            raise KeyError('Account has no username. {}'.format(self.account)) from e
         self.location = self.account.get('location', (0, 0, 0))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
         # last time of any request
@@ -396,9 +403,12 @@ class Worker:
             pass
 
         now = time()
-        if action and self.last_action > now:
+        if action:
             # wait for the time required, or at least a half-second
-            await sleep(self.last_action  - now)
+            if self.last_action > now + .5:
+                await sleep(self.last_action - now)
+            else:
+                await sleep(0.5)
 
         exceptions = 0
         while True:
@@ -406,6 +416,10 @@ class Worker:
                 response = await self.loop.run_in_executor(
                     self.network_executor, request.call
                 )
+                if response:
+                    break
+                else:
+                    raise ex.MalformedResponseException('empty response')
             except ex.HashingOfflineException:
                 self.logger.warning('Hashing server busy or offline.')
                 self.error_code = 'HASHING OFFLINE'
@@ -434,9 +448,6 @@ class Worker:
                 self.logger.warning(e)
                 self.error_code = 'MALFORMED RESPONSE'
                 await random_sleep(10, 14, 11)
-            else:
-                if response:
-                    break
             exceptions += 1
             if exceptions >= config.MAX_RETRIES:
                 raise MaxRetriesException
@@ -461,12 +472,9 @@ class Worker:
 
     def fast_speed(self, point):
         '''Fast but inaccurate estimation of travel speed to point'''
-        if self.busy.locked() or self.killed:
+        if self.busy.locked():
             return None
-        now = time()
-        if now - self.last_gmo < config.SCAN_DELAY:
-            return None
-        time_diff = now - self.last_request
+        time_diff = max(time(), self.last_request + config.SCAN_DELAY) - self.last_request
         if time_diff > 60:
             self.error_code = None
         distance = get_distance(self.location, point)
@@ -476,12 +484,35 @@ class Worker:
 
     def accurate_speed(self, point):
         '''Slow but accurate estimation of travel speed to point'''
-        time_diff = time() - self.last_request
+        time_diff = max(time(), self.last_request + config.SCAN_DELAY) - self.last_request
         distance = great_circle(self.location, point).miles
         speed = (distance / time_diff) * 3600
         return speed
 
-    async def visit(self, point):
+    async def guaranteed_visit(self, point):
+        failures = 0
+        await self.busy.acquire()
+        try:
+            while True and not self.killed:
+                if failures:
+                    if failures > 12:
+                        self.logger.error('Failed to boostrap point! {}'.format(point))
+                        return False
+                    diff = monotonic() - attempt_time + 10
+                    if diff > 0:
+                        await random_sleep(diff, diff + 5)
+                attempt_time = monotonic()
+                points = await self.visit(point, bootstrap=True)
+                if points:
+                    self.logger.info('Found {} Pokemon during bootstrap'.format(points))
+                    return True
+                self.error_code = '∞'
+                failures += 1
+                self.simulate_jitter(amount=0.0002)
+        finally:
+            self.busy.release()
+
+    async def visit(self, point, bootstrap=False):
         """Wrapper for self.visit_point - runs it a few times before giving up
 
         Also is capable of restarting in case an error occurs.
@@ -495,7 +526,7 @@ class Worker:
             if not self.logged_in:
                 if not await self.login():
                     return False
-            return await self.visit_point(point)
+            return await self.visit_point(point, bootstrap=bootstrap)
         except (ex.AuthException, ex.NotLoggedInException):
             self.logger.warning('{} is not authenticated.'.format(self.username))
             self.error_code = 'NOT AUTHENTICATED'
@@ -546,7 +577,7 @@ class Worker:
         await sleep(1)
         return False
 
-    async def visit_point(self, point):
+    async def visit_point(self, point, bootstrap=False):
         self.error_code = '!'
         latitude, longitude = point
         self.logger.info('Visiting {0[0]:.4f},{0[1]:.4f}'.format(point))
@@ -570,6 +601,9 @@ class Worker:
                                 latitude=latitude,
                                 longitude=longitude)
 
+        diff = self.last_gmo + config.SCAN_DELAY - time()
+        if diff > 0:
+            await random_sleep(diff, diff + 2)
         responses = await self.call(request)
         self.last_gmo = time()
 
@@ -578,6 +612,7 @@ class Worker:
         sent = False
         pokemon_seen = 0
         forts_seen = 0
+        points_seen = 0
 
         if map_objects.get('status') != 1:
             self.logger.warning(
@@ -651,13 +686,13 @@ class Worker:
                 else:
                     self.db_processor.add(self.normalize_gym(fort))
 
-            if config.MORE_POINTS:
+            if config.MORE_POINTS or bootstrap:
                 for point in map_cell.get('spawn_points', []):
                     try:
                         p = (point['latitude'], point['longitude'])
-                        if p in self.spawns.known_points or not Bounds.contain(p):
+                        if not Bounds.contain(p):
                             continue
-                        self.spawns.add_mystery(p)
+                        self.spawns.add_extra_mystery(p)
                     except (KeyError, TypeError):
                         self.logger.warning('Spawn point exception ignored. {}'.format(point))
                         pass
@@ -696,7 +731,7 @@ class Worker:
             forts_seen,
         )
         self.update_accounts_dict(auth=False)
-        return True
+        return pokemon_seen + forts_seen
 
     async def spin_pokestop(self, pokestop):
         self.error_code = '$'

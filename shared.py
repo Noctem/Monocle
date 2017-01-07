@@ -1,5 +1,5 @@
 from queue import Queue
-from collections import deque
+from collections import deque, OrderedDict
 from logging import getLogger
 from threading import Thread
 from sqlalchemy.exc import DBAPIError
@@ -9,32 +9,36 @@ from random import shuffle
 import asyncio
 
 from utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_point_altitudes
-from config import MORE_POINTS
 
 import db
 
 class Spawns:
     """Manage spawn points and times"""
     session = db.Session()
-    spawns = {}
+    spawns = OrderedDict()
     despawn_times = {}
     mysteries = set()
     altitudes = {}
-    known_points = set()
+    extra_mysteries = set()
 
     def __len__(self):
         return len(self.despawn_times)
 
-    def update(self):
-        self.spawns, self.despawn_times, m, a, k = db.get_spawns(self.session)
-        self.mysteries.update(m)
+    def __bool__(self):
+        return len(self.despawn_times) > 0
+
+    def update(self, loadpickle=False):
+        if loadpickle:
+            pickle = load_pickle('spawns')
+            if pickle:
+                self.spawns, self.despawn_times, self.mysteries, self.altitudes = pickle
+            if self.spawns or self.mysteries:
+                return
+        self.spawns, self.despawn_times, self.mysteries, a = db.get_spawns(self.session)
         self.altitudes.update(a)
-        try:
-            self.known_points.update()
-        except TypeError:
-            pass
         if not self.altitudes:
             self.altitudes = get_point_altitudes()
+        dump_pickle('spawns', self.pickle_objects)
 
     def get_altitude(self, point):
         point = round_coords(point)
@@ -48,15 +52,21 @@ class Spawns:
         return self.spawns.items()
 
     def get_mysteries(self):
-        mysteries = deque(self.mysteries)
+        if not self.extra_mysteries or len(self.mysteries) > 1000:
+            mysteries = deque(self.mysteries)
+        else:
+            mysteries = deque(self.mysteries | self.extra_mysteries)
         shuffle(mysteries)
         return mysteries
 
     def after_last(self):
-        k = next(reversed(self.spawns))
-        seconds = self.spawns[k][1]
-        current_seconds = time() % 3600
-        return current_seconds > seconds
+        try:
+            k = next(reversed(self.spawns))
+            seconds = self.spawns[k][1]
+            current_seconds = time() % 3600
+            return current_seconds > seconds
+        except (StopIteration, KeyError, TypeError):
+            return False
 
     def add_mystery(self, point):
         self.mysteries.add(point)
@@ -66,6 +76,9 @@ class Spawns:
 
     def have_mystery(self, point):
         return point in self.mysteries
+
+    def add_extra_mystery(self, point):
+        self.extra_mysteries.add(round_coords(point))
 
     def add_despawn(self, spawn_id, despawn_time):
         self.despawn_times[spawn_id] = despawn_time
@@ -89,6 +102,10 @@ class Spawns:
             return None
         despawn_seconds = self.get_despawn_seconds(spawn_id)
         return time_until_time(despawn_seconds)
+
+    @property
+    def pickle_objects(self):
+        return self.spawns, self.despawn_times, self.mysteries, self.altitudes
 
     @property
     def total_length(self):

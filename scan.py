@@ -13,9 +13,15 @@ from argparse import ArgumentParser
 from logging import getLogger, basicConfig, WARNING, INFO
 from collections import deque
 from pgoapi.hash_server import HashServer
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 import asyncio
 import time
+
+try:
+    import _thread
+except ImportError:
+    import _dummy_thread as _thread
 
 try:
     from uvloop import EventLoopPolicy
@@ -181,12 +187,24 @@ def parse_args():
         '--no-status-bar',
         dest='status_bar',
         help='Log to console instead of displaying status bar',
-        action='store_false',
+        action='store_false'
     )
     parser.add_argument(
         '--log-level',
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         default=WARNING
+    )
+    parser.add_argument(
+        '--bootstrap',
+        dest='bootstrap',
+        help='Bootstrap even if spawns are known.',
+        action='store_true'
+    )
+    parser.add_argument(
+        '--no-pickle',
+        dest='pickle',
+        help='Do not load spawns from pickle',
+        action='store_false'
     )
     return parser.parse_args()
 
@@ -524,49 +542,62 @@ class Overseer:
             return None, None
 
     def get_start_point(self):
-        smallest_diff = None
-        start = None
+        smallest_diff = float('inf')
         now = time.time() % 3600
         closest = None
 
         for spawn_id, spawn in self.spawns.items():
-            time_diff = abs(spawn[1] - now)
-            if not smallest_diff or time_diff < smallest_diff:
+            time_diff = now - spawn[1]
+            if 0 < time_diff < smallest_diff:
                 smallest_diff = time_diff
                 closest = spawn_id
-            if smallest_diff < 1:
+            if smallest_diff < 3:
                 break
         return closest
 
-    def launch(self):
+    def launch(self, bootstrap, pickle):
         initial = True
         while not self.killed:
-            current_hour = get_current_hour()
-            self.spawns.update()
+            if not initial:
+                pickle = False
+            try:
+                self.spawns.update(loadpickle=pickle)
+            except OperationalError as e:
+                if initial:
+                    _thread.interrupt_main()
+                    raise ValueError('Could not update spawns, ensure your DB is setup.') from e
+                self.logger.error('Operational error while trying to update spawns. {}'.format(e))
 
-            if len(self.spawns) == 0:
+            if not self.spawns or bootstrap:
                 self.bootstrap()
-                while self.spawns.total_length == 0 and not self.killed:
-                    time.sleep(1)
+                time.sleep(1)
+                while self.coroutine_semaphore._value < self.count - 2 and not self.killed:
+                    time.sleep(2)
 
-                while len(self.spawns) == 0 and not self.killed:
-                    try:
-                        mystery_point = list(self.mysteries.popleft())
-                        self.coroutine_semaphore.acquire()
-                        asyncio.run_coroutine_threadsafe(
-                            self.try_point(mystery_point), loop=self.loop
-                        )
-                    except IndexError:
+            while len(self.spawns) < 10 and not self.killed:
+                try:
+                    mystery_point = list(self.mysteries.popleft())
+                    self.coroutine_semaphore.acquire()
+                    asyncio.run_coroutine_threadsafe(
+                        self.try_point(mystery_point), loop=self.loop
+                    )
+                except IndexError:
+                    if self.spawns.mysteries:
                         self.mysteries = self.spawns.get_mysteries()
+                    else:
+                        break
 
-            if initial:
-                start_point = self.get_start_point()
-            else:
-                dump_pickle('accounts', self.accounts)
-
+            current_hour = get_current_hour()
             if self.spawns.after_last():
                 current_hour += 3600
                 initial = False
+
+            if initial:
+                start_point = self.get_start_point()
+                if not start_point:
+                    initial = False
+            else:
+                dump_pickle('accounts', self.accounts)
 
             for spawn_id, spawn in self.spawns.items():
                 if initial:
@@ -600,7 +631,10 @@ class Overseer:
                             self.try_point(mystery_point), loop=self.loop
                         )
                     except IndexError:
-                        self.mysteries = self.spawns.get_mysteries()
+                        if self.spawns.mysteries:
+                            self.mysteries = self.spawns.get_mysteries()
+                        else:
+                            break
                     time_diff = time.time() - spawn_time
 
                 if time_diff > 5 and spawn_id in SIGHTING_CACHE.spawns:
@@ -620,13 +654,16 @@ class Overseer:
     def bootstrap(self):
         async def visit_release(worker, point):
             try:
-                await worker.visit(point)
+                await worker.guaranteed_visit(point)
+                self.visits += 1
             finally:
                 self.coroutine_semaphore.release()
 
         for worker in self.workers_list:
             number = worker.worker_no
+            worker.bootstrap = True
             point = list(get_start_coords(number))
+            time.sleep(.25)
             self.coroutine_semaphore.acquire()
             asyncio.run_coroutine_threadsafe(visit_release(worker, point),
                                              loop=self.loop)
@@ -719,8 +756,6 @@ class Overseer:
         for worker in self.workers.values():
             worker.kill()
 
-        print('Setting CAPTCHA statuses.')
-
         while not self.extra_queue.empty():
             account = self.extra_queue.get()
             username = account.get('username')
@@ -755,7 +790,7 @@ if __name__ == '__main__':
     overseer_thread = Thread(target=overseer.check, name='overseer', daemon=True)
     overseer_thread.start()
 
-    launcher_thread = Thread(target=overseer.launch, name='launcher', daemon=True)
+    launcher_thread = Thread(target=overseer.launch, name='launcher', daemon=True, args=(args.bootstrap, args.pickle))
     launcher_thread.start()
 
     try:
@@ -772,11 +807,18 @@ if __name__ == '__main__':
             loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
         except Exception as e:
             print('Exception: {}'.format(e))
+
         Worker.db_processor.stop()
+
+        try:
+            Worker.spawns.update()
+        except ProgrammingError:
+            pass
+        Worker.spawns.session.close()
         if config.NOTIFY:
             Worker.notifier.session.close()
-        Worker.spawns.session.close()
         manager.shutdown()
+
         try:
             loop.close()
         except RuntimeError:

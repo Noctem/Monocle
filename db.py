@@ -369,12 +369,8 @@ Session = sessionmaker(bind=get_engine())
 def get_spawns(session):
     spawns = session.query(Spawnpoint)
     mysteries = set()
-    if config.MORE_POINTS:
-        known_points = set()
-    else:
-        known_points = None
-    despawn_times = {}
     spawns_dict = {}
+    despawn_times = {}
     altitudes = {}
     for spawn in spawns:
         point = (spawn.lat, spawn.lon)
@@ -395,13 +391,11 @@ def get_spawns(session):
         else:
             spawn_time = (spawn.despawn_time + 1800) % 3600
 
-        if known_points is not None:
-            known_points.add(point)
         despawn_times[spawn.spawn_id] = spawn.despawn_time
         spawns_dict[spawn.spawn_id] = (point, spawn_time)
 
     spawns = OrderedDict(sorted(spawns_dict.items(), key=lambda k: k[1][1]))
-    return spawns, despawn_times, mysteries, altitudes, known_points
+    return spawns, despawn_times, mysteries, altitudes
 
 
 def normalize_timestamp(timestamp):
