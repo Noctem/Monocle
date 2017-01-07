@@ -560,6 +560,7 @@ class Overseer:
         while not self.killed:
             if not initial:
                 pickle = False
+                bootstrap = False
             try:
                 self.spawns.update(loadpickle=pickle)
             except OperationalError as e:
