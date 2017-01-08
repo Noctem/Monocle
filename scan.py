@@ -584,9 +584,10 @@ class Overseer:
                         self.try_point(mystery_point), loop=self.loop
                     )
                 except IndexError:
-                    if self.spawns.mysteries:
+                    if self.spawns.mysteries or self.spawns.extra_mysteries:
                         self.mysteries = self.spawns.get_mysteries()
                     else:
+                        config.MORE_POINTS = True
                         break
 
             current_hour = get_current_hour()
@@ -633,9 +634,10 @@ class Overseer:
                             self.try_point(mystery_point), loop=self.loop
                         )
                     except IndexError:
-                        if self.spawns.mysteries:
+                        if self.spawns.mysteries or self.spawns.extra_mysteries:
                             self.mysteries = self.spawns.get_mysteries()
                         else:
+                            config.MORE_POINTS = True
                             break
                     time_diff = time.time() - spawn_time
 
