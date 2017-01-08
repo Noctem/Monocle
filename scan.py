@@ -65,6 +65,7 @@ _optional = {
     'SPIN_POKESTOPS': False,
     'SPIN_COOLDOWN': 300,
     'COMPLETE_TUTORIAL': False,
+    'INCUBATE_EGGS': False,
     'MAP_WORKERS': True,
     'APP_SIMULATION': True,
     'ITEM_LIMITS': None,

@@ -82,6 +82,8 @@ class Worker:
         # last time of a GetMapObjects request
         self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
+        self.eggs = {}
+        self.unused_incubators = []
         # API setup
         if self.proxies:
             self.new_proxy(set_api=False)
@@ -369,11 +371,26 @@ class Worker:
 
     def update_inventory(self, inventory_items):
         for thing in inventory_items:
-            item = thing.get('inventory_item_data', {}).get('item')
-            if not item:
-                continue
-            item_id = item.get('item_id')
-            self.items[item_id] = item.get('count', 0)
+            obj = thing.get('inventory_item_data', {})
+            if 'item' in obj:
+                item = obj['item']
+                item_id = item.get('item_id')
+                self.items[item_id] = item.get('count', 0)
+            elif config.INCUBATE_EGGS:
+                if ('pokemon_data' in obj and
+                        obj['pokemon_data'].get('is_egg')):
+                    egg = obj['pokemon_data']
+                    egg_id = egg.get('id')
+                    self.eggs[egg_id] = egg
+                elif 'egg_incubators' in obj:
+                    self.unused_incubators = []
+                    for item in obj['egg_incubators'].get('egg_incubator',[]):
+                        if 'pokemon_id' in item:
+                            continue
+                        if item.get('item_id') == 901:
+                            self.unused_incubators.append(item)
+                        else:
+                            self.unused_incubators.insert(0, item)
 
     async def call(self, request, chain=True, stamp=True, buddy=True, dl_hash=True, action=None):
         if chain:
@@ -697,6 +714,9 @@ class Worker:
                         self.logger.warning('Spawn point exception ignored. {}'.format(point))
                         pass
 
+        if config.INCUBATE_EGGS and len(self.unused_incubators) > 0 and len(self.eggs) > 0:
+            await self.incubate_eggs()
+
         if pokemon_seen > 0:
             self.error_code = ':'
             self.total_seen += pokemon_seen
@@ -856,6 +876,29 @@ class Worker:
         self.logger.info("Removed %d items", removed)
         self.error_code = '!'
 
+    async def incubate_eggs(self):
+        # copy the list, as self.call could modify it as it updates the inventory
+        incubators = self.unused_incubators.copy()
+        for egg in sorted(self.eggs.values(), key=lambda x: x.get('egg_km_walked_target')):
+            if egg.get('egg_incubator_id'):
+                continue
+
+            if not incubators:
+                break
+
+            inc = incubators.pop()
+            if inc.get('item_id') == 901 or egg.get('egg_km_walked_target', 0) > 9:
+                request = self.api.create_request()
+                request.use_item_egg_incubator(item_id=inc.get('id'), pokemon_id=egg.get('id'))
+                responses = await self.call(request, action=5)
+
+                ret = responses.get('USE_ITEM_EGG_INCUBATOR', {}).get('result', 0)
+                if ret == 4:
+                    self.logger.warning("Failed to use incubator because it was already in use.")
+                elif ret != 1:
+                    self.logger.warning("Failed to apply incubator {} on {}, code: {}".format(
+                        inc.get('id', 0), egg.get('id', 0), ret))
+
     def simulate_jitter(self, amount=0.00002):
         '''Slightly randomize location, by up to ~2.8 meters by default.'''
         self.location = [
@@ -941,6 +984,8 @@ class Worker:
         self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
         self.pokestops = config.SPIN_POKESTOPS
+        self.eggs = {}
+        self.unused_incubators = []
         self.initialize_api()
         self.error_code = None
         if lock:

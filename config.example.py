@@ -69,9 +69,10 @@ ACCOUNTS = [
 #HASH_KEY = '9d87af14461b93cb3605'  # this key is fake
 
 
-### these next 5 options use more requests but look more like the real client
+### these next 6 options use more requests but look more like the real client
 APP_SIMULATION = True     # mimic the actual app's login requests
 COMPLETE_TUTORIAL = True  # complete the tutorial process and configure avatar for all accounts that haven't yet
+INCUBATE_EGGS = False        # incubate eggs if available
 
 ## encounter Pokémon to store IVs.
 ## valid options:
