@@ -619,6 +619,11 @@ def get_sightings(session):
         .filter(Sighting.expire_timestamp > time.time()) \
         .all()
 
+def get_spawn_points(session):
+    return session.query(Spawnpoint).all()
+
+def get_pokestops(session):
+    return session.query(Pokestop).all()
 
 def get_forts(session):
     if get_engine_name(session) == 'sqlite':

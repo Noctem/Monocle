@@ -2,7 +2,7 @@ from datetime import datetime
 import argparse
 import json
 
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, jsonify
 from multiprocessing.managers import BaseManager
 
 import config
@@ -57,12 +57,6 @@ def get_args():
 
 app = Flask(__name__, template_folder='templates')
 
-
-@app.route('/data')
-def pokemon_data():
-    return json.dumps(get_pokemarkers())
-
-
 @app.route('/')
 def fullmap():
     map_center = utils.get_map_center()
@@ -74,6 +68,17 @@ def fullmap():
         map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION,
     )
 
+@app.route('/data')
+def pokemon_data():
+    return jsonify(get_pokemarkers())
+
+@app.route('/spawnpoints')
+def get_spawn_points():
+    return jsonify(get_spawnpointsmarkers())
+
+@app.route('/pokestops')
+def get_pokestops():
+    return jsonify(get_pokestopsmarkers())
 
 class AccountManager(BaseManager): pass
 AccountManager.register('worker_dict')
@@ -141,7 +146,6 @@ if config.MAP_WORKERS:
             })
         return markers
 
-
 def get_pokemarkers():
     markers = []
     session = db.Session()
@@ -182,6 +186,40 @@ def get_pokemarkers():
         markers.extend(get_worker_markers())
     return markers
 
+def get_spawnpointsmarkers():
+    markers = []
+    session = db.Session()
+    spawns = db.get_spawn_points(session)
+    session.close()
+
+    for spawn in spawns:
+        markers.append({
+            'id': 'spawn-{}'.format(spawn.id),
+            'type': 'spawn',
+            'spawn_id': spawn.spawn_id,
+            'despawn_time': spawn.despawn_time,
+            'lat': spawn.lat,
+            'lon': spawn.lon,
+            'alt': spawn.alt,
+            'duration': spawn.duration
+        })
+    return markers
+
+def get_pokestopsmarkers():
+    markers = []
+    session = db.Session()
+    pokestops = db.get_pokestops(session)
+    session.close()
+
+    for pokestop in pokestops:
+        markers.append({
+            'id': 'pokestop-{}'.format(pokestop.id),
+            'type': 'pokestop',
+            'external_id': pokestop.external_id,
+            'lat': pokestop.lat,
+            'lon': pokestop.lon
+        })
+    return markers
 
 @app.route('/report')
 def report_main():
