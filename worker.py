@@ -513,15 +513,15 @@ class Worker:
             while True and not self.killed:
                 if failures:
                     if failures > 12:
-                        self.logger.error('Failed to boostrap point! {}'.format(point))
+                        self.logger.warning('Failed to see a Pokemon while bootstrapping {}!'.format(point))
                         return False
                     diff = monotonic() - attempt_time + 10
                     if diff > 0:
                         await random_sleep(diff, diff + 5)
                 attempt_time = monotonic()
-                points = await self.visit(point, bootstrap=True)
-                if points:
-                    self.logger.info('Found {} Pokemon during bootstrap'.format(points))
+                pokemon = await self.visit(point, bootstrap=True)
+                if pokemon:
+                    self.logger.info('Found {} Pokemon during bootstrap'.format(pokemon))
                     return True
                 self.error_code = '∞'
                 failures += 1
@@ -586,10 +586,10 @@ class Worker:
             self.logger.warning(e)
             self.error_code = 'HASHING ERROR'
         except ex.PgoapiError as e:
-            self.logger.error('pgoapi error: {}'.format(e))
+            self.logger.exception('pgoapi error')
             self.error_code = 'PGOAPI ERROR'
-        except Exception as e:
-            self.logger.exception('A wild exception appeared! {}'.format(e))
+        except Exception:
+            self.logger.exception('A wild exception appeared!')
             self.error_code = 'EXCEPTION'
         await sleep(1)
         return False
@@ -640,6 +640,8 @@ class Worker:
                 await self.swap_account(reason)
             raise ex.UnexpectedResponseException
 
+        time_of_day = map_objects.get('time_of_day', 0)
+
         if config.ITEM_LIMITS and self.bag_full():
             await self.clean_bag()
 
@@ -669,7 +671,10 @@ class Worker:
                 else:
                     normalized['valid'] = True
 
-                normalized, sent = await self.notify(normalized, pokemon)
+                if config.NOTIFY and self.notifier.eligible(normalized):
+                    if config.ENCOUNTER:
+                        normalized.update(await self.encounter(pokemon))
+                    sent = self.notify(normalized, time_of_day)
 
                 if (normalized not in SIGHTING_CACHE and
                         normalized not in MYSTERY_CACHE):
@@ -911,19 +916,13 @@ class Worker:
         ]
         self.api.set_position(*self.location)
 
-    async def notify(self, norm, pokemon):
-        if config.NOTIFY and self.notifier.eligible(norm):
-            if config.ENCOUNTER in ('all', 'notifying'):
-                norm.update(await self.encounter(pokemon))
-            self.error_code = '*'
-            notified, explanation = self.notifier.notify(norm)
-            self.logger.info(explanation)
-            if notified:
-                self.g['sent'] += 1
-            self.error_code = '!'
-            return norm, notified
-        else:
-            return norm, False
+    def notify(self, norm, time_of_day):
+        self.error_code = '*'
+        notified = self.notifier.notify(norm, time_of_day)
+        if notified:
+            self.g['sent'] += 1
+        self.error_code = '!'
+        return notified
 
     def update_accounts_dict(self, captcha=False, banned=False, auth=True):
         self.account['captcha'] = captcha

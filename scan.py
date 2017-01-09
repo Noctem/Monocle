@@ -114,6 +114,8 @@ try:
 except (TypeError, AttributeError):
     config.SIMULTANEOUS_LOGINS = 4
 
+if config.ENCOUNTER not in (None, 'notifying', 'all'):
+    raise ValueError("Valid ENCOUNTER settings are: None, 'notifying', and 'all'")
 
 from worker import Worker
 

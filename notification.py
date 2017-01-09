@@ -3,6 +3,7 @@ from collections import deque
 from os import mkdir
 from math import sqrt
 from time import monotonic
+from logging import getLogger
 
 import pickle
 
@@ -15,15 +16,19 @@ import config
 for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
                       'TWITTER_CONSUMER_SECRET', 'TWITTER_ACCESS_KEY',
                       'TWITTER_ACCESS_SECRET', 'LANDMARKS', 'AREA_NAME',
-                      'HASHTAGS', 'TZ_OFFSET', 'NOTIFY_RANKING', 'NOTIFY_IDS'
-                      'ENCOUNTER', 'INITIAL_RANKING', 'NOTIFY'):
+                      'HASHTAGS', 'TZ_OFFSET', 'ENCOUNTER', 'INITIAL_RANKING',
+                      'NOTIFY', 'NAME_FONT', 'IV_FONT', 'MOVE_FONT',
+                      'TWEET_IMAGES', 'NOTIFY_IDS', 'NEVER_NOTIFY_IDS',
+                      'RARITY_OVERRIDE', 'IGNORE_IVS'):
     if not hasattr(config, variable_name):
         setattr(config, variable_name, None)
 
 OPTIONAL_SETTINGS = {
-    'ALWAYS_NOTIFY': 0,
+    'ALWAYS_NOTIFY': 9,
     'FULL_TIME': 1800,
-    'TIME_REQUIRED': 300
+    'TIME_REQUIRED': 300,
+    'NOTIFY_RANKING': 90,
+    'ALWAYS_NOTIFY_IDS': set()
 }
 # set defaults for unset config options
 for setting_name, default in OPTIONAL_SETTINGS.items():
@@ -32,179 +37,188 @@ for setting_name, default in OPTIONAL_SETTINGS.items():
 
 if config.NOTIFY:
     if not (config.PB_API_KEY or config.TWITTER_ACCESS_KEY):
-        raise ValueError('NOTIFY is enabled but no keys were provided.')
+        raise ValueError('NOTIFY is enabled but no PushBullet or Twitter keys were provided.')
 
-    if config.ENCOUNTER in ('all', 'notifying'):
-        import cairo
+    if config.TWEET_IMAGES:
+        if not config.ENCOUNTER:
+            raise ValueError('You enabled TWEET_IMAGES but ENCOUNTER is not set.')
+        try:
+            import cairo
+        except ImportError as e:
+            raise ImportError('You enabled TWEET_IMAGES but Cairo could not be imported.') from e
 
     if config.TWITTER_ACCESS_KEY:
-        import twitter
-        from twitter.twitter_utils import calc_expected_status_length
+        try:
+            import twitter
+            from twitter.twitter_utils import calc_expected_status_length
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError("You specified a TWITTER_ACCESS_KEY but you don't have python-twitter installed.") from e
 
     if config.PB_API_KEY:
-        from pushbullet import Pushbullet
+        try:
+            from pushbullet import Pushbullet
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError("You specified a PB_API_KEY but you don't have pushbullet.py installed.") from e
+
+    try:
+        if config.INITIAL_SCORE < config.MINIMUM_SCORE:
+            raise ValueError('INITIAL_SCORE should be greater than or equal to MINIMUM_SCORE.')
+    except TypeError:
+        raise AttributeError('INITIAL_SCORE or MINIMUM_SCORE are not set.')
+
+    if config.NOTIFY_RANKING and config.NOTIFY_IDS:
+        raise ValueError('Only set NOTIFY_RANKING or NOTIFY_IDS, not both.')
+    elif not config.NOTIFY_RANKING and not config.NOTIFY_IDS:
+        raise ValueError('Must set either NOTIFY_RANKING or NOTIFY_IDS.')
+
 
     PERFECT_SCORE = 15 + (sqrt(15) * 2)
 
 
-def draw_image(ctx, image, height, width):
-    """Draw a scaled image on a given context."""
-    image_surface = cairo.ImageSurface.create_from_png(image)
-    # calculate proportional scaling
-    img_height = image_surface.get_height()
-    img_width = image_surface.get_width()
-    width_ratio = float(width) / float(img_width)
-    height_ratio = float(height) / float(img_height)
-    scale_xy = min(height_ratio, width_ratio)
-    # scale image and add it
-    ctx.save()
-    if scale_xy < 1:
-        ctx.scale(scale_xy, scale_xy)
-        if scale_xy != width_ratio:
-            new_width = img_width * scale_xy
-            left = (width - new_width) / 2
-            ctx.translate(left + 8, 8)
-        elif scale_xy != height_ratio:
-            new_height = img_height * scale_xy
-            top = (height - new_height) / 2
-            ctx.translate(8, top + 8)
-    else:
-        left = (width - img_width) / 2
-        top = (height - img_height) / 2
-        ctx.translate(left + 8, top + 8)
-    ctx.set_source_surface(image_surface)
+class PokeImage:
+    def __init__(self, pokemon_id, iv, moves, time_of_day):
+        self.pokemon_id =  pokemon_id
+        self.name = POKEMON_NAMES[pokemon_id]
+        self.attack, self.defense, self.stamina = iv
+        self.move1, self.move2 = moves
+        self.time_of_day = time_of_day
 
-    ctx.paint()
-    ctx.restore()
-
-
-def draw_stats(cr, attack, defense, stamina, move1=None, move2=None):
-    """Draw the Pokemon's IV's and moves."""
-
-    cr.set_line_width(1.75)
-
-    text_x = 240
-    if attack is not None:
-        cr.select_font_face("SF Mono Semibold")
-        cr.set_font_size(22)
-        cr.move_to(text_x, 90)
-        cr.text_path("Attack:  {:>2}/15".format(attack))
-        cr.move_to(text_x, 116)
-        cr.text_path("Defense: {:>2}/15".format(defense))
-        cr.move_to(text_x, 142)
-        cr.text_path("Stamina: {:>2}/15".format(stamina))
-        cr.set_source_rgba(0, 0, 0)
-        cr.stroke()
-
-        cr.move_to(text_x, 90)
-        cr.text_path("Attack:  {:>2}/15".format(attack))
-        cr.move_to(text_x, 116)
-        cr.text_path("Defense: {:>2}/15".format(defense))
-        cr.move_to(text_x, 142)
-        cr.text_path("Stamina: {:>2}/15".format(stamina))
-        cr.set_source_rgba(1, 1, 1)
-        cr.fill()
-
-    if move1 or move2:
-        cr.select_font_face("SF UI Text Semibold")
-        cr.set_font_size(16)
-        if move1:
-            cr.move_to(text_x, 170)
-            cr.text_path("Move 1: {}".format(move1))
-        if move2:
-            cr.move_to(text_x, 188)
-            cr.text_path("Move 2: {}".format(move2))
-        cr.set_source_rgba(0, 0, 0)
-        cr.stroke()
-
-        if move1:
-            cr.move_to(text_x, 170)
-            cr.text_path("Move 1: {}".format(move1))
-        if move2:
-            cr.move_to(text_x, 188)
-            cr.text_path("Move 2: {}".format(move2))
-        cr.set_source_rgba(1, 1, 1)
-        cr.fill()
-
-
-def draw_name(cr, name):
-    """Draw the Pokemon's name."""
-    cr.set_line_width(2.5)
-    text_x = 240
-    text_y = 50
-    cr.select_font_face("SF UI Display Bold")
-    cr.set_font_size(32)
-    cr.move_to(text_x, text_y)
-    cr.set_source_rgba(0, 0, 0)
-    cr.text_path(name)
-    cr.stroke()
-    cr.move_to(text_x, text_y)
-    cr.set_source_rgba(1, 1, 1)
-    cr.show_text(name)
-
-
-def create_image(pokemon_id, iv, move1, move2):
-    try:
-        attack, defense, stamina = iv
-        name = POKEMON_NAMES[pokemon_id]
-        if config.TZ_OFFSET:
-            now = datetime.now(timezone(timedelta(hours=config.TZ_OFFSET)))
+    def create(self):
+        if self.time_of_day > 1:
+            bg = 'static/img/notification-bg-night.png'
         else:
-            now = datetime.now()
-        hour = now.hour
-        if hour > 6 and hour < 18:
-            image = 'static/img/notification-bg-day.png'
-        else:
-            image = 'static/img/notification-bg-night.png'
-        ims = cairo.ImageSurface.create_from_png(image)
-        context = cairo.Context(ims)
-
-        context.set_source_rgba(1, 1, 1)
-        height = 204
-        width = 224
-        image = 'static/original-icons/{}.png'.format(pokemon_id)
-        draw_image(context, image, height, width)
-        draw_stats(context, attack, defense, stamina, move1, move2)
-        draw_name(context, name)
-        image = 'notification-images/{}-notification.png'.format(name)
+            bg = 'static/img/notification-bg-day.png'
+        ims = cairo.ImageSurface.create_from_png(bg)
+        self.context = cairo.Context(ims)
+        pokepic = 'static/original-icons/{}.png'.format(self.pokemon_id)
+        self.draw_stats()
+        self.draw_image(pokepic, 204, 224)
+        self.draw_name()
+        image = 'notification-images/{}-notification.png'.format(self.name)
         try:
             mkdir('notification-images')
         except FileExistsError:
             pass
         ims.write_to_png(image)
         return image
-    except Exception:
-        return None
 
+    def draw_stats(self):
+        """Draw the Pokemon's IV's and moves."""
 
-def generic_place_string():
-    """ Create a place string with area name (if available)"""
-    if config.AREA_NAME:
-        # no landmarks defined, just use area name
-        place = 'in ' + config.AREA_NAME
-        return place
-    else:
-        # no landmarks or area name defined, just say 'around'
-        return 'around'
+        self.context.set_line_width(1.75)
+        text_x = 240
 
+        if self.attack is not None:
+            self.context.select_font_face(config.IV_FONT or "monospace")
+            self.context.set_font_size(22)
+
+            # black stroke
+            self.draw_ivs(text_x)
+            self.context.set_source_rgba(0, 0, 0)
+            self.context.stroke()
+
+            # white fill
+            self.context.move_to(text_x, 90)
+            self.draw_ivs(text_x)
+            self.context.set_source_rgba(1, 1, 1)
+            self.context.fill()
+
+        if self.move1 or self.move2:
+            self.context.select_font_face(config.MOVE_FONT or "sans-serif")
+            self.context.set_font_size(16)
+
+            # black stroke
+            self.draw_moves(text_x)
+            self.context.set_source_rgba(0, 0, 0)
+            self.context.stroke()
+
+            # white fill
+            self.draw_moves(text_x)
+            self.context.set_source_rgba(1, 1, 1)
+            self.context.fill()
+
+    def draw_ivs(self, text_x):
+        self.context.move_to(text_x, 90)
+        self.context.text_path("Attack:  {:>2}/15".format(self.attack))
+        self.context.move_to(text_x, 116)
+        self.context.text_path("Defense: {:>2}/15".format(self.defense))
+        self.context.move_to(text_x, 142)
+        self.context.text_path("Stamina: {:>2}/15".format(self.stamina))
+
+    def draw_moves(self, text_x):
+        if self.move1:
+            self.context.move_to(text_x, 170)
+            self.context.text_path("Move 1: {}".format(self.move1))
+        if self.move2:
+            self.context.move_to(text_x, 188)
+            self.context.text_path("Move 2: {}".format(self.move2))
+
+    def draw_image(self, pokepic, height, width):
+        """Draw a scaled image on a given context."""
+        ims = cairo.ImageSurface.create_from_png(pokepic)
+        # calculate proportional scaling
+        img_height = ims.get_height()
+        img_width = ims.get_width()
+        width_ratio = float(width) / float(img_width)
+        height_ratio = float(height) / float(img_height)
+        scale_xy = min(height_ratio, width_ratio)
+        # scale image and add it
+        self.context.save()
+        if scale_xy < 1:
+            self.context.scale(scale_xy, scale_xy)
+            if scale_xy == width_ratio:
+                new_height = img_height * scale_xy
+                top = (height - new_height) / 2
+                self.context.translate(8, top + 8)
+            else:
+                new_width = img_width * scale_xy
+                left = (width - new_width) / 2
+                self.context.translate(left + 8, 8)
+        else:
+            left = (width - img_width) / 2
+            top = (height - img_height) / 2
+            self.context.translate(left + 8, top + 8)
+        self.context.set_source_surface(ims)
+        self.context.paint()
+        self.context.restore()
+
+    def draw_name(self):
+        """Draw the Pokemon's name."""
+        self.context.set_line_width(2.5)
+        text_x = 240
+        text_y = 50
+        self.context.select_font_face(config.NAME_FONT or "sans-serif")
+        self.context.set_font_size(32)
+        self.context.move_to(text_x, text_y)
+        self.context.set_source_rgba(0, 0, 0)
+        self.context.text_path(self.name)
+        self.context.stroke()
+        self.context.move_to(text_x, text_y)
+        self.context.set_source_rgba(1, 1, 1)
+        self.context.show_text(self.name)
 
 class Notification:
 
-    def __init__(self, name, coordinates, time_till_hidden, iv, score, image):
-        self.name = name
+    def __init__(self, pokemon_id, coordinates, time_till_hidden, iv, moves, score, time_of_day):
+        self.pokemon_id = pokemon_id
+        self.name = POKEMON_NAMES[pokemon_id]
         self.coordinates = coordinates
-        self.image = image
+        self.moves = moves
         self.score = score
-        self.attack, self.defense, self.stamina = iv
+        self.iv = iv
+        self.time_of_day = time_of_day
+        self.logger = getLogger('notifier')
+        self.description = 'wild'
 
-        if self.score == 1:
-            self.description = 'perfect'
-        elif self.score > .83:
-            self.description = 'great'
-        elif self.score > .6:
-            self.description = 'good'
-        else:
-            self.description = 'wild'
+        try:
+            if self.score == 1:
+                self.description = 'perfect'
+            elif self.score > .83:
+                self.description = 'great'
+            elif self.score > .6:
+                self.description = 'good'
+        except TypeError:
+            pass
 
         if config.TZ_OFFSET:
             now = datetime.now(timezone(timedelta(hours=config.TZ_OFFSET)))
@@ -216,10 +230,12 @@ class Notification:
         else:
             self.hashtags = set()
 
+        # check if expiration time is known, or a range
         if isinstance(time_till_hidden, (tuple, list)):
             soonest, latest = time_till_hidden
             self.min_delta = timedelta(seconds=soonest)
             self.max_delta = timedelta(seconds=latest)
+            # check if the two TTHs end on same minute
             if ((now + self.min_delta).strftime('%I:%M') ==
                     (now + self.max_delta).strftime('%I:%M')):
                 average = (soonest + latest) / 2
@@ -255,7 +271,7 @@ class Notification:
             if self.landmark.hashtags:
                 self.hashtags.update(self.landmark.hashtags)
         else:
-            self.place = generic_place_string()
+            self.place = self.generic_place_string()
 
         tweeted = False
         pushed = False
@@ -269,30 +285,34 @@ class Notification:
                 config.TWITTER_ACCESS_SECRET):
             tweeted = self.tweet()
 
-        return tweeted, pushed
+        return tweeted or pushed
 
     def pbpush(self):
         """ Send a PushBullet notification either privately or to a channel,
         depending on whether or not PB_CHANNEL is set in config.
         """
 
-        pb = Pushbullet(config.PB_API_KEY)
+        try:
+            pb = Pushbullet(config.PB_API_KEY)
+        except Exception:
+            self.logger.exception('Failed to create a PushBullet object.')
+            return False
 
-        if self.score < .47:
-            description = 'weak'
-        elif self.score < .35:
-            description = 'bad'
-        else:
-            description = self.description
+        description = self.description
+        try:
+            if self.score < .45:
+                description = 'weak'
+            elif self.score < .35:
+                description = 'bad'
+        except TypeError:
+            pass
 
         area = config.AREA_NAME
         if self.delta:
-            expiry = 'until ' + self.expire_time
+            expiry = 'until {}'.format(self.expire_time)
 
             minutes, seconds = divmod(self.delta.total_seconds(), 60)
-            time_remaining = '{m}m{s:.0f}s'.format(m=int(minutes), s=seconds)
-
-            remaining = 'for ' + time_remaining
+            remaining = 'for {m}m{s:.0f}s'.format(m=int(minutes), s=seconds)
         else:
             expiry = 'until between {t1} and {t2}'.format(
                      t1=self.min_expire_time, t2=self.max_expire_time)
@@ -305,23 +325,29 @@ class Notification:
             remaining = 'for between {r1} and {r2}'.format(
                         r1=min_remaining, r2=max_remaining)
 
-        title = ('A {desc} {name} will be in {area} {expiry}!'
-                 ).format(desc=description, name=self.name, area=area,
-                          expiry=expiry)
+        title = ('A {d} {n} will be in {a} {e}!'
+                 ).format(d=description, n=self.name, a=area, e=expiry)
 
-        body = ('It will be {p} {r}.\n'
-                'Attack: {a}\n'
-                'Defense: {d}\n'
-                'Stamina: {s}').format(
-            p=self.place, r=remaining,
-            a=self.attack, d=self.defense, s=self.stamina)
+        body = ('It will be {p} {r}.\n\n'
+                'Attack: {iv[0]}\n'
+                'Defense: {iv[1]}\n'
+                'Stamina: {iv[2]}\n'
+                'Move 1: {m[0]}\n'
+                'Move 2: {m[1]}\n\n').format(
+                p=self.place, r=remaining, iv=self.iv, m=self.moves)
 
         try:
-            channel = pb.channels[config.PB_CHANNEL]
-            channel.push_link(title, self.map_link, body)
-        except (IndexError, KeyError):
-            pb.push_link(title, self.map_link, body)
-        return True
+            try:
+                channel = pb.channels[config.PB_CHANNEL]
+                channel.push_link(title, self.map_link, body)
+            except (IndexError, KeyError):
+                pb.push_link(title, self.map_link, body)
+        except Exception:
+            self.logger.exception('Failed to send a PushBullet notification about {}.'.format(self.name))
+            return False
+        else:
+            self.logger.info('Sent a PushBullet notification about {}.'.format(self.name))
+            return True
 
     def tweet(self):
         """ Create message, reduce it until it fits in a tweet, and then tweet
@@ -335,6 +361,22 @@ class Notification:
                 for hashtag in hashtags:
                     tag_string += ' #{}'.format(hashtag)
             return tag_string
+
+        try:
+            api = twitter.Api(consumer_key=config.TWITTER_CONSUMER_KEY,
+                              consumer_secret=config.TWITTER_CONSUMER_SECRET,
+                              access_token_key=config.TWITTER_ACCESS_KEY,
+                              access_token_secret=config.TWITTER_ACCESS_SECRET)
+        except Exception:
+            self.logger.exception('Failed to create a Twitter API object.')
+
+        if config.TWEET_IMAGES:
+            try:
+                image = PokeImage(self.pokemon_id, self.iv, self.moves, self.time_of_day).create()
+            except Exception:
+                image = None
+                self.logger.exception('Failed to create a Tweet image.')
+
         tag_string = generate_tag_string(self.hashtags)
 
         if self.expire_time:
@@ -399,19 +441,28 @@ class Notification:
                     e2=self.max_expire_time, u=self.map_link)
 
         try:
-            api = twitter.Api(consumer_key=config.TWITTER_CONSUMER_KEY,
-                              consumer_secret=config.TWITTER_CONSUMER_SECRET,
-                              access_token_key=config.TWITTER_ACCESS_KEY,
-                              access_token_secret=config.TWITTER_ACCESS_SECRET)
             api.PostUpdate(tweet_text,
-                           media=self.image,
+                           media=image,
                            latitude=self.coordinates[0],
                            longitude=self.coordinates[1],
                            display_coordinates=True)
-        except Exception as e:
-            print('Exception:', e)
+        except Exception:
+            self.logger.exception('Failed to Tweet about {}.'.format(self.name))
             return False
-        return True
+        else:
+            self.logger.info('Sent a tweet about {}.'.format(self.name))
+            return True
+
+    @staticmethod
+    def generic_place_string():
+        """ Create a place string with area name (if available)"""
+        if config.AREA_NAME:
+            # no landmarks defined, just use area name
+            place = 'in {}'.format(config.AREA_NAME)
+            return place
+        else:
+            # no landmarks or area name defined, just say 'around'
+            return 'around'
 
 
 class Notifier:
@@ -425,18 +476,23 @@ class Notifier:
         self.minimum_score = config.MINIMUM_SCORE
         self.last_notification = monotonic() - (config.FULL_TIME / 2)
         self.always_notify = []
+        self.logger = getLogger('notifier')
+        self.never_notify = config.NEVER_NOTIFY_IDS or tuple()
+        self.rarity_override = config.RARITY_OVERRIDE or {}
         if self.notify_ranking:
             self.set_pokemon_ranking(loadpickle=True)
             self.set_notify_ids()
             self.auto = True
         elif config.NOTIFY_IDS:
+            self.always_notify = config.ALWAYS_NOTIFY_IDS
             self.pokemon_ranking = config.NOTIFY_IDS
             self.notify_ranking = len(self.pokemon_ranking)
             self.auto = False
 
     def set_notify_ids(self):
         self.notify_ids = self.pokemon_ranking[0:self.notify_ranking]
-        self.always_notify = self.pokemon_ranking[0:config.ALWAYS_NOTIFY]
+        self.always_notify = set(self.pokemon_ranking[0:config.ALWAYS_NOTIFY])
+        self.always_notify |= set(config.ALWAYS_NOTIFY_IDS)
 
     def set_pokemon_ranking(self, loadpickle=False):
         self.ranking_time = monotonic()
@@ -444,50 +500,60 @@ class Notifier:
             try:
                 with open('pickles/ranking.pickle', 'rb') as f:
                     self.pokemon_ranking = pickle.load(f)
-                    config.NOTIFY_IDS = []
-                    for pokemon_id in self.pokemon_ranking[0:config.NOTIFY_RANKING]:
-                        config.NOTIFY_IDS.append(pokemon_id)
                     return
             except (FileNotFoundError, EOFError):
                 pass
         self.pokemon_ranking = get_pokemon_ranking(self.session)
-        config.NOTIFY_IDS = []
-        for pokemon_id in self.pokemon_ranking[0:config.NOTIFY_RANKING]:
-            config.NOTIFY_IDS.append(pokemon_id)
         with open('pickles/ranking.pickle', 'wb') as f:
             pickle.dump(self.pokemon_ranking, f, pickle.HIGHEST_PROTOCOL)
 
     def get_rareness_score(self, pokemon_id):
-        exclude = config.ALWAYS_NOTIFY
+        if pokemon_id in self.rarity_override:
+            return self.rarity_override[pokemon_id]
+        exclude = len(self.always_notify)
         total = self.notify_ranking - exclude
         ranking = self.notify_ids.index(pokemon_id) - exclude
         percentile = 1 - (ranking / total)
         return percentile
 
-    def evaluate_pokemon(self, pokemon_id, iv):
+    def get_iv_score(self, iv):
         attack, defense, stamina = iv
-        rareness = self.get_rareness_score(pokemon_id)
+        if attack is None:
+            return None
+
         weighted = (attack + sqrt(defense) + sqrt(stamina)) / PERFECT_SCORE
         raw = sum(iv) / 45
-        iv_score = (weighted + raw) / 2
+        return (weighted + raw) / 2
+
+    def evaluate_pokemon(self, pokemon_id, iv):
+        rareness = self.get_rareness_score(pokemon_id)
+        iv_score = self.get_iv_score(iv)
+        if not iv_score:
+            return rareness, None
+        if config.IGNORE_IVS:
+            return rareness, iv_score
         score = (rareness + iv_score) / 2
         return score, iv_score
 
     def get_required_score(self, now=None):
+        if self.initial_score == self.minimum_score or config.FULL_TIME == 0:
+            return self.initial_score
         now = now or monotonic()
         time_passed = now - self.last_notification
+        subtract = self.initial_score - self.minimum_score
         if time_passed < config.FULL_TIME:
-            fraction = time_passed / config.FULL_TIME
-        else:
-            fraction = 1
-        subtract = (self.initial_score - self.minimum_score) * fraction
+            subtract *= (time_passed / config.FULL_TIME)
         return self.initial_score - subtract
 
     def eligible(self, pokemon):
         pokemon_id = pokemon['pokemon_id']
-        if pokemon_id not in self.notify_ids:
-            return False
         if pokemon['encounter_id'] in self.recent_notifications:
+            return False
+        if pokemon_id in self.always_notify:
+            return True
+        if pokemon_id in self.never_notify:
+            return False
+        if pokemon_id not in self.notify_ids:
             return False
 
         rareness = self.get_rareness_score(pokemon_id)
@@ -495,7 +561,7 @@ class Notifier:
         score_required = self.get_required_score()
         return highest_score > score_required
 
-    def notify(self, pokemon):
+    def notify(self, pokemon, time_of_day):
         """Send a PushBullet notification and/or a Tweet, depending on if their
         respective API keys have been set in config.
         """
@@ -508,7 +574,7 @@ class Notifier:
 
         if encounter_id in self.recent_notifications:
             # skip duplicate
-            return False, 'Already notified about {}.'.format(name)
+            return False
 
         if pokemon['valid']:
             time_till_hidden = pokemon['time_till_hidden_ms'] / 1000
@@ -517,8 +583,7 @@ class Notifier:
 
         now = monotonic()
         if self.auto:
-            time_passed = now - self.ranking_time
-            if time_passed > 3600:
+            if now - self.ranking_time > 3600:
                 self.set_pokemon_ranking()
                 self.set_notify_ids()
 
@@ -526,56 +591,47 @@ class Notifier:
             score_required = 0
         else:
             if time_till_hidden and time_till_hidden < config.TIME_REQUIRED:
-                return False, '{n} has only {s} seconds remaining.'.format(
-                    n=name, s=time_till_hidden
-                )
-            score_required = self.get_required_score(now)
-
-
-        if pokemon.get('individual_attack') is None:
-            return False, '{} has no IVs.'.format(name)
+                self.logger.info('{n} has only {s} seconds remaining.'.format(
+                    n=name, s=time_till_hidden))
+                return False
+            if config.INITIAL_SCORE:
+                score_required = self.get_required_score(now)
 
         iv = (pokemon.get('individual_attack'),
               pokemon.get('individual_defense'),
               pokemon.get('individual_stamina'))
-        move1 = MOVES.get(pokemon.get('move_1'), {}).get('name')
-        move2 = MOVES.get(pokemon.get('move_2'), {}).get('name')
+        moves = (MOVES.get(pokemon.get('move_1'), {}).get('name'),
+                 MOVES.get(pokemon.get('move_2'), {}).get('name'))
 
-        score, iv_score = self.evaluate_pokemon(pokemon_id, iv)
-        with open('pokemon_scores.txt', 'at') as f:
-            f.write('{n}, a: {iv[0]}, d: {iv[1]}, s: {iv[2]}, iv: {i:.3f}, score: {sc:.3f}, required: {r:.3f}\n'.format(
-                n=name, iv=iv, i=iv_score, sc=score, r=score_required
-            ))
+        if score_required:
+            score, iv_score = self.evaluate_pokemon(pokemon_id, iv)
+        else:
+            score = None
+            iv_score = self.get_iv_score(iv)
 
-        if score < score_required:
-            return False, "{n}'s score was {s:.3f} (iv: {i:.3f}), but {r:.3f} was required.".format(
-                n=name, s=score, i=iv_score, r=score_required)
+        if score and iv_score:
+            self.logger.info('{n}, a: {iv[0]}, d: {iv[1]}, s: {iv[2]}, iv: {i:.3f},'
+                             ' score: {sc:.3f}, required: {r:.3f}'.format(
+                             n=name, iv=iv, i=iv_score, sc=score, r=score_required))
+
+        if score_required and score < score_required:
+            self.logger.info("{n}'s score was {s:.3f} (iv: {i:.3f}),"
+                             " but {r:.3f} was required.".format(
+                             n=name, s=score, i=iv_score, r=score_required))
+            return False
+
         if not time_till_hidden:
             seen = pokemon['seen'] % 3600
             time_till_hidden = estimate_remaining_time(self.session, spawn_id, seen)
             mean = sum(time_till_hidden) / 2
 
-            if mean < config.TIME_REQUIRED:
-                return False, '{n} has only around {s} seconds remaining.'.format(
-                    n=name, s=mean
-                )
+            if mean < config.TIME_REQUIRED and pokemon_id not in self.always_notify:
+                self.logger.info('{n} has only around {s} seconds remaining.'.format(
+                    n=name, s=mean))
+                return False
 
-        image = create_image(pokemon_id, iv, move1, move2)
-
-        tweeted, pushed = Notification(
-            name, coordinates, time_till_hidden, iv, iv_score, image).notify()
-
-        if tweeted or pushed:
+        notified = Notification(pokemon_id, coordinates, time_till_hidden, iv, moves, iv_score, time_of_day).notify()
+        if notified:
             self.last_notification = monotonic()
             self.recent_notifications.append(encounter_id)
-            if tweeted and pushed:
-                explanation = 'Tweeted and pushed '
-            elif tweeted:
-                explanation = 'Tweeted '
-            else:
-                explanation = 'Pushed '
-        else:
-            explanation = 'Failed to notify '
-
-        explanation += 'about {}.'.format(name)
-        return tweeted or pushed, explanation
+        return notified

@@ -156,6 +156,10 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 '''
 NOTIFY = True  # enable notifications
 
+# create images with Pokémon stats for Tweets
+# requires cairo and ENCOUNTER = 'notifying' or 'all'
+TWEET_IMAGES = True
+
 # As many hashtags as can fit will be included in your tweets, these will
 # be combined with landmark-specific hashtags (if applicable).
 HASHTAGS = {AREA_NAME, 'Pokeminer+', 'PokemonGO'}
@@ -164,21 +168,40 @@ HASHTAGS = {AREA_NAME, 'Pokeminer+', 'PokemonGO'}
 # the required number of seconds remaining to notify about a Pokémon
 TIME_REQUIRED = 600  # 10 minutes
 
-# Sightings of the top (x) will always be notified about, even if below TIME_REQUIRED
-ALWAYS_NOTIFY = 14
-
+### Only set either the NOTIFY_RANKING or NOTIFY_IDS, not both!
 # The (x) rarest Pokémon will be eligible for notification. Whether a
 # notification is sent or not depends on its score, as explained below.
 NOTIFY_RANKING = 90
 
-# The Pokémon score required to notify is on a sliding scale from INITIAL_SCORE
-# to MAXIMUM_SCORE over the course of FULL_TIME seconds following a notification
+# Pokémon to potentially notify about, in order of preference.
+# The first in the list will have a rarity score of 1, the last will be 0.
+#NOTIFY_IDS = (130, 89, 131, 3, 9, 134, 62, 94, 91, 87, 71, 45, 85, 114, 80, 6)
+
+# Sightings of the top (x) will always be notified about, even if below TIME_REQUIRED
+ALWAYS_NOTIFY = 14
+
+# Always notify about the following Pokémon even if their time remaining or scores are not high enough
+# can be combined with the ALWAYS_NOTIFY ranking
+#ALWAYS_NOTIFY_IDS = {89, 130, 144, 145, 146, 150, 151}
+
+# Never notify about the following Pokémon, even if they would otherwise be eligible
+#NEVER_NOTIFY_IDS = TRASH_IDS
+
+# Override the rarity score for particular Pokémon
+# format is: {pokemon_id: rarity_score}
+#RARITY_OVERRIDE = {148: 0.6, 149: 0.9}
+
+# Ignore IV score and only base decision on rarity score (default if IVs not known)
+#IGNORE_IVS = False
+
+# The Pokémon score required to notify goes on a sliding scale from INITIAL_SCORE
+# to MINIMUM_SCORE over the course of FULL_TIME seconds following a notification
 # Pokémon scores are an average of the Pokémon's rarity score and IV score (from 0 to 1)
 # If NOTIFY_RANKING is 90, the 90th most common Pokémon will have a rarity of score 0, the rarest will be 1.
 # Perfect IVs have a score of 1, the worst IVs have a score of 0. Attack IV is weighted more heavily.
-FULL_TIME = 1680  # the number of seconds from last notification before only MINIMUM_SCORE will be required 
-INITIAL_SCORE = 0.7  # the score required to notify immediately after a notification
-MINIMUM_SCORE = 0.55  # the score required to notify after FULL_TIME seconds have passed
+FULL_TIME = 1680  # the number of seconds after a notification when only MINIMUM_SCORE will be required
+INITIAL_SCORE = 0.7  # the required score immediately after a notification
+MINIMUM_SCORE = 0.55  # the required score after FULL_TIME seconds have passed
 
 ### The following values are fake, replace them with your own keys to enable
 ### PushBullet notifications and/or tweeting, otherwise leave them out of your
@@ -191,18 +214,20 @@ MINIMUM_SCORE = 0.55  # the score required to notify after FULL_TIME seconds hav
 #TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
 #TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'
 
+
+##### Referencing landmarks in your tweets/notifications
+
 #### It is recommended to store the LANDMARKS object in a pickle to reduce startup
 #### time if you are using queries. An example script for this is in:
 #### scripts/pickle_landmarks.example.py
-
 #from pickle import load
 #with open('pickles/landmarks.pickle', 'rb') as f:
 #    LANDMARKS = load(f)
 
 ### if you do pickle it, just load the pickle and omit everything below this point
 
-from landmarks import Landmarks
-LANDMARKS = Landmarks(query_suffix=AREA_NAME)
+#from landmarks import Landmarks
+#LANDMARKS = Landmarks(query_suffix=AREA_NAME)
 
 # Landmarks to reference when Pokémon are nearby
 # If no points are specified then it will query OpenStreetMap for the coordinates
@@ -218,19 +243,19 @@ LANDMARKS = Landmarks(query_suffix=AREA_NAME)
 
 ### replace these with well-known places in your area
 
-# since no points or query is provided, the names provided will be queried and suffixed with AREA_NAME
-LANDMARKS.add('Rice Eccles Stadium', shortname='Rice Eccles', hashtags={'Utes'})
-LANDMARKS.add('the Salt Lake Temple', shortname='the temple', hashtags={'TempleSquare'})
+## since no points or query is provided, the names provided will be queried and suffixed with AREA_NAME
+#LANDMARKS.add('Rice Eccles Stadium', shortname='Rice Eccles', hashtags={'Utes'})
+#LANDMARKS.add('the Salt Lake Temple', shortname='the temple', hashtags={'TempleSquare'})
 
-# provide two corner points to create a square for this area
-LANDMARKS.add('City Creek Center', points=((40.769210, -111.893901), (40.767231, -111.888275)), hashtags={'CityCreek'})
+## provide two corner points to create a square for this area
+#LANDMARKS.add('City Creek Center', points=((40.769210, -111.893901), (40.767231, -111.888275)), hashtags={'CityCreek'})
 
-# provide a query that is different from the landmark name so that OpenStreetMap finds the correct one
-LANDMARKS.add('the State Capitol', shortname='the Capitol', query='Utah State Capitol Building')
+## provide a query that is different from the landmark name so that OpenStreetMap finds the correct one
+#LANDMARKS.add('the State Capitol', shortname='the Capitol', query='Utah State Capitol Building')
 
-## area examples ##
-# query using name, override the default area phrase so that it says 'at (name)' instead of 'in'
-LANDMARKS.add('the University of Utah', shortname='the U of U', hashtags={'Utes'}, phrase='at', is_area=True)
-# provide corner points to create a polygon of the area since OpenStreetMap does not have a shape for it
-LANDMARKS.add('Yalecrest', points=((40.750263, -111.836502), (40.750377, -111.851108), (40.751515, -111.853833), (40.741212, -111.853909), (40.741188, -111.836519)), is_area=True)
+### area examples ###
+## query using name, override the default area phrase so that it says 'at (name)' instead of 'in'
+#LANDMARKS.add('the University of Utah', shortname='the U of U', hashtags={'Utes'}, phrase='at', is_area=True)
+## provide corner points to create a polygon of the area since OpenStreetMap does not have a shape for it
+#LANDMARKS.add('Yalecrest', points=((40.750263, -111.836502), (40.750377, -111.851108), (40.751515, -111.853833), (40.741212, -111.853909), (40.741188, -111.836519)), is_area=True)
 '''
