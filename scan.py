@@ -31,7 +31,7 @@ except ImportError:
     pass
 
 from db import SIGHTING_CACHE
-from utils import get_current_hour, dump_pickle, get_address, get_start_coords
+from utils import get_current_hour, dump_pickle, get_address, get_start_coords, get_bootstrap_points
 
 try:
     import config
@@ -449,7 +449,7 @@ class Overseer:
             'PokeMiner running for {}'.format(running_for),
             'Known spawns: {s}, unknown: {m}'.format(
                 s=len(self.spawns),
-                m=len(self.spawns.mysteries)),
+                m=self.spawns.mysteries_count),
             '{w} workers, {t} threads, {c} coroutines'.format(
                 w=self.count,
                 t=active_count(),
@@ -565,6 +565,9 @@ class Overseer:
             if not initial:
                 pickle = False
                 bootstrap = False
+            if not self.spawns or bootstrap:
+                bootstrap = True
+                pickle = False
             try:
                 self.spawns.update(loadpickle=pickle)
             except OperationalError as e:
@@ -573,11 +576,17 @@ class Overseer:
                     raise ValueError('Could not update spawns, ensure your DB is setup.') from e
                 self.logger.error('Operational error while trying to update spawns. {}'.format(e))
 
-            if not self.spawns or bootstrap:
+            if bootstrap:
                 self.bootstrap()
                 time.sleep(1)
-                while self.coroutine_semaphore._value < self.count - 2 and not self.killed:
+                while self.coroutine_semaphore._value < (self.count / 2) and not self.killed:
                     time.sleep(2)
+                self.logger.warning('Moving on to bootstrap stage 2.')
+                self.bootstrap_two()
+                time.sleep(5)
+                while self.coroutine_semaphore._value < (self.count * .75) and not self.killed:
+                    time.sleep(2)
+                self.logger.warning('Moving on from bootstrapping.')
 
             while len(self.spawns) < 10 and not self.killed:
                 try:
@@ -678,6 +687,23 @@ class Overseer:
             asyncio.run_coroutine_threadsafe(visit_release(worker, point),
                                              loop=self.loop)
 
+    def bootstrap_two(self):
+        async def bootstrap_try(point):
+            try:
+                worker = await self.best_worker(point, must_visit=True)
+                if await worker.visit(point, bootstrap=True):
+                    self.visits += 1
+            finally:
+                try:
+                    worker.busy.release()
+                except NameError:
+                    pass
+                self.coroutine_semaphore.release()
+
+        for point in get_bootstrap_points():
+            self.coroutine_semaphore.acquire()
+            asyncio.run_coroutine_threadsafe(bootstrap_try(point), loop=self.loop)
+
     async def try_point(self, point, spawn_time=None):
         try:
             point[0] = uniform(point[0] - 0.00033, point[0] + 0.00033)
@@ -706,7 +732,7 @@ class Overseer:
         finally:
             self.coroutine_semaphore.release()
 
-    async def best_worker(self, point, spawn_time=None):
+    async def best_worker(self, point, spawn_time=None, must_visit=False):
         start = time.time()
         if spawn_time:
             skip_time = config.GIVE_UP_KNOWN
@@ -719,7 +745,7 @@ class Overseer:
         worker = None
         lowest_speed = float('inf')
         self.searches_without_shuffle += 1
-        if self.searches_without_shuffle > 150:
+        if self.searches_without_shuffle > 250:
             shuffle(self.workers_list)
             self.searches_without_shuffle = 0
         workers = self.workers_list.copy()
@@ -753,7 +779,7 @@ class Overseer:
                 if self.killed:
                     return None
                 time_diff = time.time() - start
-                if time_diff > skip_time:
+                if time_diff > skip_time and not must_visit:
                     return None
                 await asyncio.sleep(2)
             else:

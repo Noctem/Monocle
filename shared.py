@@ -78,7 +78,7 @@ class Spawns:
         return point in self.mysteries
 
     def add_extra_mystery(self, point):
-        self.extra_mysteries.add(round_coords(point))
+        self.extra_mysteries.add(round_coords(point, 4))
 
     def add_despawn(self, spawn_id, despawn_time):
         self.despawn_times[spawn_id] = despawn_time
@@ -109,7 +109,11 @@ class Spawns:
 
     @property
     def total_length(self):
-        return len(self.despawn_times) + len(self.mysteries)
+        return len(self.despawn_times) + self.mysteries_count
+
+    @property
+    def mysteries_count(self):
+        return len(self.mysteries) + len(self.extra_mysteries)
 
 
 class DatabaseProcessor(Thread):

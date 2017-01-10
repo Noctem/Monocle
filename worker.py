@@ -512,16 +512,15 @@ class Worker:
         try:
             while True and not self.killed:
                 if failures:
-                    if failures > 12:
-                        self.logger.warning('Failed to see a Pokemon while bootstrapping {}!'.format(point))
+                    if failures > 2:
+                        self.logger.warning('Failed to see anything while bootstrapping {}!'.format(point))
                         return False
                     diff = monotonic() - attempt_time + 10
                     if diff > 0:
                         await random_sleep(diff, diff + 5)
                 attempt_time = monotonic()
-                pokemon = await self.visit(point, bootstrap=True)
-                if pokemon:
-                    self.logger.info('Found {} Pokemon during bootstrap'.format(pokemon))
+                seen = await self.visit(point, bootstrap=True)
+                if seen:
                     return True
                 self.error_code = '∞'
                 failures += 1
