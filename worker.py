@@ -684,7 +684,7 @@ class Worker:
                         try:
                             normalized.update(await self.encounter(pokemon))
                         except Exception:
-                            self.logger.warning('Exception during encounter.')
+                            self.logger.exception('Exception during encounter.')
 
                 self.db_processor.add(normalized)
 
@@ -732,7 +732,7 @@ class Worker:
         else:
             self.empty_visits += 1
             if forts_seen == 0:
-                self.error_code = 'NOTHING SEEN'
+                self.error_code = '0 SEEN'
             else:
                 self.error_code = ','
             if self.empty_visits > 3:

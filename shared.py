@@ -14,7 +14,7 @@ import db
 
 class Spawns:
     """Manage spawn points and times"""
-    session = db.Session()
+    session = db.Session(autoflush=False)
     spawns = OrderedDict()
     despawn_times = {}
     mysteries = set()
@@ -138,8 +138,8 @@ class DatabaseProcessor(Thread):
                 try:
                     db.SIGHTING_CACHE.clean_expired()
                     db.MYSTERY_CACHE.clean_expired(session)
-                except Exception as e:
-                    self.logger.error('Failed to clean cache. {}'.format(e))
+                except Exception:
+                    self.logger.exception('Failed to clean cache.')
                 finally:
                     self._clean_cache = False
             try:
@@ -165,11 +165,16 @@ class DatabaseProcessor(Thread):
                     self._commit = False
             except DBAPIError as e:
                 session.rollback()
-                self.logger.exception('A wild DB exception appeared! {}'.format(e))
-            except Exception as e:
-                self.logger.exception('A wild exception appeared! {}'.format(e))
+                self.logger.exception('A wild DB exception appeared!')
+            except Exception:
+                self.logger.exception('A wild exception appeared!')
 
-        session.commit()
+        try:
+            db.MYSTERY_CACHE.clean_expired(session)
+            session.commit()
+        except DBAPIError:
+            session.rollback()
+            self.logger.exception('A wild DB exception appeared!')
         session.close()
 
     def clean_cache(self):

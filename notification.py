@@ -471,7 +471,7 @@ class Notifier:
         self.spawns = spawns
         self.recent_notifications = deque(maxlen=100)
         self.notify_ranking = config.NOTIFY_RANKING
-        self.session = Session()
+        self.session = Session(autoflush=False)
         self.initial_score = config.INITIAL_SCORE
         self.minimum_score = config.MINIMUM_SCORE
         self.last_notification = monotonic() - (config.FULL_TIME / 2)
@@ -608,11 +608,6 @@ class Notifier:
         else:
             score = None
             iv_score = self.get_iv_score(iv)
-
-        if score and iv_score:
-            self.logger.info('{n}, a: {iv[0]}, d: {iv[1]}, s: {iv[2]}, iv: {i:.3f},'
-                             ' score: {sc:.3f}, required: {r:.3f}'.format(
-                             n=name, iv=iv, i=iv_score, sc=score, r=score_required))
 
         if score_required and score < score_required:
             self.logger.info("{n}'s score was {s:.3f} (iv: {i:.3f}),"

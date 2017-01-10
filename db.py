@@ -9,6 +9,7 @@ from sqlalchemy.types import TypeDecorator, Numeric, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT
+from sqlalchemy.exc import DBAPIError
 
 import utils
 
@@ -214,7 +215,10 @@ class MysteryCache(object):
                 encounter.last_seconds = last - hour
                 encounter.seen_range = last - first
         if to_remove:
-            session.commit()
+            try:
+                session.commit()
+            except DBAPIError:
+                session.rollback()
         for key in to_remove:
             del self.store[key]
 

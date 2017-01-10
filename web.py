@@ -144,7 +144,7 @@ if config.MAP_WORKERS:
 
 def get_pokemarkers():
     markers = []
-    session = db.Session()
+    session = db.Session(autoflush=False)
     pokemons = db.get_sightings(session)
     forts = db.get_forts(session)
     session.close()
@@ -185,7 +185,7 @@ def get_pokemarkers():
 
 @app.route('/report')
 def report_main():
-    session = db.Session()
+    session = db.Session(autoflush=False)
     top_pokemon = db.get_top_pokemon(session)
     bottom_pokemon = db.get_top_pokemon(session, order='ASC')
     bottom_sightings = db.get_all_sightings(
@@ -248,7 +248,7 @@ def report_main():
 
 @app.route('/report/<int:pokemon_id>')
 def report_single(pokemon_id):
-    session = db.Session()
+    session = db.Session(autoflush=False)
     session_stats = db.get_session_stats(session)
     js_data = {
         'charts_data': {
@@ -284,7 +284,7 @@ def sighting_to_marker(sighting):
 
 @app.route('/report/heatmap')
 def report_heatmap():
-    session = db.Session()
+    session = db.Session(autoflush=False)
     pokemon_id = request.args.get('id')
     points = db.get_all_spawn_coords(session, pokemon_id=pokemon_id)
     session.close()

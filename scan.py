@@ -133,7 +133,6 @@ BAD_STATUSES = (
     'REMOVING',
     'IP BANNED',
     'MALFORMED RESPONSE',
-    'NOTHING SEEN',
     'PGOAPI ERROR',
     'MAX RETRIES',
     'HASHING ERROR'
@@ -296,7 +295,7 @@ class Overseer:
                 if now - last_cleaned_cache > 900:  # clean cache after 15min
                     self.db_processor.clean_cache()
                     last_cleaned_cache = now
-                if now - last_commit > 8:
+                if now - last_commit > 5:
                     self.db_processor.commit()
                     last_commit = now
                 if not self.paused and now - last_swap > 600:
@@ -394,7 +393,8 @@ class Overseer:
 
         Dots meaning:
         . = visited more than a minute ago
-        , = visited less than a minute ago, nothing seen
+        , = visited less than a minute ago, no pokemon seen
+        0 = visited less than a minute ago, no pokemon or forts seen
         : = visited less than a minute ago, pokemon seen
         ! = currently visiting
         | = cleaning bag
@@ -403,6 +403,7 @@ class Overseer:
         ~ = encountering a Pokémon
         I = initial, haven't done anything yet
         ^ = waiting to log in (limited by SIMULTANEOUS_LOGINS)
+        ∞ = bootstrapping
         L = logging in
         A = simulating app startup
         T = completing the tutorial
@@ -605,57 +606,60 @@ class Overseer:
                 dump_pickle('accounts', self.accounts)
 
             for spawn_id, spawn in self.spawns.items():
-                if initial:
-                    if spawn_id == start_point:
-                        initial = False
-                    else:
-                        continue
-
-                if self.captcha_queue.qsize() > config.MAX_CAPTCHAS:
-                    self.paused = True
-                    try:
-                        self.idle_seconds += self.captcha_queue.full_wait(
-                            maxsize=config.MAX_CAPTCHAS)
-                    except (EOFError, BrokenPipeError):
-                        pass
-                    self.paused = False
-
-                point = list(spawn[0])
-                spawn_time = spawn[1] + current_hour
-
-                # negative = hasn't happened yet
-                # positive = already happened
-                time_diff = time.time() - spawn_time
-
-                while time_diff < 0 and not self.killed:
-                    try:
-                        mystery_point = list(self.mysteries.popleft())
-
-                        self.coroutine_semaphore.acquire()
-                        asyncio.run_coroutine_threadsafe(
-                            self.try_point(mystery_point), loop=self.loop
-                        )
-                    except IndexError:
-                        if self.spawns.mysteries or self.spawns.extra_mysteries:
-                            self.mysteries = self.spawns.get_mysteries()
+                try:
+                    if initial:
+                        if spawn_id == start_point:
+                            initial = False
                         else:
-                            config.MORE_POINTS = True
-                            break
+                            continue
+
+                    if self.captcha_queue.qsize() > config.MAX_CAPTCHAS:
+                        self.paused = True
+                        try:
+                            self.idle_seconds += self.captcha_queue.full_wait(
+                                maxsize=config.MAX_CAPTCHAS)
+                        except (EOFError, BrokenPipeError):
+                            pass
+                        self.paused = False
+
+                    point = list(spawn[0])
+                    spawn_time = spawn[1] + current_hour
+
+                    # negative = hasn't happened yet
+                    # positive = already happened
                     time_diff = time.time() - spawn_time
 
-                if time_diff > 5 and spawn_id in SIGHTING_CACHE.spawns:
-                    self.redundant += 1
-                    continue
-                elif time_diff > config.SKIP_SPAWN:
-                    self.skipped += 1
-                    continue
+                    while time_diff < 0 and not self.killed:
+                        try:
+                            mystery_point = list(self.mysteries.popleft())
 
-                if self.killed:
-                    return
-                self.coroutine_semaphore.acquire()
-                asyncio.run_coroutine_threadsafe(
-                    self.try_point(point, spawn_time), loop=self.loop
-                )
+                            self.coroutine_semaphore.acquire()
+                            asyncio.run_coroutine_threadsafe(
+                                self.try_point(mystery_point), loop=self.loop
+                            )
+                        except IndexError:
+                            if self.spawns.mysteries or self.spawns.extra_mysteries:
+                                self.mysteries = self.spawns.get_mysteries()
+                            else:
+                                config.MORE_POINTS = True
+                                break
+                        time_diff = time.time() - spawn_time
+
+                    if time_diff > 5 and spawn_id in SIGHTING_CACHE.spawns:
+                        self.redundant += 1
+                        continue
+                    elif time_diff > config.SKIP_SPAWN:
+                        self.skipped += 1
+                        continue
+
+                    if self.killed:
+                        return
+                    self.coroutine_semaphore.acquire()
+                    asyncio.run_coroutine_threadsafe(
+                        self.try_point(point, spawn_time), loop=self.loop
+                    )
+                except Exception:
+                    self.logger.exception('Error occured in launcher loop.')
 
     def bootstrap(self):
         async def visit_release(worker, point):
