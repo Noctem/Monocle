@@ -25,7 +25,8 @@ OPTIONAL_SETTINGS = {
     'SPAWN_ID_INT': True,
     'PASS': None,
     'PROVIDER': None,
-    'MANAGER_ADDRESS': None
+    'MANAGER_ADDRESS': None,
+    'BOOTSTRAP_RADIUS': 450
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -208,7 +209,7 @@ def get_point_altitudes(precision=3):
 
 
 def get_bootstrap_points():
-    lat_gain, lon_gain = get_gains(475)
+    lat_gain, lon_gain = get_gains(config.BOOTSTRAP_RADIUS)
     coords = []
     for map_row, lat in enumerate(
         float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)

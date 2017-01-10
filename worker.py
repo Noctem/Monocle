@@ -13,7 +13,7 @@ from array import array
 from queue import Empty
 
 from db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
-from utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance
+from utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
 from shared import DatabaseProcessor
 
 import config
@@ -69,11 +69,8 @@ class Worker:
             self.account = self.extra_queue.get_nowait()
         except Empty as e:
             raise ValueError("You don't have enough accounts for the number of workers specified in GRID.") from e
-        try:
-            self.username = self.account['username']
-        except KeyError as e:
-            raise KeyError('Account has no username. {}'.format(self.account)) from e
-        self.location = self.account.get('location', (0, 0, 0))
+        self.username = self.account['username']
+        self.location = self.account.get('location', get_start_coords(worker_no))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
         # last time of any request
         self.last_request = self.account.get('time', 0)
@@ -427,8 +424,7 @@ class Worker:
             else:
                 await sleep(0.5)
 
-        exceptions = 0
-        while True:
+        for _ in range(-1, config.MAX_RETRIES):
             try:
                 response = await self.loop.run_in_executor(
                     self.network_executor, request.call
@@ -440,7 +436,7 @@ class Worker:
             except ex.HashingOfflineException:
                 self.logger.warning('Hashing server busy or offline.')
                 self.error_code = 'HASHING OFFLINE'
-                await sleep(5)
+                await sleep(7.5)
             except ex.NianticOfflineException:
                 self.logger.warning('Niantic busy or offline.')
                 self.error_code = 'NIANTIC OFFLINE'
@@ -465,9 +461,8 @@ class Worker:
                 self.logger.warning(e)
                 self.error_code = 'MALFORMED RESPONSE'
                 await random_sleep(10, 14, 11)
-            exceptions += 1
-            if exceptions >= config.MAX_RETRIES:
-                raise MaxRetriesException
+        if not response:
+            raise MaxRetriesException
 
         self.last_request = time()
         if action:
@@ -506,27 +501,13 @@ class Worker:
         speed = (distance / time_diff) * 3600
         return speed
 
-    async def guaranteed_visit(self, point):
-        failures = 0
-        await self.busy.acquire()
-        try:
-            while True and not self.killed:
-                if failures:
-                    if failures > 2:
-                        self.logger.warning('Failed to see anything while bootstrapping {}!'.format(point))
-                        return False
-                    diff = monotonic() - attempt_time + 10
-                    if diff > 0:
-                        await random_sleep(diff, diff + 5)
-                attempt_time = monotonic()
-                seen = await self.visit(point, bootstrap=True)
-                if seen:
-                    return True
-                self.error_code = '∞'
-                failures += 1
-                self.simulate_jitter(amount=0.0002)
-        finally:
-            self.busy.release()
+    async def bootstrap_visit(self, point):
+        for _ in range(0,3):
+            if await self.visit(point, bootstrap=True):
+                return True
+            self.error_code = '∞'
+            self.simulate_jitter(0.00005)
+        return False
 
     async def visit(self, point, bootstrap=False):
         """Wrapper for self.visit_point - runs it a few times before giving up
@@ -594,7 +575,10 @@ class Worker:
         return False
 
     async def visit_point(self, point, bootstrap=False):
-        self.error_code = '!'
+        if bootstrap:
+            self.error_code = '∞'
+        else:
+            self.error_code = '!'
         latitude, longitude = point
         self.logger.info('Visiting {0[0]:.4f},{0[1]:.4f}'.format(point))
         start = time()
@@ -619,7 +603,7 @@ class Worker:
 
         diff = self.last_gmo + config.SCAN_DELAY - time()
         if diff > 0:
-            await random_sleep(diff, diff + 2)
+            await random_sleep(diff, diff + 1)
         responses = await self.call(request)
         self.last_gmo = time()
 
@@ -709,11 +693,12 @@ class Worker:
 
             if config.MORE_POINTS or bootstrap:
                 for point in map_cell.get('spawn_points', []):
+                    points_seen += 1
                     try:
                         p = (point['latitude'], point['longitude'])
                         if not Bounds.contain(p):
                             continue
-                        self.spawns.add_extra_mystery(p)
+                        self.spawns.add_mystery(p)
                     except (KeyError, TypeError):
                         self.logger.warning('Spawn point exception ignored. {}'.format(point))
                         pass
@@ -755,7 +740,7 @@ class Worker:
             forts_seen,
         )
         self.update_accounts_dict(auth=False)
-        return pokemon_seen + forts_seen
+        return pokemon_seen + forts_seen + points_seen
 
     async def spin_pokestop(self, pokestop):
         self.error_code = '$'

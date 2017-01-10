@@ -7,7 +7,7 @@ DB_ENGINE = 'sqlite:///db.sqlite'
 AREA_NAME = 'SLC'   # the city or region you are scanning
 LANGUAGE = 'EN'     # ISO 639-1 codes EN, DE, FR, and ZH for Pokémon names.
 MAX_CAPTCHAS = 100  # stop launching new visits if this many CAPTCHAs are pending
-SCAN_DELAY = 10.1   # wait at least this many seconds before scanning with the same account
+SCAN_DELAY = 10     # wait at least this many seconds before scanning with the same account
 SPEED_LIMIT = 19    # don't travel over this many miles per hour (sorry non-Americans)
 
 # The number of simultaneous workers will be these two numbers multiplied.
@@ -26,6 +26,8 @@ MAP_END = (40.7143, -111.8046)
 # the boundaries will be the rectangle created by MAP_START and MAP_END, unless
 STAY_WITHIN_MAP = True
 
+# ensure that you visit within this many meters of every part of your map during bootstrap
+#BOOTSTRAP_RADIUS = 450
 
 GIVE_UP_KNOWN = 90   # try to find a worker for a known spawn for this many seconds before giving up
 GIVE_UP_UNKNOWN = 5  # try to find a worker for an unknown point for this many seconds before giving up

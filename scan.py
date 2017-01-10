@@ -565,28 +565,30 @@ class Overseer:
             if not initial:
                 pickle = False
                 bootstrap = False
-            if not self.spawns or bootstrap:
-                bootstrap = True
-                pickle = False
+
             try:
                 self.spawns.update(loadpickle=pickle)
             except OperationalError as e:
                 if initial:
                     _thread.interrupt_main()
                     raise ValueError('Could not update spawns, ensure your DB is setup.') from e
-                self.logger.error('Operational error while trying to update spawns. {}'.format(e))
+                self.logger.exception('Operational error while trying to update spawns. {}')
+
+            if not self.spawns or bootstrap:
+                bootstrap = True
+                pickle = False
 
             if bootstrap:
-                self.bootstrap()
-                time.sleep(1)
-                while self.coroutine_semaphore._value < (self.count / 2) and not self.killed:
-                    time.sleep(2)
-                self.logger.warning('Moving on to bootstrap stage 2.')
-                self.bootstrap_two()
-                time.sleep(5)
-                while self.coroutine_semaphore._value < (self.count * .75) and not self.killed:
-                    time.sleep(2)
-                self.logger.warning('Moving on from bootstrapping.')
+                try:
+                    self.bootstrap()
+                    time.sleep(1)
+                    while self.coroutine_semaphore._value < (self.count / 2) and not self.killed:
+                        time.sleep(2)
+                    self.logger.warning('Starting bootstrap stage 2.')
+                    self.bootstrap_two()
+                    self.logger.warning('Finished bootstrapping.')
+                except Exception:
+                    self.logger.exception('An exception occurred during bootstrap.')
 
             while len(self.spawns) < 10 and not self.killed:
                 try:
@@ -673,9 +675,14 @@ class Overseer:
     def bootstrap(self):
         async def visit_release(worker, point):
             try:
-                await worker.guaranteed_visit(point)
-                self.visits += 1
+                await worker.busy.acquire()
+                if await worker.bootstrap_visit(point):
+                    self.visits += 1
             finally:
+                try:
+                    worker.busy.release()
+                except (NameError, AttributeError, RuntimeError):
+                    pass
                 self.coroutine_semaphore.release()
 
         for worker in self.workers_list:
@@ -691,12 +698,12 @@ class Overseer:
         async def bootstrap_try(point):
             try:
                 worker = await self.best_worker(point, must_visit=True)
-                if await worker.visit(point, bootstrap=True):
+                if await worker.bootstrap_visit(point):
                     self.visits += 1
             finally:
                 try:
                     worker.busy.release()
-                except NameError:
+                except (NameError, AttributeError, RuntimeError):
                     pass
                 self.coroutine_semaphore.release()
 
@@ -727,32 +734,31 @@ class Overseer:
                     self.visits += 1
             finally:
                 worker.busy.release()
-        except Exception as e:
-            self.logger.exception(e)
+        except Exception:
+            self.logger.exception('An exception occurred in try_point')
         finally:
             self.coroutine_semaphore.release()
 
     async def best_worker(self, point, spawn_time=None, must_visit=False):
-        start = time.time()
         if spawn_time:
-            skip_time = config.GIVE_UP_KNOWN
+            skip_time = time.monotonic() + config.GIVE_UP_KNOWN
+        elif must_visit:
+            skip_time = None
         else:
-            skip_time = config.GIVE_UP_UNKNOWN
+            skip_time = time.monotonic() + config.GIVE_UP_UNKNOWN
 
         limit = config.SPEED_LIMIT * 1.18  # slight buffer for inaccuracy
         half_limit = limit / 2
 
-        worker = None
         lowest_speed = float('inf')
         self.searches_without_shuffle += 1
-        if self.searches_without_shuffle > 250:
+        if self.searches_without_shuffle > 500:
             shuffle(self.workers_list)
             self.searches_without_shuffle = 0
         workers = self.workers_list.copy()
-        while worker is None:
+        while True:
             speed = None
             lowest_speed = float('inf')
-            worker = None
             for w in workers:
                 speed = w.fast_speed(point)
                 if speed and speed < lowest_speed and speed < limit:
@@ -760,31 +766,25 @@ class Overseer:
                         continue
                     try:
                         worker.busy.release()
-                    except (AttributeError, RuntimeError):
+                    except (NameError, AttributeError, RuntimeError):
                         pass
                     lowest_speed = speed
                     worker = w
-                    if speed < half_limit:
-                        break
 
             try:
                 speed = worker.accurate_speed(point)
                 if speed > config.SPEED_LIMIT:
                     worker.busy.release()
-                    worker = None
-            except AttributeError:
-                pass
-
-            if worker is None:
+                else:
+                    worker.speed = speed
+                    return worker
+            except (NameError, AttributeError, RuntimeError):
                 if self.killed:
                     return None
-                time_diff = time.time() - start
-                if time_diff > skip_time and not must_visit:
+                if skip_time and time.monotonic() > skip_time:
                     return None
                 await asyncio.sleep(2)
-            else:
-                worker.speed = speed
-        return worker
+                worker = None
 
     def kill(self):
         self.killed = True

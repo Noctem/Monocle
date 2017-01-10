@@ -19,7 +19,6 @@ class Spawns:
     despawn_times = {}
     mysteries = set()
     altitudes = {}
-    extra_mysteries = set()
 
     def __len__(self):
         return len(self.despawn_times)
@@ -52,10 +51,7 @@ class Spawns:
         return self.spawns.items()
 
     def get_mysteries(self):
-        if not self.extra_mysteries or len(self.mysteries) > 1000:
-            mysteries = deque(self.mysteries)
-        else:
-            mysteries = deque(self.mysteries | self.extra_mysteries)
+        mysteries = deque(self.mysteries)
         shuffle(mysteries)
         return mysteries
 
@@ -76,9 +72,6 @@ class Spawns:
 
     def have_mystery(self, point):
         return point in self.mysteries
-
-    def add_extra_mystery(self, point):
-        self.extra_mysteries.add(round_coords(point, 4))
 
     def add_despawn(self, spawn_id, despawn_time):
         self.despawn_times[spawn_id] = despawn_time
@@ -113,7 +106,7 @@ class Spawns:
 
     @property
     def mysteries_count(self):
-        return len(self.mysteries) + len(self.extra_mysteries)
+        return len(self.mysteries)
 
 
 class DatabaseProcessor(Thread):
