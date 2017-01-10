@@ -376,6 +376,7 @@ def get_spawns(session):
     spawns_dict = {}
     despawn_times = {}
     altitudes = {}
+    known_points = set()
     for spawn in spawns:
         point = (spawn.lat, spawn.lon)
 
@@ -397,9 +398,11 @@ def get_spawns(session):
 
         despawn_times[spawn.spawn_id] = spawn.despawn_time
         spawns_dict[spawn.spawn_id] = (point, spawn_time)
+        if config.MORE_POINTS:
+            known_points.add(point)
 
     spawns = OrderedDict(sorted(spawns_dict.items(), key=lambda k: k[1][1]))
-    return spawns, despawn_times, mysteries, altitudes
+    return spawns, despawn_times, mysteries, altitudes, known_points
 
 
 def normalize_timestamp(timestamp):

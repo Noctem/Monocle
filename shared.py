@@ -19,6 +19,7 @@ class Spawns:
     despawn_times = {}
     mysteries = set()
     altitudes = {}
+    known_points = set()
 
     def __len__(self):
         return len(self.despawn_times)
@@ -28,12 +29,14 @@ class Spawns:
 
     def update(self, loadpickle=False):
         if loadpickle:
-            pickle = load_pickle('spawns')
-            if pickle:
-                self.spawns, self.despawn_times, self.mysteries, self.altitudes = pickle
-            if self.spawns or self.mysteries:
-                return
-        self.spawns, self.despawn_times, self.mysteries, a = db.get_spawns(self.session)
+            try:
+                self.spawns, self.despawn_times, self.mysteries, self.altitudes, self.known_points = load_pickle('spawns')
+                if self.despawn_times or self.mysteries:
+                    return
+            except Exception:
+                pass
+        self.spawns, self.despawn_times, m, a, self.known_points = db.get_spawns(self.session)
+        self.mysteries.update(m)
         self.altitudes.update(a)
         if not self.altitudes:
             self.altitudes = get_point_altitudes()
@@ -98,7 +101,7 @@ class Spawns:
 
     @property
     def pickle_objects(self):
-        return self.spawns, self.despawn_times, self.mysteries, self.altitudes
+        return self.spawns, self.despawn_times, self.mysteries, self.altitudes, self.known_points
 
     @property
     def total_length(self):

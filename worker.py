@@ -696,7 +696,7 @@ class Worker:
                     points_seen += 1
                     try:
                         p = (point['latitude'], point['longitude'])
-                        if not Bounds.contain(p):
+                        if p in self.spawns.known_points or not Bounds.contain(p):
                             continue
                         self.spawns.add_mystery(p)
                     except (KeyError, TypeError):
