@@ -482,8 +482,8 @@ class Notifier:
             self.auto = True
         elif config.NOTIFY_IDS:
             self.always_notify = config.ALWAYS_NOTIFY_IDS
-            self.pokemon_ranking = config.NOTIFY_IDS
-            self.notify_ranking = len(self.pokemon_ranking)
+            self.notify_ids = config.NOTIFY_IDS
+            self.notify_ranking = len(self.notify_ids)
             self.auto = False
 
     def set_notify_ids(self):
