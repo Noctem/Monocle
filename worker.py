@@ -486,7 +486,7 @@ class Worker:
         '''Fast but inaccurate estimation of travel speed to point'''
         if self.busy.locked():
             return None
-        time_diff = max(time(), self.last_request + config.SCAN_DELAY) - self.last_request
+        time_diff = max(time() - self.last_request, config.SCAN_DELAY)
         if time_diff > 60:
             self.error_code = None
         distance = get_distance(self.location, point)

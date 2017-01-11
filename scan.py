@@ -6,7 +6,7 @@ from statistics import median
 from threading import Thread, active_count, Semaphore
 from os import system
 from sys import platform
-from random import uniform, shuffle
+from random import uniform
 from queue import Queue, Full
 from signal import signal, SIGINT, SIG_IGN
 from argparse import ArgumentParser
@@ -237,7 +237,7 @@ class Overseer:
 
     def __init__(self, status_bar, manager):
         self.logger = getLogger('overseer')
-        self.workers = {}
+        self.workers = []
         self.manager = manager
         self.count = config.GRID[0] * config.GRID[1]
         self.start_date = datetime.now()
@@ -248,7 +248,6 @@ class Overseer:
         self.coroutines_count = 0
         self.skipped = 0
         self.visits = 0
-        self.searches_without_shuffle = 0
         self.mysteries = deque()
         self.coroutine_semaphore = Semaphore(self.count)
         self.redundant = 0
@@ -271,14 +270,8 @@ class Overseer:
             else:
                 self.extra_queue.put(account)
 
-        for worker_no in range(self.count):
-            self.start_worker(worker_no)
-        self.workers_list = list(self.workers.values())
+        self.workers = tuple(Worker(worker_no=x) for x in range(self.count))
         self.db_processor.start()
-
-    def start_worker(self, worker_no):
-        worker = Worker(worker_no=worker_no)
-        self.workers[worker_no] = worker
 
     def check(self):
         now = time.monotonic()
@@ -373,7 +366,7 @@ class Overseer:
         after_spawns = []
         speeds = []
 
-        for w in self.workers.values():
+        for w in self.workers:
             if w.after_spawn:
                 after_spawns.append(w.after_spawn)
             seen_per_worker.append(w.total_seen)
@@ -416,7 +409,7 @@ class Overseer:
         dots = []
         messages = []
         row = []
-        for i, worker in enumerate(self.workers.values()):
+        for i, worker in enumerate(self.workers):
             if i > 0 and i % config.GRID[1] == 0:
                 dots.append(row)
                 row = []
@@ -512,7 +505,7 @@ class Overseer:
         output.append('')
         if not self.all_seen:
             no_sightings = ', '.join(str(w.worker_no)
-                                     for w in self.workers.values()
+                                     for w in self.workers
                                      if w.total_seen == 0)
             if no_sightings:
                 output += ['Workers without sightings so far:', no_sightings, '']
@@ -532,9 +525,8 @@ class Overseer:
     def least_productive(self):
         worker = None
         lowest = None
-        workers = self.workers_list.copy()
         now = time.time()
-        for account in workers:
+        for account in self.workers:
             per_second = account.seen_per_second(now)
             if not lowest or (per_second and per_second < lowest):
                 lowest = per_second
@@ -598,7 +590,7 @@ class Overseer:
                         self.try_point(mystery_point), loop=self.loop
                     )
                 except IndexError:
-                    if self.spawns.mysteries or self.spawns.extra_mysteries:
+                    if self.spawns.mysteries:
                         self.mysteries = self.spawns.get_mysteries()
                     else:
                         config.MORE_POINTS = True
@@ -649,7 +641,7 @@ class Overseer:
                                 self.try_point(mystery_point), loop=self.loop
                             )
                         except IndexError:
-                            if self.spawns.mysteries or self.spawns.extra_mysteries:
+                            if self.spawns.mysteries:
                                 self.mysteries = self.spawns.get_mysteries()
                             else:
                                 config.MORE_POINTS = True
@@ -685,7 +677,7 @@ class Overseer:
                     pass
                 self.coroutine_semaphore.release()
 
-        for worker in self.workers_list:
+        for worker in self.workers:
             number = worker.worker_no
             worker.bootstrap = True
             point = list(get_start_coords(number))
@@ -754,15 +746,10 @@ class Overseer:
         half_limit = limit / 2
 
         lowest_speed = float('inf')
-        self.searches_without_shuffle += 1
-        if self.searches_without_shuffle > 500:
-            shuffle(self.workers_list)
-            self.searches_without_shuffle = 0
-        workers = self.workers_list.copy()
         while True:
             speed = None
             lowest_speed = float('inf')
-            for w in workers:
+            for w in self.workers:
                 speed = w.fast_speed(point)
                 if speed and speed < lowest_speed and speed < limit:
                     if not w.busy.acquire_now():
@@ -792,7 +779,7 @@ class Overseer:
     def kill(self):
         self.killed = True
         print('Killing workers.')
-        for worker in self.workers.values():
+        for worker in self.workers:
             worker.kill()
 
         while not self.extra_queue.empty():
