@@ -59,6 +59,7 @@
     <script>
         var PokemonIcon = L.Icon.extend({
             options: {
+                iconSize: [30, 30],
                 popupAnchor: [0, -16]
             }
         });
@@ -83,11 +84,25 @@
                 iconUrl: '/static/img/masterball.png'
             }
         });
+        var PokestopIcon = L.Icon.extend({
+            options: {
+                iconSize: [20, 20],
+                className: 'pokestop-icon',
+                iconUrl: '/static/img/pokestop.png'
+            }
+        }); 
+        var SpawnIcon = L.Icon.extend({
+            options: {
+                iconSize: [5, 5],
+                className: 'spawn-icon',
+                iconUrl: '/static/img/masterball.png'
+            }
+        });
 
         function getMarkers () {
             return new Promise(function (resolve, reject) {
                 $.get('/data', function (response) {
-                    resolve($.parseJSON(response));
+                    resolve(response);
                 });
             });
         }
@@ -97,7 +112,9 @@
             Pokemon: L.layerGroup([]),
             Trash: L.layerGroup([]),
             Gyms: L.layerGroup([]),
-            Workers: L.layerGroup([])
+            Pokestops: L.layerGroup([]),
+            Workers: L.layerGroup([]),
+            Spawns: L.layerGroup([])
         };
 
         function getPopupContent (item) {
@@ -180,15 +197,6 @@
             return marker;
         }
 
-
-        function getMarkers () {
-            return new Promise(function (resolve, reject) {
-                $.get('/data', function (response) {
-                    resolve($.parseJSON(response));
-                });
-            });
-        }
-
         function addMarkersToMap (data, map) {
             // Pokemons
             data.forEach(function (item) {
@@ -227,12 +235,52 @@
                     marker = WorkerMarker(item);
                     marker.addTo(overlays.Workers);
                     circle.addTo(overlays.Workers);
+                } else if (item.type === 'pokestop') {
+                    var icon = new PokestopIcon();
+                    var marker = L.marker([item.lat, item.lon], {icon: icon});
+                    marker.raw = item;
+                    marker.bindPopup('<b>Pokestop ' + item.external_id + '</b>');
+                    marker.addTo(overlays.Pokestops);
+                } else if (item.type === 'spawn') {
+                    var circle = L.circle([item.lat, item.lon], 5, {weight: 2});
+                    var popup = '<b>Spawn ' + item.spawn_id + '</b><br/>time: ';
+                    var time = '??';
+                    if (item.despawn_time != null) {
+                        time = item.despawn_time;
+                    }
+                    else {
+                        circle.setStyle({color: '#f03'})
+                    }
+                    popup += time + '<br/>duration: ';
+                    popup += item.duration == null ? '30mn' : item.duration + 'mn';
+                    circle.bindPopup(popup);
+                    circle.addTo(overlays.Spawns);
                 }
             });
         }
 
         function refresh () {
             getMarkers().then(function (data) {
+                addMarkersToMap(data, map);
+            });
+        }
+
+        function getSpawnPoints() {
+            new Promise(function (resolve, reject) {
+                $.get('/spawnpoints', function (response) {
+                    resolve(response);
+                });
+            }).then(function (data) {
+                addMarkersToMap(data, map);
+            });
+        }
+
+        function getPokestops() {
+            new Promise(function (resolve, reject) {
+                $.get('/pokestops', function (response) {
+                    resolve(response);
+                });
+            }).then(function (data) {
                 addMarkersToMap(data, map);
             });
         }
@@ -249,8 +297,10 @@
                 map.locate({ enableHighAccurracy: true, setView: true });
             });
 
-            setInterval(refresh, 30000);
+            setInterval(refresh, 5000);
             refresh();
+            getSpawnPoints();
+            getPokestops();
         });
     </script>
 </body>
