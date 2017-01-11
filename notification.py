@@ -514,10 +514,11 @@ class Notifier:
         return percentile
 
     def get_iv_score(self, iv):
-        attack, defense, stamina = iv
-        if attack is None:
+        try:
+            return sum(iv) / 45
+        except TypeError:
+            self.logger.warning('Failed to calculate IV score for {}.'.format(name))
             return None
-        return sum(iv) / 45
 
     def get_required_score(self, now=None):
         if self.initial_score == self.minimum_score or config.FULL_TIME == 0:
