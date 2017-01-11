@@ -196,6 +196,9 @@ ALWAYS_NOTIFY = 14
 # Ignore IV score and only base decision on rarity score (default if IVs not known)
 #IGNORE_IVS = False
 
+# Ignore rarity score and only base decision on IV score
+#IGNORE_RARITY = False
+
 # The Pokémon score required to notify goes on a sliding scale from INITIAL_SCORE
 # to MINIMUM_SCORE over the course of FULL_TIME seconds following a notification
 # Pokémon scores are an average of the Pokémon's rarity score and IV score (from 0 to 1)

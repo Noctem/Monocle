@@ -733,7 +733,10 @@ class Overseer:
                 if await worker.visit(point):
                     self.visits += 1
             finally:
-                worker.busy.release()
+                try:
+                    worker.busy.release()
+                except RunTimeError:
+                    pass
         except Exception:
             self.logger.exception('An exception occurred in try_point')
         finally:

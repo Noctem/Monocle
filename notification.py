@@ -19,7 +19,7 @@ for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
                       'HASHTAGS', 'TZ_OFFSET', 'ENCOUNTER', 'INITIAL_RANKING',
                       'NOTIFY', 'NAME_FONT', 'IV_FONT', 'MOVE_FONT',
                       'TWEET_IMAGES', 'NOTIFY_IDS', 'NEVER_NOTIFY_IDS',
-                      'RARITY_OVERRIDE', 'IGNORE_IVS'):
+                      'RARITY_OVERRIDE', 'IGNORE_IVS', 'IGNORE_RARITY'):
     if not hasattr(config, variable_name):
         setattr(config, variable_name, None)
 
@@ -70,9 +70,6 @@ if config.NOTIFY:
         raise ValueError('Only set NOTIFY_RANKING or NOTIFY_IDS, not both.')
     elif not config.NOTIFY_RANKING and not config.NOTIFY_IDS:
         raise ValueError('Must set either NOTIFY_RANKING or NOTIFY_IDS.')
-
-
-    PERFECT_SCORE = 15 + (sqrt(15) * 2)
 
 
 class PokeImage:
@@ -520,20 +517,7 @@ class Notifier:
         attack, defense, stamina = iv
         if attack is None:
             return None
-
-        weighted = (attack + sqrt(defense) + sqrt(stamina)) / PERFECT_SCORE
-        raw = sum(iv) / 45
-        return (weighted + raw) / 2
-
-    def evaluate_pokemon(self, pokemon_id, iv):
-        rareness = self.get_rareness_score(pokemon_id)
-        iv_score = self.get_iv_score(iv)
-        if not iv_score:
-            return rareness, None
-        if config.IGNORE_IVS:
-            return rareness, iv_score
-        score = (rareness + iv_score) / 2
-        return score, iv_score
+        return sum(iv) / 45
 
     def get_required_score(self, now=None):
         if self.initial_score == self.minimum_score or config.FULL_TIME == 0:
@@ -546,6 +530,9 @@ class Notifier:
         return self.initial_score - subtract
 
     def eligible(self, pokemon):
+        if config.IGNORE_RARITY:
+            return True
+
         pokemon_id = pokemon['pokemon_id']
         if pokemon['encounter_id'] in self.recent_notifications:
             return False
@@ -603,11 +590,21 @@ class Notifier:
         moves = (MOVES.get(pokemon.get('move_1'), {}).get('name'),
                  MOVES.get(pokemon.get('move_2'), {}).get('name'))
 
+        iv_score = self.get_iv_score(iv)
         if score_required:
-            score, iv_score = self.evaluate_pokemon(pokemon_id, iv)
+            if config.IGNORE_RARITY:
+                score = iv_score
+            elif config.IGNORE_IVS:
+                score = self.get_rareness_score(pokemon_id)
+            else:
+                rareness = self.get_rareness_score(pokemon_id)
+                try:
+                    score = (iv_score + rareness) / 2
+                except TypeError:
+                    self.logger.warning('Failed to calculate score for {}.'.format(name))
+                    return False
         else:
             score = None
-            iv_score = self.get_iv_score(iv)
 
         if score_required and score < score_required:
             self.logger.info("{n}'s score was {s:.3f} (iv: {i:.3f}),"
