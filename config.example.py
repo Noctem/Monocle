@@ -29,9 +29,9 @@ STAY_WITHIN_MAP = True
 # ensure that you visit within this many meters of every part of your map during bootstrap
 #BOOTSTRAP_RADIUS = 450
 
-GIVE_UP_KNOWN = 90   # try to find a worker for a known spawn for this many seconds before giving up
-GIVE_UP_UNKNOWN = 5  # try to find a worker for an unknown point for this many seconds before giving up
-SKIP_SPAWN = 60      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
+GIVE_UP_KNOWN = 60   # try to find a worker for a known spawn for this many seconds before giving up
+GIVE_UP_UNKNOWN = 20 # try to find a worker for an unknown point for this many seconds before giving up
+SKIP_SPAWN = 90      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
 
 
 # Limit the number of simultaneous logins (and app simulations) to this many.
