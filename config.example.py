@@ -76,6 +76,14 @@ ACCOUNTS = [
 # key for Bossland's hashing server, otherwise the old hashing lib will be used
 #HASH_KEY = '9d87af14461b93cb3605'  # this key is fake
 
+# Skip PokéStop spinning and egg incubation if your request rate is too high
+# for your hashing subscription.
+# e.g.
+#   75/150 hashes available 35/60 seconds passed => fine
+#   70/150 hashes available 30/60 seconds passed => throttle (only scan)
+# value: how many requests to keep as spare (0.1 = 10%), False to disable
+#SMART_THROTTLE = 0.1
+
 
 ### these next 6 options use more requests but look more like the real client
 APP_SIMULATION = True     # mimic the actual app's login requests

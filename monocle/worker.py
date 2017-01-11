@@ -807,7 +807,8 @@ class Worker:
                             shared.DB.add(norm)
                     pokestop = self.normalize_pokestop(fort)
                     shared.DB.add(pokestop)
-                    if self.pokestops and not self.bag_full() and time() > self.next_spin:
+                    if (self.pokestops and not self.bag_full()
+                            and time() > self.next_spin and self.smart_throttle(2)):
                         cooldown = fort.get('cooldown_complete_timestamp_ms')
                         if not cooldown or time() > cooldown / 1000:
                             await self.spin_pokestop(pokestop)
@@ -826,7 +827,8 @@ class Worker:
                         self.logger.warning('Spawn point exception ignored. {}'.format(point))
                         pass
 
-        if config.INCUBATE_EGGS and len(self.unused_incubators) > 0 and len(self.eggs) > 0:
+        if (config.INCUBATE_EGGS and len(self.unused_incubators) > 0
+                and len(self.eggs) > 0 and self.smart_throttle()):
             await self.incubate_eggs()
 
         if pokemon_seen > 0:
@@ -864,6 +866,21 @@ class Worker:
         )
         self.update_accounts_dict(auth=False)
         return pokemon_seen + forts_seen + points_seen
+
+    def smart_throttle(self, requests=1):
+        if not config.SMART_THROTTLE:
+            return True
+
+        try:
+            # https://en.wikipedia.org/wiki/Linear_equation#Two_variables
+            # e.g. hashes_left > 2.25*seconds_left+7.5, spare = 0.05, max = 150
+            spare = config.SMART_THROTTLE * HashServer.status['maximum']
+            hashes_left = HashServer.status['remaining'] - requests
+            usable_per_second = (HashServer.status['maximum'] - spare) / 60
+            seconds_left = HashServer.status['period'] - time()
+            return hashes_left > usable_per_second * seconds_left + spare
+        except (TypeError, KeyError):
+            return False
 
     async def spin_pokestop(self, pokestop):
         self.error_code = '$'
