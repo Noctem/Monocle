@@ -218,6 +218,7 @@ MINIMUM_SCORE = 0.55  # the required score after FULL_TIME seconds have passed
 #TWITTER_CONSUMER_SECRET = '64b9ebf618829a51f8c0535b56cebc808eb3e80d3d18bf9e00'
 #TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
 #TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'
+#WEBHOOKS = {'http://127.0.0.1:4000'}
 
 
 ##### Referencing landmarks in your tweets/notifications
