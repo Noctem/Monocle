@@ -517,7 +517,6 @@ class Notifier:
         try:
             return sum(iv) / 45
         except TypeError:
-            self.logger.warning('Failed to calculate IV score for {}.'.format(name))
             return None
 
     def get_required_score(self, now=None):
