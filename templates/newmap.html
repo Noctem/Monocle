@@ -107,7 +107,8 @@
             Gyms: L.layerGroup([]),
             Pokestops: L.layerGroup([]),
             Workers: L.layerGroup([]),
-            Spawns: L.layerGroup([])
+            Spawns: L.layerGroup([]),
+            ScanArea: L.layerGroup([])
         };
 
         function getPopupContent (item) {
@@ -248,6 +249,8 @@
                     popup += item.duration == null ? '30mn' : item.duration + 'mn';
                     circle.bindPopup(popup);
                     circle.addTo(overlays.Spawns);
+                } else if (item.type === 'scanarea'){
+                    var polygon = L.polyline(item.coords).addTo(overlays.ScanArea);
                 }
             });
         }
@@ -278,6 +281,16 @@
             });
         }
 
+        function getScanAreaCoords() {
+            new Promise(function (resolve, reject) {
+                $.get('/scan_coords', function (response) {
+                    resolve(response);
+                });
+            }).then(function (data) {
+                addMarkersToMap(data, map);
+            });
+        }
+
         var map = L.map('main-map').setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
         overlays.Pokemon.addTo(map);
         var control = L.control.layers(null, overlays).addTo(map);
@@ -294,6 +307,7 @@
             refresh();
             getSpawnPoints();
             getPokestops();
+            getScanAreaCoords();
         });
     </script>
 </body>
