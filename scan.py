@@ -313,17 +313,17 @@ class Overseer:
                     last_things_found_updated = now
                 if self.status_bar:
                     if platform == 'win32':
-                        _ = system('cls')
+                        system('cls')
                     else:
-                        _ = system('clear')
+                        system('clear')
                     print(self.get_status_message())
 
                 if self.paused:
                     time.sleep(15)
                 else:
                     time.sleep(.5)
-            except Exception as e:
-                self.logger.exception(e)
+            except Exception:
+                self.logger.exception('A wild exception appeared in check.')
         # OK, now we're killed
         try:
             while (self.coroutines_count > 0 or
@@ -343,8 +343,8 @@ class Overseer:
                     end='\r'
                 )
                 time.sleep(.5)
-        except Exception as e:
-            self.logger.exception(e)
+        except Exception:
+            self.logger.exception('A wild exception appeared during exit.')
         finally:
             self.db_processor.queue.put({'type': 'kill'})
             print('Done.                                          ')
@@ -558,29 +558,27 @@ class Overseer:
                 pickle = False
                 bootstrap = False
 
-            try:
-                self.spawns.update(loadpickle=pickle)
-            except OperationalError as e:
-                if initial:
-                    _thread.interrupt_main()
-                    raise ValueError('Could not update spawns, ensure your DB is setup.') from e
-                self.logger.exception('Operational error while trying to update spawns. {}')
+            while True:
+                try:
+                    self.spawns.update(loadpickle=pickle)
+                except OperationalError as e:
+                    self.logger.exception('Operational error while trying to update spawns.')
+                    if initial:
+                        _thread.interrupt_main()
+                        raise OperationalError('Could not update spawns, ensure your DB is setup.') from e
+                    time.sleep(20)
+                except Exception:
+                    self.logger.exception('A wild exception occurred while updating spawns.')
+                    time.sleep(20)
+                else:
+                    break
 
             if not self.spawns or bootstrap:
                 bootstrap = True
                 pickle = False
 
             if bootstrap:
-                try:
-                    self.bootstrap()
-                    time.sleep(1)
-                    while self.coroutine_semaphore._value < (self.count / 2) and not self.killed:
-                        time.sleep(2)
-                    self.logger.warning('Starting bootstrap stage 2.')
-                    self.bootstrap_two()
-                    self.logger.warning('Finished bootstrapping.')
-                except Exception:
-                    self.logger.exception('An exception occurred during bootstrap.')
+                self.bootstrap()
 
             while len(self.spawns) < 10 and not self.killed:
                 try:
@@ -665,6 +663,23 @@ class Overseer:
                     self.logger.exception('Error occured in launcher loop.')
 
     def bootstrap(self):
+        try:
+            self.bootstrap_one()
+            time.sleep(1)
+            while self.coroutine_semaphore._value < (self.count / 2) and not self.killed:
+                time.sleep(2)
+        except Exception:
+            self.logger.exception('An exception occurred during bootstrap phase 1.')
+
+        try:
+            self.logger.warning('Starting bootstrap phase 2.')
+            self.bootstrap_two()
+            time.sleep(1)
+            self.logger.warning('Finished bootstrapping.')
+        except Exception:
+            self.logger.exception('An exception occurred during bootstrap phase 2.')
+
+    def bootstrap_one(self):
         async def visit_release(worker, point):
             try:
                 await worker.busy.acquire()
@@ -831,14 +846,14 @@ if __name__ == '__main__':
         pending = asyncio.Task.all_tasks(loop=loop)
         try:
             loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        except Exception as e:
-            print('Exception: {}'.format(e))
+        except Exception:
+            logger.exception('A wild exception appeared during exit!')
 
         Worker.db_processor.stop()
 
         try:
             Worker.spawns.update()
-        except ProgrammingError:
+        except (ProgrammingError, OperationalError):
             pass
         Worker.spawns.session.close()
         if config.NOTIFY:
