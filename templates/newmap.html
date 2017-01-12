@@ -55,11 +55,11 @@
     <a class="my-location"></a>
 
     <script src="/static/js/jquery-3.1.1.min.js"></script>
-    <script>L_PREFER_CANVAS = true;</script>
     <script src="/static/js/leaflet.js"></script>
     <script>
         var PokemonIcon = L.Icon.extend({
             options: {
+                iconSize: [30, 30],
                 popupAnchor: [0, -15]
             }
         });
@@ -281,6 +281,7 @@
             });
         }
 
+
         function getScanAreaCoords() {
             new Promise(function (resolve, reject) {
                 $.get('/scan_coords', function (response) {
@@ -291,7 +292,8 @@
             });
         }
 
-        var map = L.map('main-map').setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
+        var map = L.map('main-map', {preferCanvas: true}).setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
+
         overlays.Pokemon.addTo(map);
         var control = L.control.layers(null, overlays).addTo(map);
         L.tileLayer('{{ map_provider_url }}', {

@@ -373,6 +373,8 @@ class Notification:
             except Exception:
                 image = None
                 self.logger.exception('Failed to create a Tweet image.')
+        else:
+            image = None
 
         tag_string = generate_tag_string(self.hashtags)
 
