@@ -229,7 +229,7 @@ def get_scan_coords():
     markers = []
     if config.BOUNDARIES:
         from shapely.geometry import mapping
-        coords = mapping(config.BOUNDARIES)['coordinates']
+        coords = mapping(config.BOUNDARIES)['coordinates'][0]
     else:
         coords = (config.MAP_START, (config.MAP_START[0], config.MAP_END[1]), config.MAP_END, (config.MAP_END[0], config.MAP_START[1]), config.MAP_START)
 
