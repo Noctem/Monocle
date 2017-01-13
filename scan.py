@@ -842,7 +842,8 @@ if __name__ == '__main__':
         overseer.kill()
 
         dump_pickle('accounts', Worker.accounts)
-        dump_pickle('cells', Worker.cell_ids)
+        if config.CACHE_CELLS:
+            dump_pickle('cells', Worker.cell_ids)
 
         pending = asyncio.Task.all_tasks(loop=loop)
         try:

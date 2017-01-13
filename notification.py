@@ -502,9 +502,13 @@ class Notifier:
                     return
             except (FileNotFoundError, EOFError):
                 pass
-        self.pokemon_ranking = get_pokemon_ranking(self.session)
-        with open('pickles/ranking.pickle', 'wb') as f:
-            pickle.dump(self.pokemon_ranking, f, pickle.HIGHEST_PROTOCOL)
+        try:
+            self.pokemon_ranking = get_pokemon_ranking(self.session)
+            with open('pickles/ranking.pickle', 'wb') as f:
+                pickle.dump(self.pokemon_ranking, f, pickle.HIGHEST_PROTOCOL)
+        except Exception:
+            self.session.rollback()
+            self.logger.exception('An exception occurred while trying to update rankings.')
 
     def get_rareness_score(self, pokemon_id):
         if pokemon_id in self.rarity_override:
@@ -616,7 +620,11 @@ class Notifier:
 
         if not time_till_hidden:
             seen = pokemon['seen'] % 3600
-            time_till_hidden = estimate_remaining_time(self.session, spawn_id, seen)
+            try:
+                time_till_hidden = estimate_remaining_time(self.session, spawn_id, seen)
+            except Exception:
+                self.session.rollback()
+                self.logger.exception('An exception occurred while trying to esimate remaining time.')
             mean = sum(time_till_hidden) / 2
 
             if mean < config.TIME_REQUIRED and pokemon_id not in self.always_notify:
