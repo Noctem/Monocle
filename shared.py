@@ -35,7 +35,11 @@ class Spawns:
                     return
             except Exception:
                 pass
-        self.spawns, self.despawn_times, m, a, self.known_points = db.get_spawns(self.session)
+        try:
+            self.spawns, self.despawn_times, m, a, self.known_points = db.get_spawns(self.session)
+        except Exception:
+            self.session.rollback()
+            raise
         self.mysteries.update(m)
         self.altitudes.update(a)
         if not self.altitudes:
@@ -137,11 +141,15 @@ class DatabaseProcessor(Thread):
             if self._clean_cache:
                 try:
                     db.SIGHTING_CACHE.clean_expired()
+                except Exception:
+                    self.logger.exception('Failed to clean sightings cache.')
+                else:
+                    self._clean_cache = False
+                try:
                     db.MYSTERY_CACHE.clean_expired(session)
                 except Exception:
-                    self.logger.exception('Failed to clean cache.')
-                finally:
-                    self._clean_cache = False
+                    session.rollback()
+                    self.logger.exception('Failed to clean mystery cache.')
             try:
                 item = self.queue.get()
 
@@ -167,6 +175,7 @@ class DatabaseProcessor(Thread):
                 session.rollback()
                 self.logger.exception('A wild DB exception appeared!')
             except Exception:
+                session.rollback()
                 self.logger.exception('A wild exception appeared!')
 
         try:
