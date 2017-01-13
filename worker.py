@@ -110,7 +110,7 @@ class Worker:
             self.api.activate_hash_server(config.HASH_KEY)
         self.api.set_position(*self.location)
         if self.proxy:
-            self.api.set_proxy({'http': self.proxy, 'https': self.proxy})
+            self.api.set_proxy(self.proxy)
         self.api.set_logger(self.logger)
         if self.account.get('provider') == 'ptc' and self.account.get('refresh'):
             self.api._auth_provider = AuthPtc()
@@ -127,7 +127,7 @@ class Worker:
         if not self.proxies:
             self.proxies.update(config.PROXIES)
         if set_api:
-            self.api.set_proxy({'http': self.proxy, 'https': self.proxy})
+            self.api.set_proxy(self.proxy)
 
     def swap_circuit(self, reason=''):
         time_passed = monotonic() - CIRCUIT_TIME[self.proxy]
