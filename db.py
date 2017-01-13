@@ -9,6 +9,7 @@ from sqlalchemy.types import TypeDecorator, Numeric, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT
+from sqlalchemy.exc import DBAPIError
 
 import utils
 
@@ -214,7 +215,10 @@ class MysteryCache(object):
                 encounter.last_seconds = last - hour
                 encounter.seen_range = last - first
         if to_remove:
-            session.commit()
+            try:
+                session.commit()
+            except DBAPIError:
+                session.rollback()
         for key in to_remove:
             del self.store[key]
 
@@ -369,13 +373,10 @@ Session = sessionmaker(bind=get_engine())
 def get_spawns(session):
     spawns = session.query(Spawnpoint)
     mysteries = set()
-    if config.MORE_POINTS:
-        known_points = set()
-    else:
-        known_points = None
-    despawn_times = {}
     spawns_dict = {}
+    despawn_times = {}
     altitudes = {}
+    known_points = set()
     for spawn in spawns:
         point = (spawn.lat, spawn.lon)
 
@@ -395,10 +396,10 @@ def get_spawns(session):
         else:
             spawn_time = (spawn.despawn_time + 1800) % 3600
 
-        if known_points is not None:
-            known_points.add(point)
         despawn_times[spawn.spawn_id] = spawn.despawn_time
         spawns_dict[spawn.spawn_id] = (point, spawn_time)
+        if config.MORE_POINTS:
+            known_points.add(point)
 
     spawns = OrderedDict(sorted(spawns_dict.items(), key=lambda k: k[1][1]))
     return spawns, despawn_times, mysteries, altitudes, known_points
@@ -625,6 +626,11 @@ def get_sightings(session):
         .filter(Sighting.expire_timestamp > time.time()) \
         .all()
 
+def get_spawn_points(session):
+    return session.query(Spawnpoint).all()
+
+def get_pokestops(session):
+    return session.query(Pokestop).all()
 
 def get_forts(session):
     if get_engine_name(session) == 'sqlite':

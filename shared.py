@@ -1,5 +1,5 @@
 from queue import Queue
-from collections import deque
+from collections import deque, OrderedDict
 from logging import getLogger
 from threading import Thread
 from sqlalchemy.exc import DBAPIError
@@ -9,14 +9,13 @@ from random import shuffle
 import asyncio
 
 from utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_point_altitudes
-from config import MORE_POINTS
 
 import db
 
 class Spawns:
     """Manage spawn points and times"""
-    session = db.Session()
-    spawns = {}
+    session = db.Session(autoflush=False)
+    spawns = OrderedDict()
     despawn_times = {}
     mysteries = set()
     altitudes = {}
@@ -25,16 +24,23 @@ class Spawns:
     def __len__(self):
         return len(self.despawn_times)
 
-    def update(self):
-        self.spawns, self.despawn_times, m, a, k = db.get_spawns(self.session)
+    def __bool__(self):
+        return len(self.despawn_times) > 0
+
+    def update(self, loadpickle=False):
+        if loadpickle:
+            try:
+                self.spawns, self.despawn_times, self.mysteries, self.altitudes, self.known_points = load_pickle('spawns')
+                if self.despawn_times or self.mysteries:
+                    return
+            except Exception:
+                pass
+        self.spawns, self.despawn_times, m, a, self.known_points = db.get_spawns(self.session)
         self.mysteries.update(m)
         self.altitudes.update(a)
-        try:
-            self.known_points.update()
-        except TypeError:
-            pass
         if not self.altitudes:
             self.altitudes = get_point_altitudes()
+        dump_pickle('spawns', self.pickle_objects)
 
     def get_altitude(self, point):
         point = round_coords(point)
@@ -53,10 +59,13 @@ class Spawns:
         return mysteries
 
     def after_last(self):
-        k = next(reversed(self.spawns))
-        seconds = self.spawns[k][1]
-        current_seconds = time() % 3600
-        return current_seconds > seconds
+        try:
+            k = next(reversed(self.spawns))
+            seconds = self.spawns[k][1]
+            current_seconds = time() % 3600
+            return current_seconds > seconds
+        except (StopIteration, KeyError, TypeError):
+            return False
 
     def add_mystery(self, point):
         self.mysteries.add(point)
@@ -91,8 +100,16 @@ class Spawns:
         return time_until_time(despawn_seconds)
 
     @property
+    def pickle_objects(self):
+        return self.spawns, self.despawn_times, self.mysteries, self.altitudes, self.known_points
+
+    @property
     def total_length(self):
-        return len(self.despawn_times) + len(self.mysteries)
+        return len(self.despawn_times) + self.mysteries_count
+
+    @property
+    def mysteries_count(self):
+        return len(self.mysteries)
 
 
 class DatabaseProcessor(Thread):
@@ -121,8 +138,8 @@ class DatabaseProcessor(Thread):
                 try:
                     db.SIGHTING_CACHE.clean_expired()
                     db.MYSTERY_CACHE.clean_expired(session)
-                except Exception as e:
-                    self.logger.error('Failed to clean cache. {}'.format(e))
+                except Exception:
+                    self.logger.exception('Failed to clean cache.')
                 finally:
                     self._clean_cache = False
             try:
@@ -148,11 +165,16 @@ class DatabaseProcessor(Thread):
                     self._commit = False
             except DBAPIError as e:
                 session.rollback()
-                self.logger.exception('A wild DB exception appeared! {}'.format(e))
-            except Exception as e:
-                self.logger.exception('A wild exception appeared! {}'.format(e))
+                self.logger.exception('A wild DB exception appeared!')
+            except Exception:
+                self.logger.exception('A wild exception appeared!')
 
-        session.commit()
+        try:
+            db.MYSTERY_CACHE.clean_expired(session)
+            session.commit()
+        except DBAPIError:
+            session.rollback()
+            self.logger.exception('A wild DB exception appeared!')
         session.close()
 
     def clean_cache(self):

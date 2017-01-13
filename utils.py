@@ -24,7 +24,9 @@ OPTIONAL_SETTINGS = {
     'BOUNDARIES': None,
     'SPAWN_ID_INT': True,
     'PASS': None,
-    'PROVIDER': None
+    'PROVIDER': None,
+    'MANAGER_ADDRESS': None,
+    'BOOTSTRAP_RADIUS': 450
 }
 for setting_name, default in OPTIONAL_SETTINGS.items():
     if not hasattr(config, setting_name):
@@ -122,13 +124,13 @@ def float_range(start, end, step):
             start += step
 
 
-def get_gains():
+def get_gains(dist=70):
     """Returns lat and lon gain
 
     Gain is space between circles.
     """
     start = Point(*get_map_center())
-    base = 70 * sqrt(3)
+    base = dist * sqrt(3)
     height = base * sqrt(3) / 2
     dis_a = distance(meters=base)
     dis_h = distance(meters=height)
@@ -188,7 +190,7 @@ def get_altitudes(coords, precision=3):
 
 def get_point_altitudes(precision=3):
     rounded_coords = set()
-    lat_gain, lon_gain = get_gains()
+    lat_gain, lon_gain = get_gains(100)
     for map_row, lat in enumerate(
         float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)
     ):
@@ -204,6 +206,24 @@ def get_point_altitudes(precision=3):
     rounded_coords = tuple(rounded_coords)
     altitudes = get_altitudes(rounded_coords, precision)
     return altitudes
+
+
+def get_bootstrap_points():
+    lat_gain, lon_gain = get_gains(config.BOOTSTRAP_RADIUS)
+    coords = []
+    for map_row, lat in enumerate(
+        float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)
+    ):
+        row_start_lon = config.MAP_START[1]
+        odd = map_row % 2 != 0
+        if odd:
+            row_start_lon -= 0.5 * lon_gain
+        for map_col, lon in enumerate(
+            float_range(row_start_lon, config.MAP_END[1], lon_gain)
+        ):
+            coords.append([lat,lon])
+    random.shuffle(coords)
+    return coords
 
 
 def get_device_info(account):
@@ -307,12 +327,14 @@ def time_until_time(seconds, seen=None):
 
 
 def get_address():
+    if config.MANAGER_ADDRESS:
+        return config.MANAGER_ADDRESS
     if platform == 'win32':
         address=r'\\.\pipe\pokeminer'
     elif hasattr(socket, 'AF_UNIX'):
         address='pokeminer.sock'
     else:
-        address=('127.0.0.1', 5000)
+        address=('127.0.0.1', 5001)
     return address
 
 

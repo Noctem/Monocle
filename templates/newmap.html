@@ -59,7 +59,8 @@
     <script>
         var PokemonIcon = L.Icon.extend({
             options: {
-                popupAnchor: [0, -16]
+                iconSize: [30, 30],
+                popupAnchor: [0, -15]
             }
         });
         var FortIcon = L.Icon.extend({
@@ -83,11 +84,18 @@
                 iconUrl: '/static/img/masterball.png'
             }
         });
+        var PokestopIcon = L.Icon.extend({
+            options: {
+                iconSize: [20, 20],
+                className: 'pokestop-icon',
+                iconUrl: '/static/img/pokestop.png'
+            }
+        });
 
         function getMarkers () {
             return new Promise(function (resolve, reject) {
                 $.get('/data', function (response) {
-                    resolve($.parseJSON(response));
+                    resolve(response);
                 });
             });
         }
@@ -97,7 +105,9 @@
             Pokemon: L.layerGroup([]),
             Trash: L.layerGroup([]),
             Gyms: L.layerGroup([]),
-            Workers: L.layerGroup([])
+            Pokestops: L.layerGroup([]),
+            Workers: L.layerGroup([]),
+            Spawns: L.layerGroup([])
         };
 
         function getPopupContent (item) {
@@ -180,15 +190,6 @@
             return marker;
         }
 
-
-        function getMarkers () {
-            return new Promise(function (resolve, reject) {
-                $.get('/data', function (response) {
-                    resolve($.parseJSON(response));
-                });
-            });
-        }
-
         function addMarkersToMap (data, map) {
             // Pokemons
             data.forEach(function (item) {
@@ -227,6 +228,26 @@
                     marker = WorkerMarker(item);
                     marker.addTo(overlays.Workers);
                     circle.addTo(overlays.Workers);
+                } else if (item.type === 'pokestop') {
+                    var icon = new PokestopIcon();
+                    var marker = L.marker([item.lat, item.lon], {icon: icon});
+                    marker.raw = item;
+                    marker.bindPopup('<b>Pokestop ' + item.external_id + '</b>');
+                    marker.addTo(overlays.Pokestops);
+                } else if (item.type === 'spawn') {
+                    var circle = L.circle([item.lat, item.lon], 5, {weight: 2});
+                    var popup = '<b>Spawn ' + item.spawn_id + '</b><br/>time: ';
+                    var time = '??';
+                    if (item.despawn_time != null) {
+                        time = item.despawn_time;
+                    }
+                    else {
+                        circle.setStyle({color: '#f03'})
+                    }
+                    popup += time + '<br/>duration: ';
+                    popup += item.duration == null ? '30mn' : item.duration + 'mn';
+                    circle.bindPopup(popup);
+                    circle.addTo(overlays.Spawns);
                 }
             });
         }
@@ -237,11 +258,31 @@
             });
         }
 
-        var map = L.map('main-map').setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
+        function getSpawnPoints() {
+            new Promise(function (resolve, reject) {
+                $.get('/spawnpoints', function (response) {
+                    resolve(response);
+                });
+            }).then(function (data) {
+                addMarkersToMap(data, map);
+            });
+        }
+
+        function getPokestops() {
+            new Promise(function (resolve, reject) {
+                $.get('/pokestops', function (response) {
+                    resolve(response);
+                });
+            }).then(function (data) {
+                addMarkersToMap(data, map);
+            });
+        }
+
+        var map = L.map('main-map', {preferCanvas: true}).setView([{{ map_center[0] }}, {{ map_center[1] }}], 13);
         overlays.Pokemon.addTo(map);
         var control = L.control.layers(null, overlays).addTo(map);
         L.tileLayer('{{ map_provider_url }}', {
-            opacity: 0.55,
+            opacity: 0.75,
             attribution: '{{ map_provider_attribution|safe }}'
         }).addTo(map);
         map.whenReady(function () {
@@ -251,6 +292,8 @@
 
             setInterval(refresh, 30000);
             refresh();
+            getSpawnPoints();
+            getPokestops();
         });
     </script>
 </body>
