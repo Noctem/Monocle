@@ -45,7 +45,8 @@ class Worker:
     db_processor = DatabaseProcessor()
     spawns = db_processor.spawns
     accounts = load_accounts()
-    cell_ids = load_pickle('cells') or {}
+    if config.CACHE_CELLS:
+        cell_ids = load_pickle('cells') or {}
     loop = get_event_loop()
     login_semaphore = Semaphore(config.SIMULTANEOUS_LOGINS)
 
@@ -584,14 +585,15 @@ class Worker:
         start = time()
 
         rounded = round_coords(point, precision=4)
-        if rounded in self.cell_ids:
+        if config.CACHE_CELLS and rounded in self.cell_ids:
             cell_ids = list(self.cell_ids[rounded])
         else:
             cell_ids = get_cell_ids(*rounded, radius=500)
-            try:
-                self.cell_ids[rounded] = array('L', cell_ids)
-            except OverflowError:
-                self.cell_ids[rounded] = tuple(cell_ids)
+            if config.CACHE_CELLS:
+                try:
+                    self.cell_ids[rounded] = array('L', cell_ids)
+                except OverflowError:
+                    self.cell_ids[rounded] = tuple(cell_ids)
 
         since_timestamp_ms = [0] * len(cell_ids)
 

@@ -29,8 +29,8 @@ STAY_WITHIN_MAP = True
 # ensure that you visit within this many meters of every part of your map during bootstrap
 #BOOTSTRAP_RADIUS = 450
 
-GIVE_UP_KNOWN = 60   # try to find a worker for a known spawn for this many seconds before giving up
-GIVE_UP_UNKNOWN = 20 # try to find a worker for an unknown point for this many seconds before giving up
+GIVE_UP_KNOWN = 75   # try to find a worker for a known spawn for this many seconds before giving up
+GIVE_UP_UNKNOWN = 60 # try to find a worker for an unknown point for this many seconds before giving up
 SKIP_SPAWN = 90      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
 
 
@@ -153,6 +153,11 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 #MANAGER_ADDRESS = r'\\.\pipe\pokeminer'  # must be in this format for Windows
 #MANAGER_ADDRESS = 'pokeminer.sock'       # the socket name for Unix systems
 #MANAGER_ADDRESS = ('127.0.0.1', 5001)    # could be used for CAPTCHA solving and live worker maps on remote systems
+
+# Store the cell IDs so that they don't have to be recalculated every visit.
+# Highly recommended unless you don't have enough memory for them.
+# Disabling will increase processor usage.
+#CACHE_CELLS = True
 
 ### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
 '''

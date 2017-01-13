@@ -71,9 +71,10 @@ _optional = {
     'ITEM_LIMITS': None,
     'MAX_RETRIES': 3,
     'MORE_POINTS': True,
-    'GIVE_UP_KNOWN': 60,
-    'GIVE_UP_UNKNOWN': 20,
-    'SKIP_SPAWN': 90
+    'GIVE_UP_KNOWN': 75,
+    'GIVE_UP_UNKNOWN': 60,
+    'SKIP_SPAWN': 90,
+    'CACHE_CELLS': True
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -742,7 +743,7 @@ class Overseer:
             finally:
                 try:
                     worker.busy.release()
-                except RunTimeError:
+                except RuntimeError:
                     pass
         except Exception:
             self.logger.exception('An exception occurred in try_point')
