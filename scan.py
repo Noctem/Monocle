@@ -620,7 +620,7 @@ class Overseer:
                         try:
                             self.idle_seconds += self.captcha_queue.full_wait(
                                 maxsize=config.MAX_CAPTCHAS)
-                        except (EOFError, BrokenPipeError):
+                        except (EOFError, BrokenPipeError, FileNotFoundError):
                             pass
                         self.paused = False
 
@@ -822,7 +822,14 @@ if __name__ == '__main__':
         AccountManager.register('worker_dict', callable=get_workers,
                                 proxytype=DictProxy)
     manager = AccountManager(address=get_address(), authkey=config.AUTHKEY)
-    manager.start(mgr_init)
+    try:
+        manager.start(mgr_init)
+    except (OSError, EOFError) as e:
+        address = get_address()
+        if platform == 'win32' or not isinstance(address, str):
+            raise OSError('Another instance is running with the same manager address. Stop that process or change your MANAGER_ADDRESS.') from e
+        else:
+            raise OSError('Another instance is running with the same socket. Stop that process or: rm {}'.format(address)) from e
 
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(exception_handler)
