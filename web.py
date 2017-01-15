@@ -80,6 +80,10 @@ def get_spawn_points():
 def get_pokestops():
     return jsonify(get_pokestopsmarkers())
 
+@app.route('/scan_coords')
+def get_scan_coords():
+    return jsonify(get_scan_coords())
+
 class AccountManager(BaseManager): pass
 AccountManager.register('worker_dict')
 manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
@@ -218,6 +222,20 @@ def get_pokestopsmarkers():
             'external_id': pokestop.external_id,
             'lat': pokestop.lat,
             'lon': pokestop.lon
+        })
+    return markers
+
+def get_scan_coords():
+    markers = []
+    if config.BOUNDARIES:
+        from shapely.geometry import mapping
+        coords = mapping(config.BOUNDARIES)['coordinates'][0]
+    else:
+        coords = (config.MAP_START, (config.MAP_START[0], config.MAP_END[1]), config.MAP_END, (config.MAP_END[0], config.MAP_START[1]), config.MAP_START)
+
+    markers.append({
+            'type': 'scanarea',
+            'coords': coords
         })
     return markers
 
