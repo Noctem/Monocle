@@ -309,18 +309,17 @@ class Notification:
 
     def sendToTelegram(self):
         try:
-            TELEGRAM_BASE_URL = "https://api.telegram.org/bot{token}/{command}"
+            TELEGRAM_BASE_URL = "https://api.telegram.org/bot{token}/sendVenue"
             title = self.name
             if self.expire_time:
                 minutes, seconds = divmod(self.delta.total_seconds(), 60)
-                description = 'Expire at: {e} ({m}m{s:.0f}s left)'.format(e=self.expire_time, m=int(minutes), s=seconds)
+                description = 'Expires at: {e} ({m}m{s:.0f}s left)'.format(e=self.expire_time, m=int(minutes), s=seconds)
             else:
                 description = ("It'll expire between {e1} & {e2}.").format(e1=self.min_expire_time, e2=self.max_expire_time)
             
             if self.iv[0] is not None:
-                title += ' ({a}/{d}/{s})'.format(a=self.iv[0], d=self.iv[1], s=self.iv[2])
+                title += ' ({0[0]}/{0[1]}/{0[2]})'.format(self.iv)
 
-            cmd = "sendVenue"
             payload = {
                 'chat_id': config.TELEGRAM_CHAT_ID,
                 'latitude': self.coordinates[0],
@@ -329,12 +328,12 @@ class Notification:
                 'address' : description,
             }
 
-            r = requests.get(TELEGRAM_BASE_URL.format(token=config.TELEGRAM_BOT_TOKEN, command = cmd), params=payload)
+            r = requests.get(TELEGRAM_BASE_URL.format(token=config.TELEGRAM_BOT_TOKEN), params=payload)
             if r.status_code == 200:
                 self.logger.info('Sent a Telegram notification about {}.'.format(self.name))
                 return True
             else:
-                self.logger.info('Something goes wrong with sending a notification to Telegram about {}.'.format(self.name))
+                self.logger.info('Failed to send a Telegram notification about {}.'.format(self.name))
                 return False
         except Exception:
             self.logger.exception('Exception caught in Telegram notification.')

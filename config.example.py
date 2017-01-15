@@ -235,8 +235,8 @@ NOTIFICATION_CACHE = 100
 ### The following values are fake, replace them with your own keys to enable
 ### PushBullet notifications and/or tweeting, otherwise leave them out of your
 ### config or set them to None.
-## you must provide keys for at least one service (Twitter and/or PushBullet and/or Telegram) to use notifications
-## Telegram bot token is the one Botfather is sending to you after completing bot creation.
+## you must provide keys for at least one service (PushBullet, Telegram, and/or Twitter) to use notifications
+## Telegram bot token is the one Botfather sends to you after completing bot creation.
 ## Chat ID can be two different values:
 ## 1) '@channel_name' for channels
 ## 2) Your chat_id if you will use your own account. To retrieve your ID, write to your bot and check this URL:
