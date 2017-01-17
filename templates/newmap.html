@@ -251,6 +251,8 @@
                     circle.addTo(overlays.Spawns);
                 } else if (item.type === 'scanarea'){
                     var polygon = L.polyline(item.coords).addTo(overlays.ScanArea);
+                } else if (item.type === 'scanblacklist'){
+                    L.polyline(item.coords, {'color':'red'}).addTo(overlays.ScanArea);
                 }
             });
         }
