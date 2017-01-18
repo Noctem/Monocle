@@ -536,18 +536,14 @@ class Notifier:
         return self.initial_score - subtract
 
     def eligible(self, pokemon):
-        if config.IGNORE_RARITY:
-            return True
-
         pokemon_id = pokemon['pokemon_id']
-        if pokemon['encounter_id'] in self.recent_notifications:
+
+        if (pokemon_id in self.never_notify
+                or pokemon_id not in self.notify_ids
+                or pokemon['encounter_id'] in self.recent_notifications):
             return False
-        if pokemon_id in self.always_notify:
+        if config.IGNORE_RARITY or pokemon_id in self.always_notify:
             return True
-        if pokemon_id in self.never_notify:
-            return False
-        if pokemon_id not in self.notify_ids:
-            return False
 
         rareness = self.get_rareness_score(pokemon_id)
         highest_score = (rareness + 1) / 2
