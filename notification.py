@@ -530,7 +530,10 @@ class Notifier:
             return self.initial_score
         now = now or monotonic()
         time_passed = now - self.last_notification
-        subtract = self.initial_score - self.minimum_score
+        try:
+            subtract = self.initial_score - self.minimum_score
+        except TypeError:
+            return self.initial_score or self.minimum_score
         if time_passed < config.FULL_TIME:
             subtract *= (time_passed / config.FULL_TIME)
         return self.initial_score - subtract
@@ -583,8 +586,7 @@ class Notifier:
                 self.logger.info('{n} has only {s} seconds remaining.'.format(
                     n=name, s=time_till_hidden))
                 return False
-            if config.INITIAL_SCORE:
-                score_required = self.get_required_score(now)
+            score_required = self.get_required_score(now)
 
         iv = (pokemon.get('individual_attack'),
               pokemon.get('individual_defense'),
