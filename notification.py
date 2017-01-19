@@ -37,32 +37,47 @@ for setting_name, default in OPTIONAL_SETTINGS.items():
         setattr(config, setting_name, default)
 
 if config.NOTIFY:
-    if not (config.PB_API_KEY or config.TWITTER_ACCESS_KEY or config.WEBHOOKS):
-        raise ValueError('NOTIFY is enabled but no PushBullet or Twitter keys were provided.')
+    WEBHOOK = False
+    TWITTER = False
+    PUSHBULLET = False
 
-    if config.TWEET_IMAGES:
-        if not config.ENCOUNTER:
-            raise ValueError('You enabled TWEET_IMAGES but ENCOUNTER is not set.')
-        try:
-            import cairo
-        except ImportError as e:
-            raise ImportError('You enabled TWEET_IMAGES but Cairo could not be imported.') from e
-
-    if config.TWITTER_ACCESS_KEY:
+    if all((config.TWITTER_CONSUMER_KEY, config.TWITTER_CONSUMER_SECRET,
+            config.TWITTER_ACCESS_KEY, config.TWITTER_ACCESS_SECRET)):
         try:
             import twitter
             from twitter.twitter_utils import calc_expected_status_length
         except ModuleNotFoundError as e:
             raise ModuleNotFoundError("You specified a TWITTER_ACCESS_KEY but you don't have python-twitter installed.") from e
+        TWITTER=True
+
+        if config.TWEET_IMAGES:
+            if not config.ENCOUNTER:
+                raise ValueError('You enabled TWEET_IMAGES but ENCOUNTER is not set.')
+            try:
+                import cairo
+            except ImportError as e:
+                raise ImportError('You enabled TWEET_IMAGES but Cairo could not be imported.') from e
 
     if config.PB_API_KEY:
         try:
             from pushbullet import Pushbullet
         except ModuleNotFoundError as e:
             raise ModuleNotFoundError("You specified a PB_API_KEY but you don't have pushbullet.py installed.") from e
+        PUSHBULLET=True
 
     if config.WEBHOOKS:
-        import requests
+        if not isinstance(config.WEBHOOKS, (set, list, tuple)):
+            raise ValueError('WEBHOOKS must be a set of addresses.')
+        try:
+            import requests
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError("You specified a WEBHOOKS address but you don't have requests installed.") from e
+        WEBHOOK = True
+
+    NATIVE = TWITTER or PUSHBULLET
+
+    if not (NATIVE or WEBHOOK):
+        raise ValueError('NOTIFY is enabled but no keys or webhook address were provided.')
 
     try:
         if config.INITIAL_SCORE < config.MINIMUM_SCORE:
@@ -72,8 +87,8 @@ if config.NOTIFY:
 
     if config.NOTIFY_RANKING and config.NOTIFY_IDS:
         raise ValueError('Only set NOTIFY_RANKING or NOTIFY_IDS, not both.')
-    elif not config.NOTIFY_RANKING and not config.NOTIFY_IDS:
-        raise ValueError('Must set either NOTIFY_RANKING or NOTIFY_IDS.')
+    elif not any((config.NOTIFY_RANKING, config.NOTIFY_IDS, config.ALWAYS_NOTIFY_IDS)):
+        raise ValueError('Must set either NOTIFY_RANKING, NOTIFY_IDS, or ALWAYS_NOTIFY_IDS.')
 
 
 class PokeImage:
@@ -226,7 +241,7 @@ class Notification:
         else:
             now = datetime.now()
 
-        if config.HASHTAGS:
+        if TWITTER and config.HASHTAGS:
             self.hashtags = config.HASHTAGS.copy()
         else:
             self.hashtags = set()
@@ -269,7 +284,7 @@ class Notification:
 
         if self.landmark:
             self.place = self.landmark.generate_string(self.coordinates)
-            if self.landmark.hashtags:
+            if TWITTER and self.landmark.hashtags:
                 self.hashtags.update(self.landmark.hashtags)
         else:
             self.place = self.generic_place_string()
@@ -277,13 +292,10 @@ class Notification:
         tweeted = False
         pushed = False
 
-        if config.PB_API_KEY:
+        if PUSHBULLET:
             pushed = self.pbpush()
 
-        if (config.TWITTER_CONSUMER_KEY and
-                config.TWITTER_CONSUMER_SECRET and
-                config.TWITTER_ACCESS_KEY and
-                config.TWITTER_ACCESS_SECRET):
+        if TWITTER:
             tweeted = self.tweet()
 
         return tweeted or pushed
@@ -486,11 +498,13 @@ class Notifier:
             self.set_pokemon_ranking(loadpickle=True)
             self.set_notify_ids()
             self.auto = True
-        elif config.NOTIFY_IDS:
+        elif config.NOTIFY_IDS or config.ALWAYS_NOTIFY_IDS:
+            self.notify_ids = config.NOTIFY_IDS or config.ALWAYS_NOTIFY_IDS
             self.always_notify = config.ALWAYS_NOTIFY_IDS
-            self.notify_ids = config.NOTIFY_IDS
             self.notify_ranking = len(self.notify_ids)
             self.auto = False
+        if WEBHOOK:
+            self.wh_session = requests.Session()
 
     def set_notify_ids(self):
         self.notify_ids = self.pokemon_ranking[0:self.notify_ranking]
@@ -534,10 +548,7 @@ class Notifier:
             return self.initial_score
         now = now or monotonic()
         time_passed = now - self.last_notification
-        try:
-            subtract = self.initial_score - self.minimum_score
-        except TypeError:
-            return self.initial_score or self.minimum_score
+        subtract = self.initial_score - self.minimum_score
         if time_passed < config.FULL_TIME:
             subtract *= (time_passed / config.FULL_TIME)
         return self.initial_score - subtract
@@ -635,11 +646,11 @@ class Notifier:
                 return False
 
         whpushed = False
-        if config.WEBHOOKS:
+        if WEBHOOK:
             whpushed = self.webhook(pokemon, time_till_hidden)
 
         notified = False
-        if config.PB_API_KEY or config.TWITTER_ACCESS_KEY:
+        if NATIVE:
             notified = Notification(pokemon_id, coordinates, time_till_hidden, iv, moves, iv_score, time_of_day).notify()
 
         if notified or whpushed:
@@ -679,9 +690,9 @@ class Notifier:
         ret = False
         for w in config.WEBHOOKS:
             try:
-                requests.post(w, json=data, timeout=(None, 1))
+                self.wh_session.post(w, json=data, timeout=(1, 1))
                 ret = True
-            except requests.exceptions.ReadTimeout:
+            except requests.exceptions.Timeout:
                 self.logger.warning('Response timeout on webhook endpoint {}'.format(w))
             except requests.exceptions.RequestException as e:
                 self.logger.warning('Request Error: {}'.format(e))

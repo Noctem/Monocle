@@ -216,13 +216,16 @@ MINIMUM_SCORE = 0.55  # the required score after FULL_TIME seconds have passed
 ### The following values are fake, replace them with your own keys to enable
 ### PushBullet notifications and/or tweeting, otherwise leave them out of your
 ### config or set them to None.
-## you must provide keys for at least one service (Twitter and/or PushBullet) to use notifications
+## you must provide keys for at least one service to use notifications
+
 #PB_API_KEY = 'o.9187cb7d5b857c97bfcaa8d63eaa8494'
 #PB_CHANNEL = 0  # set to the integer of your channel, or to None to push privately
+
 #TWITTER_CONSUMER_KEY = '53d997264eb7f6452b7bf101d'
 #TWITTER_CONSUMER_SECRET = '64b9ebf618829a51f8c0535b56cebc808eb3e80d3d18bf9e00'
 #TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
 #TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'
+
 #WEBHOOKS = {'http://127.0.0.1:4000'}
 
 
