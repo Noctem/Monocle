@@ -47,8 +47,7 @@ _required = (
 )
 for setting_name in _required:
     if not hasattr(config, setting_name):
-        raise RuntimeError('Please set "{}" in config'.format(setting_name))
-
+        raise AttributeError('Please set "{}" in config'.format(setting_name))
 # Set defaults for missing config options
 _optional = {
     'PROXIES': None,
@@ -74,11 +73,13 @@ _optional = {
     'GIVE_UP_KNOWN': 75,
     'GIVE_UP_UNKNOWN': 60,
     'SKIP_SPAWN': 90,
-    'CACHE_CELLS': True
+    'CACHE_CELLS': True,
+    'LOGIN_TIMEOUT': 2.5
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
+del (_optional, _required)
 
 # validate PROXIES input and cast to set if needed
 if config.PROXIES:

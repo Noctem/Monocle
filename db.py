@@ -19,7 +19,7 @@ try:
 except (ImportError, AttributeError):
     DB_ENGINE = 'sqlite:///db.sqlite'
 
-OPTIONAL_SETTINGS = {
+_optional = {
     'LAST_MIGRATION': 1481932800,
     'SPAWN_ID_INT': True,
     'RARE_IDS': [],
@@ -28,9 +28,10 @@ OPTIONAL_SETTINGS = {
     'STAY_WITHIN_MAP': True,
     'MORE_POINTS': True
 }
-for setting_name, default in OPTIONAL_SETTINGS.items():
+for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
+del _optional
 
 if config.BOUNDARIES:
     try:

@@ -24,7 +24,7 @@ for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
     if not hasattr(config, variable_name):
         setattr(config, variable_name, None)
 
-OPTIONAL_SETTINGS = {
+_optional = {
     'ALWAYS_NOTIFY': 9,
     'FULL_TIME': 1800,
     'TIME_REQUIRED': 300,
@@ -32,9 +32,10 @@ OPTIONAL_SETTINGS = {
     'ALWAYS_NOTIFY_IDS': set()
 }
 # set defaults for unset config options
-for setting_name, default in OPTIONAL_SETTINGS.items():
+for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
+del _optional
 
 if config.NOTIFY:
     WEBHOOK = False

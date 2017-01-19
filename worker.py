@@ -115,7 +115,7 @@ class Worker:
             self.api.set_proxy({'http': self.proxy, 'https': self.proxy})
         self.api.set_logger(self.logger)
         if self.account.get('provider') == 'ptc' and self.account.get('refresh'):
-            self.api._auth_provider = AuthPtc()
+            self.api._auth_provider = AuthPtc(username=self.username, password=self.account['password'], timeout=config.LOGIN_TIMEOUT)
             self.api._auth_provider.set_refresh_token(self.account.get('refresh'))
             self.api._auth_provider._access_token = self.account.get('auth')
             self.api._auth_provider._access_token_expiry = self.account.get('expiry')
@@ -156,15 +156,25 @@ class Worker:
             if self.killed:
                 return False
             self.error_code = 'LOGIN'
-            await self.loop.run_in_executor(
-                self.network_executor,
-                partial(
-                    self.api.set_authentication,
-                    username=self.username,
-                    password=self.account.get('password'),
-                    provider=self.account.get('provider'),
-                )
-            )
+            for attempt in range(-1, config.MAX_RETRIES):
+                try:
+                    await self.loop.run_in_executor(
+                        self.network_executor,
+                        partial(
+                            self.api.set_authentication,
+                            username=self.username,
+                            password=self.account['password'],
+                            provider=self.account.get('provider', 'ptc'),
+                            timeout=config.LOGIN_TIMEOUT
+                        )
+                    )
+                except ex.AuthTimeoutException:
+                    if attempt >= config.MAX_RETRIES - 1:
+                        raise
+                    else:
+                        self.logger.warning('Login attempt timed out.')
+                else:
+                    break
             if not self.ever_authenticated:
                 if config.APP_SIMULATION:
                     await self.app_simulation_login()

@@ -106,6 +106,9 @@ ITEM_LIMITS = {
 # retry a request after failure this many times before giving up
 MAX_RETRIES = 3
 
+# number of seconds before timing out on a login request
+LOGIN_TIMEOUT = 2.5
+
 # add spawn points reported in cell_ids to the unknown spawns list
 # disable if your workers already have more than enough points to visit
 MORE_POINTS = True

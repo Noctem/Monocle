@@ -16,7 +16,7 @@ from asyncio import sleep
 
 import config
 
-OPTIONAL_SETTINGS = {
+_optional = {
     'ALT_RANGE': (300, 400),
     'GOOGLE_MAPS_KEY': None,
     'MAP_START': None,
@@ -28,9 +28,10 @@ OPTIONAL_SETTINGS = {
     'MANAGER_ADDRESS': None,
     'BOOTSTRAP_RADIUS': 450
 }
-for setting_name, default in OPTIONAL_SETTINGS.items():
+for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
+del _optional
 
 IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone5,2': 'N42AP',
