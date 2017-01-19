@@ -106,8 +106,8 @@ try:
 except (TypeError, AttributeError):
     config.SCAN_DELAY = 10
 try:
-    if config.SPEED_LIMIT > 25:
-        raise ValueError('Speeds over 25MPH would probably cause problems.')
+    if 1 > config.SPEED_LIMIT > 25:
+        raise ValueError('Speed limit should be between 1 and 25 MPH.')
 except (TypeError, AttributeError):
     config.SPEED_LIMIT = 19
 try:
@@ -759,37 +759,33 @@ class Overseer:
         else:
             skip_time = time.monotonic() + config.GIVE_UP_UNKNOWN
 
-        limit = config.SPEED_LIMIT * 1.18  # slight buffer for inaccuracy
-        half_limit = limit / 2
-
-        lowest_speed = float('inf')
         while True:
             speed = None
             lowest_speed = float('inf')
             for w in self.workers:
-                speed = w.fast_speed(point)
-                if speed and speed < lowest_speed and speed < limit:
-                    if not w.busy.acquire_now():
-                        continue
-                    try:
-                        worker.busy.release()
-                    except (NameError, AttributeError, RuntimeError):
-                        pass
-                    lowest_speed = speed
-                    worker = w
+                speed = w.travel_speed(point)
+                try:
+                    if speed < lowest_speed and speed < config.SPEED_LIMIT:
+                        if not w.busy.acquire_now():
+                            continue
+                        try:
+                            worker.busy.release()
+                        except (NameError, AttributeError, RuntimeError):
+                            pass
+                        lowest_speed = speed
+                        worker = w
+                except TypeError:
+                    pass
 
             try:
-                speed = worker.accurate_speed(point)
-                if speed > config.SPEED_LIMIT:
-                    worker.busy.release()
-                else:
-                    worker.speed = speed
-                    return worker
-            except (NameError, AttributeError, RuntimeError):
-                if self.killed:
-                    return None
-                if skip_time and time.monotonic() > skip_time:
-                    return None
+                worker.speed = lowest_speed
+                return worker
+            except (NameError, AttributeError):
+                try:
+                    if self.killed or time.monotonic() > skip_time:
+                        return None
+                except TypeError:
+                    pass
                 await asyncio.sleep(2)
                 worker = None
 
