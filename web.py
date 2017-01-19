@@ -12,14 +12,13 @@ from names import POKEMON_NAMES
 
 
 # Check whether config has all necessary attributes
-REQUIRED_SETTINGS = (
+_required = (
     'AREA_NAME',
     'GOOGLE_MAPS_KEY'
 )
-for setting_name in REQUIRED_SETTINGS:
+for setting_name in _required:
     if not hasattr(config, setting_name):
         raise RuntimeError('Please set "{}" in config'.format(setting_name))
-
 # Set defaults for missing config options
 _optional = {
     'TRASH_IDS': (),
@@ -31,6 +30,7 @@ _optional = {
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
+del (_required, _optional)
 
 
 def get_args():

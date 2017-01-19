@@ -1,5 +1,4 @@
 from functools import partial
-from geopy.distance import great_circle
 from logging import getLogger
 from pogo_async import PGoApi, exceptions as ex
 from pogo_async.auth_ptc import AuthPtc
@@ -113,7 +112,7 @@ class Worker:
             self.api.set_proxy(self.proxy)
         self.api.set_logger(self.logger)
         if self.account.get('provider') == 'ptc' and self.account.get('refresh'):
-            self.api._auth_provider = AuthPtc()
+            self.api._auth_provider = AuthPtc(username=self.username, password=self.account['password'], timeout=config.LOGIN_TIMEOUT)
             self.api._auth_provider.set_refresh_token(self.account.get('refresh'))
             self.api._auth_provider._access_token = self.account.get('auth')
             self.api._auth_provider._access_token_expiry = self.account.get('expiry')
@@ -154,12 +153,21 @@ class Worker:
             if self.killed:
                 return False
             self.error_code = 'LOGIN'
-            await self.api.set_authentication(
-                    username=self.username,
-                    password=self.account.get('password'),
-                    provider=self.account.get('provider'),
-                )
-
+            for attempt in range(-1, config.MAX_RETRIES):
+                try:
+                    await self.api.set_authentication(
+                            username=self.username,
+                            password=self.account['password'],
+                            provider=self.account.get('provider', 'ptc'),
+                            timeout=config.LOGIN_TIMEOUT
+                        )
+                except ex.AuthTimeoutException:
+                    if attempt >= config.MAX_RETRIES - 1:
+                        raise
+                    else:
+                        self.logger.warning('Login attempt timed out.')
+                else:
+                    break
             if not self.ever_authenticated:
                 if config.APP_SIMULATION:
                     await self.app_simulation_login()
@@ -476,23 +484,16 @@ class Worker:
             self.check_captcha(responses)
         return responses
 
-    def fast_speed(self, point):
-        '''Fast but inaccurate estimation of travel speed to point'''
+    def travel_speed(self, point):
+        '''Fast calculation of travel speed to point'''
         if self.busy.locked():
             return None
         time_diff = max(time() - self.last_request, config.SCAN_DELAY)
         if time_diff > 60:
             self.error_code = None
         distance = get_distance(self.location, point)
-        # rough conversion from degrees/second to miles/hour
-        speed = (distance / time_diff) * 223694
-        return speed
-
-    def accurate_speed(self, point):
-        '''Slow but accurate estimation of travel speed to point'''
-        time_diff = max(time(), self.last_request + config.SCAN_DELAY) - self.last_request
-        distance = great_circle(self.location, point).miles
-        speed = (distance / time_diff) * 3600
+        # conversion from meters/second to miles/hour
+        speed = (distance / time_diff) * 2.236936
         return speed
 
     async def bootstrap_visit(self, point):
@@ -740,7 +741,7 @@ class Worker:
     async def spin_pokestop(self, pokestop):
         self.error_code = '$'
         pokestop_location = pokestop['lat'], pokestop['lon']
-        distance = great_circle(self.location, pokestop_location).meters
+        distance = get_distance(self.location, pokestop_location)
         # permitted interaction distance - 2 (for some jitter leeway)
         # estimation of spinning speed limit
         if distance > 38 or self.speed > 22:
@@ -787,7 +788,7 @@ class Worker:
 
     async def encounter(self, pokemon):
         pokemon_point = pokemon['latitude'], pokemon['longitude']
-        distance_to_pokemon = great_circle(self.location, pokemon_point).meters
+        distance_to_pokemon = get_distance(self.location, pokemon_point)
 
         self.error_code = '~'
 

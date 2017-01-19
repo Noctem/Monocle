@@ -6,7 +6,7 @@ import socket
 import pickle
 
 from os import mkdir
-from math import ceil, sqrt, hypot
+from math import ceil, sqrt, hypot, pi, cos
 from uuid import uuid4
 from geopy import Point
 from geopy.distance import distance
@@ -16,7 +16,7 @@ from asyncio import sleep
 
 import config
 
-OPTIONAL_SETTINGS = {
+_optional = {
     'ALT_RANGE': (300, 400),
     'GOOGLE_MAPS_KEY': None,
     'MAP_START': None,
@@ -28,9 +28,10 @@ OPTIONAL_SETTINGS = {
     'MANAGER_ADDRESS': None,
     'BOOTSTRAP_RADIUS': 450
 }
-for setting_name, default in OPTIONAL_SETTINGS.items():
+for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
+del _optional
 
 IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone5,2': 'N42AP',
@@ -48,14 +49,18 @@ IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone9,3': 'D101AP',
            'iPhone9,4': 'D111AP'}
 
+LAT_MEAN = (config.MAP_END[0] + config.MAP_START[0]) / 2
+LAT_RAD = LAT_MEAN * pi / 180
+LON_MULT = cos(pi * LAT_MEAN / 180)
+METER_MULT = 111132.92 + (-559.82 * cos(2 * LAT_RAD)) + (1.175 * cos(4 * LAT_RAD)) + (-0.0023 * cos(6 * LAT_RAD))
+
 
 def get_map_center():
     """Returns center of the map"""
     if config.BOUNDARIES:
-        coords = config.BOUNDARIES.centroid.coords[0]
-        return coords
+        return config.BOUNDARIES.centroid.coords[0]
     elif config.MAP_START and config.MAP_END:
-        lat = (config.MAP_END[0] + config.MAP_START[0]) / 2
+        lat = LAT_MEAN
         lon = (config.MAP_END[1] + config.MAP_START[1]) / 2
         return lat, lon
     else:
@@ -65,17 +70,8 @@ def get_map_center():
 
 def get_scan_area():
     """Returns the square kilometers for configured scan area"""
-    lat1 = config.MAP_START[0]
-    lat2 = config.MAP_END[0]
-    lon1 = config.MAP_START[1]
-    lon2 = config.MAP_END[1]
-    p1 = Point(lat1, lon1)
-    p2 = Point(lat1, lon2)
-    p3 = Point(lat1, lon1)
-    p4 = Point(lat2, lon1)
-
-    width = distance(p1, p2).kilometers
-    height = distance(p3, p4).kilometers
+    width = get_distance(config.MAP_START, (config.MAP_START[0], config.MAP_END[1])) / 1000
+    height = get_distance(config.MAP_START, (config.MAP_END[0], config.MAP_START[1])) / 1000
     area = int(width * height)
     return area
 
@@ -313,7 +309,7 @@ def get_current_hour(now=None):
 
 
 def get_distance(p1, p2):
-    return hypot(p1[0] - p2[0], p1[1] - p2[1])
+    return hypot(p1[0] - p2[0], (p1[1] - p2[1]) * LON_MULT) * METER_MULT
 
 
 def time_until_time(seconds, seen=None):

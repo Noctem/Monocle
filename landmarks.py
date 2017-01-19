@@ -1,7 +1,6 @@
 from shapely.geometry import Point, Polygon, shape, box, LineString
 from geopy import Nominatim
-from geopy.distance import distance
-
+from geopy.distance import great_circle, distance
 
 class FailedQuery(Exception):
     """Raised when no location is found."""
@@ -90,7 +89,7 @@ class Landmark:
     def generate_string(self, coordinates):
         if self.contains(coordinates):
             return '{p} {n}'.format(p=self.phrase, n=self.name)
-        distance = round(self.distance_from_point(coordinates))
+        distance = round(self.distance_from_point(coordinates, accurate=True))
         if (self.is_area and distance < 100) or distance < 40:
             return '{p} {s}'.format(p=self.phrase, s=self.name)
         else:
@@ -100,7 +99,7 @@ class Landmark:
         """determine if a point is within this object range"""
         return self.location.contains(Point(*coordinates))
 
-    def distance_from_point(self, coordinates):
+    def distance_from_point(self, coordinates, accurate=False):
         if self.contains(coordinates):
             return 0
         point = Point(*coordinates)
@@ -108,8 +107,10 @@ class Landmark:
             nearest = self.location
         else:
             nearest = self.nearest_point(point)
-        dist = distance(point.coords[0], nearest.coords[0])
-        return dist.meters
+        if accurate:
+            return distance(point.coords[0], nearest.coords[0]).meters
+        else:
+            return great_circle(point.coords[0], nearest.coords[0]).meters
 
     def nearest_point(self, point):
         '''Find nearest point in geometry, measured from given point.'''
