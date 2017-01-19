@@ -74,7 +74,9 @@ _optional = {
     'GIVE_UP_UNKNOWN': 60,
     'SKIP_SPAWN': 90,
     'CACHE_CELLS': True,
-    'LOGIN_TIMEOUT': 2.5
+    'LOGIN_TIMEOUT': 2.5,
+    'CAPTCHA_KEY': None,
+    'CAPTCHAS_ALLOWED': 3
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -484,8 +486,8 @@ class Overseer:
                 captchas_per_request = captchas / (self.visits / 1000)
                 captchas_per_hour = captchas / hours_since_start
                 output.append(
-                    'CAPTCHAs per 1K visits: {r:.1f}, per hour: {h:.1f}'.format(
-                    r=captchas_per_request, h=captchas_per_hour))
+                    'CAPTCHAs per 1K visits: {r:.1f}, per hour: {h:.1f}, total: {t:d}'.format(
+                    r=captchas_per_request, h=captchas_per_hour, t=captchas))
         except ZeroDivisionError:
             pass
 

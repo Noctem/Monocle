@@ -133,6 +133,11 @@ REPORT_SINCE = datetime(2016, 12, 17)  # base reports on data from after this da
 GOOGLE_MAPS_KEY = 'OYOgW1wryrp2RKJ81u7BLvHfYUA6aArIyuQCXu4'  # this key is fake
 #ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
 
+## Automatically resolve captchas using 2captcha key.
+#CAPTCHA_KEY = 'here_your_api_key'
+## the number of CAPTCHAs an account is allowed to receive before being swapped out
+#CAPTCHAS_ALLOWED = 3
+
 MAP_WORKERS = True  # allow displaying the live location of workers on the map
 
 # unix timestamp of last spawn point migration, spawn times learned before this will be ignored
