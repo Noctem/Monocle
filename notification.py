@@ -19,7 +19,8 @@ for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
                       'HASHTAGS', 'TZ_OFFSET', 'ENCOUNTER', 'INITIAL_RANKING',
                       'NOTIFY', 'NAME_FONT', 'IV_FONT', 'MOVE_FONT',
                       'TWEET_IMAGES', 'NOTIFY_IDS', 'NEVER_NOTIFY_IDS',
-                      'RARITY_OVERRIDE', 'IGNORE_IVS', 'IGNORE_RARITY'):
+                      'RARITY_OVERRIDE', 'IGNORE_IVS', 'IGNORE_RARITY',
+                      'WEBHOOKS'):
     if not hasattr(config, variable_name):
         setattr(config, variable_name, None)
 
@@ -36,7 +37,7 @@ for setting_name, default in OPTIONAL_SETTINGS.items():
         setattr(config, setting_name, default)
 
 if config.NOTIFY:
-    if not (config.PB_API_KEY or config.TWITTER_ACCESS_KEY):
+    if not (config.PB_API_KEY or config.TWITTER_ACCESS_KEY or config.WEBHOOKS):
         raise ValueError('NOTIFY is enabled but no PushBullet or Twitter keys were provided.')
 
     if config.TWEET_IMAGES:
@@ -59,6 +60,9 @@ if config.NOTIFY:
             from pushbullet import Pushbullet
         except ModuleNotFoundError as e:
             raise ModuleNotFoundError("You specified a PB_API_KEY but you don't have pushbullet.py installed.") from e
+
+    if config.WEBHOOKS:
+        import requests
 
     try:
         if config.INITIAL_SCORE < config.MINIMUM_SCORE:
@@ -630,8 +634,55 @@ class Notifier:
                     n=name, s=mean))
                 return False
 
-        notified = Notification(pokemon_id, coordinates, time_till_hidden, iv, moves, iv_score, time_of_day).notify()
-        if notified:
+        whpushed = False
+        if config.WEBHOOKS:
+            whpushed = self.webhook(pokemon, time_till_hidden)
+
+        notified = False
+        if config.PB_API_KEY or config.TWITTER_ACCESS_KEY:
+            notified = Notification(pokemon_id, coordinates, time_till_hidden, iv, moves, iv_score, time_of_day).notify()
+
+        if notified or whpushed:
             self.last_notification = monotonic()
             self.recent_notifications.append(encounter_id)
-        return notified
+        return notified or whpushed
+
+    def webhook(self, pokemon, time_till_hidden):
+        """ Send a notification via webhook
+        """
+        if isinstance(time_till_hidden, (tuple, list)):
+            time_till_hidden = time_till_hidden[0]
+
+        data = {
+            'type': "pokemon",
+            'message': {
+                "encounter_id": pokemon['encounter_id'],
+                "pokemon_id": pokemon['pokemon_id'],
+                "last_modified_time": pokemon['seen'] * 1000,
+                "spawnpoint_id": pokemon['spawn_id'],
+                "latitude": pokemon['lat'],
+                "longitude": pokemon['lon'],
+                "disappear_time": pokemon['seen'] + time_till_hidden,
+                "time_until_hidden_ms": time_till_hidden * 1000
+            }
+        }
+
+        try:
+            data['message']['individual_attack'] = pokemon['individual_attack']
+            data['message']['individual_defense'] = pokemon['individual_defense']
+            data['message']['individual_stamina'] = pokemon['individual_stamina']
+            data['message']['move_1'] = pokemon['move_1']
+            data['message']['move_2'] = pokemon['move_2']
+        except KeyError:
+            pass
+
+        ret = False
+        for w in config.WEBHOOKS:
+            try:
+                requests.post(w, json=data, timeout=(None, 1))
+                ret = True
+            except requests.exceptions.ReadTimeout:
+                self.logger.warning('Response timeout on webhook endpoint {}'.format(w))
+            except requests.exceptions.RequestException as e:
+                self.logger.warning('Request Error: {}'.format(e))
+        return ret
