@@ -68,7 +68,10 @@ class Worker:
         try:
             self.account = self.extra_queue.get_nowait()
         except Empty as e:
-            raise ValueError("You don't have enough accounts for the number of workers specified in GRID.") from e
+            try:
+                self.account = self.captcha_queue.get_nowait()
+            except Empty as e:
+                raise ValueError("You don't have enough accounts for the number of workers specified in GRID.") from e
         self.username = self.account['username']
         self.location = self.account.get('location', get_start_coords(worker_no))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
@@ -1047,11 +1050,18 @@ class Worker:
         await self.new_account(lock)
 
     async def new_account(self, lock=False):
+        captcha = False
         while self.extra_queue.empty():
+            if config.CAPTCHA_KEY and not self.captcha_queue.empty():
+                captcha = True
+                break
             if self.killed:
                 return False
             await sleep(15)
-        self.account = self.extra_queue.get()
+        if captcha:
+            self.account = self.captcha_queue.get()
+        else:
+            self.account = self.extra_queue.get()
         self.username = self.account.get('username')
         self.location = self.account.get('location', (0, 0, 0))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
