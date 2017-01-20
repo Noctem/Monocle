@@ -47,8 +47,8 @@ if config.NOTIFY:
         try:
             import twitter
             from twitter.twitter_utils import calc_expected_status_length
-        except ModuleNotFoundError as e:
-            raise ModuleNotFoundError("You specified a TWITTER_ACCESS_KEY but you don't have python-twitter installed.") from e
+        except ImportError as e:
+            raise ImportError("You specified a TWITTER_ACCESS_KEY but you don't have python-twitter installed.") from e
         TWITTER=True
 
         if config.TWEET_IMAGES:
@@ -62,8 +62,8 @@ if config.NOTIFY:
     if config.PB_API_KEY:
         try:
             from pushbullet import Pushbullet
-        except ModuleNotFoundError as e:
-            raise ModuleNotFoundError("You specified a PB_API_KEY but you don't have pushbullet.py installed.") from e
+        except ImportError as e:
+            raise ImportError("You specified a PB_API_KEY but you don't have pushbullet.py installed.") from e
         PUSHBULLET=True
 
     if config.WEBHOOKS:
@@ -71,8 +71,8 @@ if config.NOTIFY:
             raise ValueError('WEBHOOKS must be a set of addresses.')
         try:
             import requests
-        except ModuleNotFoundError as e:
-            raise ModuleNotFoundError("You specified a WEBHOOKS address but you don't have requests installed.") from e
+        except ImportError as e:
+            raise ImportError("You specified a WEBHOOKS address but you don't have requests installed.") from e
         WEBHOOK = True
 
     NATIVE = TWITTER or PUSHBULLET

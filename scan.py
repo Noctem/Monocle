@@ -36,8 +36,8 @@ from utils import get_current_hour, dump_pickle, get_address, get_start_coords, 
 
 try:
     import config
-except ModuleNotFoundError as e:
-    raise ModuleNotFoundError('Please copy config.example.py to config.py and customize it.') from e
+except ImportError as e:
+    raise ImportError('Please copy config.example.py to config.py and customize it.') from e
 
 # Check whether config has all necessary attributes
 _required = (
@@ -140,7 +140,8 @@ BAD_STATUSES = (
     'MALFORMED RESPONSE',
     'PGOAPI ERROR',
     'MAX RETRIES',
-    'HASHING ERROR'
+    'HASHING ERROR',
+    'PROXY ERROR'
 )
 
 
@@ -560,6 +561,7 @@ class Overseer:
 
     def launch(self, bootstrap, pickle):
         initial = True
+        exceptions = 0
         while not self.killed:
             if not initial:
                 pickle = False
@@ -621,14 +623,13 @@ class Overseer:
                         else:
                             continue
 
-                    if self.captcha_queue.qsize() > config.MAX_CAPTCHAS:
-                        self.paused = True
-                        try:
-                            self.idle_seconds += self.captcha_queue.full_wait(
-                                maxsize=config.MAX_CAPTCHAS)
-                        except (EOFError, BrokenPipeError, FileNotFoundError):
-                            pass
-                        self.paused = False
+                    try:
+                        if self.captcha_queue.qsize() > config.MAX_CAPTCHAS:
+                            self.paused = True
+                            self.idle_seconds += self.captcha_queue.full_wait(maxsize=config.MAX_CAPTCHAS)
+                            self.paused = False
+                    except (EOFError, BrokenPipeError, FileNotFoundError):
+                        continue
 
                     point = list(spawn[0])
                     spawn_time = spawn[1] + current_hour
@@ -667,7 +668,12 @@ class Overseer:
                         self.try_point(point, spawn_time), loop=self.loop
                     )
                 except Exception:
-                    self.logger.exception('Error occured in launcher loop.')
+                    exceptions += 1
+                    if exceptions > 100:
+                        self.logger.exception('Over 100 errors occured in launcher loop, exiting.')
+                        _thread.interrupt_main()
+                    else:
+                        self.logger.exception('Error occured in launcher loop.')
 
     def bootstrap(self):
         try:

@@ -10,6 +10,7 @@ from time import time, monotonic
 from array import array
 from queue import Empty
 from aiohttp import ClientSession
+from aiohttp.errors import ProxyConnectionError
 
 from db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
@@ -455,6 +456,17 @@ class Worker:
                 self.logger.warning('Server throttling - sleeping for a bit')
                 self.error_code = 'THROTTLE'
                 await random_sleep(11, 22, 12)
+            except ProxyConnectionError:
+                self.error_code = 'PROXY ERROR'
+
+                if self.proxies:
+                    self.logger.error('Proxy connection error, swapping proxy.')
+                    proxy = self.proxy
+                    while proxy == self.proxy:
+                        self.new_proxy()
+                else:
+                    self.logger.error('Proxy connection error')
+                    await sleep(5)
             except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
                 self.logger.warning(e)
                 self.error_code = 'MALFORMED RESPONSE'
@@ -544,6 +556,17 @@ class Worker:
             self.logger.warning('{} is banned'.format(self.username))
             await sleep(1)
             await self.remove_account()
+        except ProxyConnectionError:
+            self.error_code = 'PROXY ERROR'
+
+            if self.proxies:
+                self.logger.error('Proxy connection error, swapping proxy.')
+                proxy = self.proxy
+                while proxy == self.proxy:
+                    self.new_proxy()
+            else:
+                self.logger.error('Proxy connection error')
+            await sleep(5)
         except ex.NianticIPBannedException:
             self.error_code = 'IP BANNED'
 
@@ -1066,7 +1089,9 @@ class Worker:
 
     @classmethod
     def create_session(cls):
-        if not cls.session:
+        try:
+            return cls.session
+        except AttributeError:
             cls.session = ClientSession(loop=cls.loop)
 
     @classmethod
