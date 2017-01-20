@@ -37,7 +37,7 @@ else:
 class Worker:
     """Single worker walking on the map"""
 
-    download_hash = "d3da400db60abf79ea05abc38e2396f0bbd453f9"
+    download_hash = "11dcdeb848ed224924f8a8e14d94d620c8966d44"
     g = {'seen': 0, 'captchas': 0}
     db_processor = DatabaseProcessor()
     spawns = db_processor.spawns
@@ -175,9 +175,9 @@ class Worker:
                     # do one startup request instead of the whole login flow
                     # will receive the full inventory and the download_hash
                     request = self.api.create_request()
-                    request.download_remote_config_version(platform=1, app_version=5102)
-                    await self.call(request, stamp=False, buddy=False, dl_hash=False)
-        await random_sleep(.2, .4)
+                    request.download_remote_config_version(platform=1, app_version=5301)
+                    await self.call(request, stamp=False, buddy=False, settings=True, dl_hash=False)
+        await random_sleep(.1, .462)
 
         self.ever_authenticated = True
         self.logged_in = True
@@ -189,18 +189,19 @@ class Worker:
         self.error_code = 'APP SIMULATION'
         self.logger.info('Starting RPC login sequence (iOS app simulation)')
 
-        # empty request
+        # empty request 1
         request = self.api.create_request()
         await self.call(request, chain=False)
-        await random_sleep(0.3, 0.5)
+        await random_sleep(0.3, 0.4)
+
+        # empty request 2
+        request = self.api.create_request()
+        await self.call(request, chain=False)
+        await random_sleep(.3, .4)
 
         # request 1: get_player
         request = self.api.create_request()
-        request.get_player(
-            player_locale={
-                'country': 'US',
-                'language': 'en',
-                'timezone': 'America/Denver'})
+        request.get_player(player_locale=config.PLAYER_LOCALE)
 
         responses = await self.call(request, chain=False)
 
@@ -211,13 +212,13 @@ class Worker:
         if get_player.get('banned', False):
             raise ex.BannedAccountException
 
-        await random_sleep(.9, 1.2)
+        await random_sleep(.7, 1.2)
 
-        version = 5102
+        version = 5301
         # request 2: download_remote_config_version
         request = self.api.create_request()
         request.download_remote_config_version(platform=1, app_version=version)
-        responses = await self.call(request, stamp=False, buddy=False, dl_hash=False)
+        responses = await self.call(request, stamp=False, buddy=False, settings=True, dl_hash=False)
 
         inventory_items = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('inventory_items', [])
         player_level = None
@@ -227,14 +228,14 @@ class Worker:
                 player_level = player_stats.get('level')
                 break
 
-        await random_sleep(.5, .7)
+        await random_sleep(.78, .95)
 
         # request 3: get_asset_digest
         request = self.api.create_request()
         request.get_asset_digest(platform=1, app_version=version)
-        await self.call(request, buddy=False)
+        await self.call(request, buddy=False, settings=True)
 
-        await random_sleep(1.2, 1.4)
+        await random_sleep(.9, 3.4)
 
         if (config.COMPLETE_TUTORIAL and
                 tutorial_state is not None and
@@ -242,18 +243,18 @@ class Worker:
             self.logger.warning('Starting tutorial')
             await self.complete_tutorial(tutorial_state)
         else:
-            # request 4: get_player_profile
+            # request 3: get_player_profile
             request = self.api.create_request()
             request.get_player_profile()
-            await self.call(request)
-            await random_sleep(.2, .4)
+            await self.call(request, settings=True)
+            await random_sleep(.3, .5)
 
         if player_level:
-            # request 5: level_up_rewards
+            # request 4: level_up_rewards
             request = self.api.create_request()
             request.level_up_rewards(level=player_level)
-            await self.call(request)
-            await random_sleep(.9, 1.1)
+            await self.call(request, settings=True)
+            await random_sleep(.45, .7)
         else:
             self.logger.warning('No player level')
 
@@ -320,11 +321,7 @@ class Worker:
 
             await random_sleep(.5, .6)
             request = self.api.create_request()
-            request.get_player(
-                player_locale={
-                    'country': 'US',
-                    'language': 'en',
-                    'timezone': 'America/Denver'})
+            request.get_player(player_locale=config.PLAYER_LOCALE)
             responses = await self.call(request)
 
             inventory = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('inventory_items', [])
@@ -347,11 +344,7 @@ class Worker:
 
             await sleep(.1)
             request = self.api.create_request()
-            request.get_player(
-                player_locale={
-                    'country': 'US',
-                    'language': 'en',
-                    'timezone': 'America/Denver'})
+            request.get_player(player_locale=config.PLAYER_LOCALE)
             await self.call(request)
 
         if 7 not in tutorial_state:
@@ -393,7 +386,7 @@ class Worker:
                         else:
                             self.unused_incubators.insert(0, item)
 
-    async def call(self, request, chain=True, stamp=True, buddy=True, dl_hash=True, action=None):
+    async def call(self, request, chain=True, stamp=True, buddy=True, settings=False, dl_hash=True, action=None):
         if chain:
             request.check_challenge()
             request.get_hatched_eggs()
@@ -402,10 +395,11 @@ class Worker:
             else:
                 request.get_inventory()
             request.check_awarded_badges()
-            if dl_hash:
-                request.download_settings(hash=self.download_hash)
-            else:
-                request.download_settings()
+            if settings:
+                if dl_hash:
+                    request.download_settings(hash=self.download_hash)
+                else:
+                    request.download_settings()
             if buddy:
                 request.get_buddy_walked()
 
@@ -599,7 +593,7 @@ class Worker:
 
         diff = self.last_gmo + config.SCAN_DELAY - time()
         if diff > 0:
-            await random_sleep(diff, diff + 1)
+            await sleep(diff + .25)
         responses = await self.call(request)
         self.last_gmo = time()
 
@@ -610,7 +604,9 @@ class Worker:
         forts_seen = 0
         points_seen = 0
 
-        if map_objects.get('status') != 1:
+        if map_objects.get('status') == 3:
+            raise ex.BannedAccountException('GMO code 3')
+        elif map_objects.get('status') != 1:
             self.logger.warning(
                 'MapObjects code: {}'.format(map_objects.get('status')))
             self.empty_visits += 1
