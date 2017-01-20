@@ -16,6 +16,7 @@ from utils import random_sleep, round_coords, load_pickle, load_accounts, get_de
 from shared import DatabaseProcessor
 
 import config
+import requests
 
 if config.NOTIFY:
     from notification import Notifier
@@ -79,6 +80,7 @@ class Worker:
         # last time of a GetMapObjects request
         self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
+        self.num_captchas = 0
         self.eggs = {}
         self.unused_incubators = []
         # API setup
@@ -249,14 +251,14 @@ class Worker:
             self.logger.warning('Starting tutorial')
             await self.complete_tutorial(tutorial_state)
         else:
-            # request 3: get_player_profile
+            # request 4: get_player_profile
             request = self.api.create_request()
             request.get_player_profile()
             await self.call(request, settings=True)
             await random_sleep(.3, .5)
 
         if player_level:
-            # request 4: level_up_rewards
+            # request 5: level_up_rewards
             request = self.api.create_request()
             request.level_up_rewards(level=player_level)
             await self.call(request, settings=True)
@@ -264,9 +266,9 @@ class Worker:
         else:
             self.logger.warning('No player level')
 
+        # request 6: register_background_device
         request = self.api.create_request()
         request.register_background_device(device_type='apple_watch')
-        # treat the login process like an action
         await self.call(request, action=0.1)
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
@@ -483,7 +485,10 @@ class Worker:
             self.inventory_timestamp = timestamp or self.inventory_timestamp
             d_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
             self.download_hash = d_hash or self.download_hash
-            self.check_captcha(responses)
+            if self.check_captcha(responses):
+                self.logger.warning('{} has encountered a CAPTCHA, trying to solve'.format(self.username))
+                self.g['captchas'] += 1
+                await self.handle_captcha(responses)
         return responses
 
     def travel_speed(self, point):
@@ -531,6 +536,10 @@ class Worker:
             self.g['captchas'] += 1
             await sleep(1)
             await self.bench_account()
+        except CaptchaSolveException:
+            self.error_code = 'CAPTCHA'
+            await sleep(1)
+            await self.swap_account(reason='solving CAPTCHA failed')
         except MaxRetriesException:
             self.logger.warning('Hit the maximum number of attempt retries.')
             self.error_code = 'MAX RETRIES'
@@ -888,6 +897,66 @@ class Worker:
                     self.logger.warning("Failed to apply incubator {} on {}, code: {}".format(
                         inc.get('id', 0), egg.get('id', 0), ret))
 
+    async def handle_captcha(self, responses):
+        if self.num_captchas >= config.CAPTCHAS_ALLOWED:
+            self.logger.error("{} encountered too many CAPTCHAs, removing.".format(self.username))
+            raise CaptchaException
+
+        self.error_code = 'C'
+        self.num_captchas += 1
+
+        url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
+        site_key = '6LeeTScTAAAAADqvhqVMhPpr_vB9D364Ia-1dSgK'
+        s = requests.Session()
+        try:
+            requrl = "http://2captcha.com/in.php?key={}&method=userrecaptcha&googlekey={}&pageurl={}"
+            response = s.post(requrl.format(config.CAPTCHA_KEY, site_key, url)).text
+        except Exception as e:
+            self.logger.error('Got an error while trying to solve CAPTCHA. '
+                              'Check your Api Key and account balance.')
+            raise CaptchaSolveException from e
+
+        if 'ERROR_ZERO_BALANCE' in response:
+            config.CAPTCHA_KEY = None
+            self.logger.error("Error: 2captcha reported zero balance, disabeling CAPTCHA solving")
+            raise CaptchaException
+
+        if not response.startswith('OK|'):
+            self.logger.error("Failed to submit CAPTCHA for solving: {}".format(response))
+            raise CaptchaSolveException
+
+        captcha_id = str(response.split('|')[1])
+
+        try:
+            # Get the response, retry every 5 seconds if its not ready
+            while True:
+                recaptcha_response = s.get("http://2captcha.com/res.php?key={}&action=get&id={}"
+                        .format(config.CAPTCHA_KEY, captcha_id)).text
+                if 'CAPCHA_NOT_READY' not in recaptcha_response:
+                    break
+                sleep(5)
+        except Exception as e:
+            self.logger.error('Got an error while trying to solve CAPTCHA. '
+                              'Check your Api Key and account balance.')
+            raise CaptchaSolveException from e
+
+        if not recaptcha_response.startswith('OK|'):
+            self.logger.error("Failed to get CAPTCHA response: {}".format(recaptcha_response))
+            raise CaptchaSolveException
+        token = str(recaptcha_response.split('|')[1])
+
+        request = self.api.create_request()
+        request.verify_challenge(token=token)
+        try:
+            responses = await self.call(request)
+            self.update_accounts_dict()
+            self.logger.warning("Successfully solved CAPTCHA")
+        except CaptchaException:
+            self.logger.warning("CAPTCHA #{} for {} was not solved correctly, trying again".format(
+                    captcha_id, self.username))
+            # try again
+            await self.handle_captcha(responses)
+
     def simulate_jitter(self, amount=0.00002):
         '''Slightly randomize location, by up to ~2.8 meters by default.'''
         self.location = [
@@ -966,6 +1035,7 @@ class Worker:
         self.last_action = self.last_request
         self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
+        self.num_captchas = 0
         self.pokestops = config.SPIN_POKESTOPS
         self.eggs = {}
         self.unused_incubators = []
@@ -1047,8 +1117,13 @@ class Worker:
     @staticmethod
     def check_captcha(responses):
         challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
-        if challenge_url != ' ':
-            raise CaptchaException
+        verify = responses.get('VERIFY_CHALLENGE', {})
+        success = verify.get('success')
+        if challenge_url != ' ' and not success:
+            if config.CAPTCHA_KEY and not verify:
+                return True
+            else:
+                raise CaptchaException
         else:
             return False
 
@@ -1080,3 +1155,6 @@ class MaxRetriesException(Exception):
 
 class CaptchaException(Exception):
     """Raised when a CAPTCHA is needed."""
+
+class CaptchaSolveException(Exception):
+    """Raised when solving a CAPTCHA has failed."""
