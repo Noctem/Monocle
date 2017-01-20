@@ -132,8 +132,8 @@ REPORT_SINCE = datetime(2016, 12, 17)  # base reports on data from after this da
 GOOGLE_MAPS_KEY = 'OYOgW1wryrp2RKJ81u7BLvHfYUA6aArIyuQCXu4'  # this key is fake
 #ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
 
-## Automatically resolve captchas using 2captcha key.
-#CAPTCHA_KEY = 'here_your_api_key'
+## Automatically resolve captchas using 2Captcha key.
+#CAPTCHA_KEY = '1abc234de56fab7c89012d34e56fa7b8'
 ## the number of CAPTCHAs an account is allowed to receive before being swapped out
 #CAPTCHAS_ALLOWED = 3
 

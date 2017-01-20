@@ -9,13 +9,13 @@ from random import choice, randint, uniform, triangular
 from time import time, monotonic
 from array import array
 from queue import Empty
+from aiohttp import ClientSession
 
 from db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
 from shared import DatabaseProcessor
 
 import config
-import requests
 
 if config.NOTIFY:
     from notification import Notifier
@@ -47,8 +47,6 @@ class Worker:
         cell_ids = load_pickle('cells') or {}
     loop = get_event_loop()
     login_semaphore = Semaphore(config.SIMULTANEOUS_LOGINS)
-    if config.CAPTCHA_KEY:
-        session = requests.Session()
 
     proxies = None
     proxy = None
@@ -899,50 +897,59 @@ class Worker:
         self.error_code = 'C'
         self.num_captchas += 1
 
-        url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url')
-        site_key = '6LeeTScTAAAAADqvhqVMhPpr_vB9D364Ia-1dSgK'
-
+        self.create_session()
         try:
-            requrl = "http://2captcha.com/in.php?key={}&method=userrecaptcha&googlekey={}&pageurl={}"
-            response = self.session.post(requrl.format(config.CAPTCHA_KEY, site_key, url), timeout=5).text
+            params = {
+                'key': config.CAPTCHA_KEY,
+                'method': 'userrecaptcha',
+                'googlekey': '6LeeTScTAAAAADqvhqVMhPpr_vB9D364Ia-1dSgK',
+                'pageurl': responses.get('CHECK_CHALLENGE', {}).get('challenge_url'),
+                'json': 1
+            }
+            async with self.session.post('http://2captcha.com/in.php', params=params, timeout=10) as resp:
+                response = await resp.json()
         except Exception as e:
             self.logger.error('Got an error while trying to solve CAPTCHA. '
                               'Check your API Key and account balance.')
             raise CaptchaSolveException from e
 
-        if 'ERROR_ZERO_BALANCE' in response:
-            config.CAPTCHA_KEY = None
-            self.logger.error("Error: 2Captcha reported zero balance, disabling CAPTCHA solving")
-            raise CaptchaException
-
-        if not response.startswith('OK|'):
-            self.logger.error("Failed to submit CAPTCHA for solving: {}".format(response))
+        code = response.get('request')
+        if response.get('status') != 1:
+            if code in ('ERROR_WRONG_USER_KEY', 'ERROR_KEY_DOES_NOT_EXIST', 'ERROR_ZERO_BALANCE'):
+                config.CAPTCHA_KEY = None
+                self.logger.error('2Captcha reported: {}, disabling CAPTCHA solving'.format(code))
+            else:
+                self.logger.error("Failed to submit CAPTCHA for solving: {}".format(code))
             raise CaptchaSolveException
 
-        captcha_id = str(response.split('|')[1])
-
         try:
-            # Get the response, retry every 5 seconds if its not ready
+            # Get the response, retry every 5 seconds if it's not ready
+            params = {
+                'key': config.CAPTCHA_KEY,
+                'action': 'get',
+                'id': code,
+                'json': 1
+            }
             while True:
-                recaptcha_response = self.session.get("http://2captcha.com/res.php?key={}&action=get&id={}"
-                        .format(config.CAPTCHA_KEY, captcha_id), timeout=5).text
-                if 'CAPCHA_NOT_READY' not in recaptcha_response:
+                async with self.session.get("http://2captcha.com/res.php", params=params, timeout=20) as resp:
+                    response = await resp.json()
+                if response.get('request') != 'CAPCHA_NOT_READY':
                     break
-                sleep(5)
+                await sleep(5)
         except Exception as e:
             self.logger.error('Got an error while trying to solve CAPTCHA. '
                               'Check your API Key and account balance.')
             raise CaptchaSolveException from e
 
-        if not recaptcha_response.startswith('OK|'):
-            self.logger.error("Failed to get CAPTCHA response: {}".format(recaptcha_response))
+        token = response.get('request')
+        if not response.get('status') == 1:
+            self.logger.error("Failed to get CAPTCHA response: {}".format(token))
             raise CaptchaSolveException
-        token = str(recaptcha_response.split('|')[1])
 
         request = self.api.create_request()
         request.verify_challenge(token=token)
         try:
-            responses = await self.call(request)
+            responses = await self.call(request, action=4)
             self.update_accounts_dict()
             self.logger.warning("Successfully solved CAPTCHA")
         except CaptchaException:
@@ -1056,6 +1063,18 @@ class Worker:
         self.killed = True
         if self.ever_authenticated:
             self.update_accounts_dict()
+
+    @classmethod
+    def create_session(cls):
+        if not cls.session:
+            cls.session = ClientSession(loop=cls.loop)
+
+    @classmethod
+    def close_session(cls):
+        try:
+            cls.session.close()
+        except Exception:
+            pass
 
     @staticmethod
     def normalize_pokemon(raw, now):

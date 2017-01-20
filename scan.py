@@ -869,6 +869,7 @@ if __name__ == '__main__':
         Worker.spawns.session.close()
         if config.NOTIFY:
             Worker.notifier.session.close()
+        Worker.close_session()
         manager.shutdown()
         Session.close()
 
