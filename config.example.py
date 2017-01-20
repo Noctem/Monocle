@@ -125,9 +125,6 @@ RARE_IDS = (
     3, 6, 9, 45, 62, 71, 80, 85, 87, 89, 91, 94, 114, 130, 131, 134
 )
 
-# the number of threads to use for simultaneous API requests
-#NETWORK_THREADS = round((GRID[0] * GRID[1]) / 15) + 1
-
 from datetime import datetime
 REPORT_SINCE = datetime(2016, 12, 17)  # base reports on data from after this date
 

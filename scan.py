@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 
+import asyncio
+try:
+    from uvloop import EventLoopPolicy
+
+    asyncio.set_event_loop_policy(EventLoopPolicy())
+except ImportError:
+    pass
+
 from datetime import datetime
 from multiprocessing.managers import BaseManager, DictProxy
 from statistics import median
@@ -12,23 +20,16 @@ from signal import signal, SIGINT, SIG_IGN
 from argparse import ArgumentParser
 from logging import getLogger, basicConfig, WARNING, INFO
 from collections import deque
-from pgoapi.hash_server import HashServer
+from pogo_async.hash_server import HashServer
+from pogo_async.session import Session
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
-import asyncio
 import time
 
 try:
     import _thread
 except ImportError:
     import _dummy_thread as _thread
-
-try:
-    from uvloop import EventLoopPolicy
-
-    asyncio.set_event_loop_policy(EventLoopPolicy())
-except ImportError:
-    pass
 
 from db import SIGHTING_CACHE
 from utils import get_current_hour, dump_pickle, get_address, get_start_coords, get_bootstrap_points
@@ -60,7 +61,6 @@ _optional = {
     'ENCOUNTER': None,
     'NOTIFY': False,
     'AUTHKEY': b'm3wtw0',
-    'NETWORK_THREADS': round((config.GRID[0] * config.GRID[1]) / 15) + 1,
     'SPIN_POKESTOPS': False,
     'SPIN_COOLDOWN': 300,
     'COMPLETE_TUTORIAL': False,
@@ -870,6 +870,7 @@ if __name__ == '__main__':
         if config.NOTIFY:
             Worker.notifier.session.close()
         manager.shutdown()
+        Session.close()
 
         try:
             loop.close()
