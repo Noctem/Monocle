@@ -29,16 +29,13 @@ def resolve_captcha(url, api, driver, timestamp):
     request.verify_challenge(token=token)
     request.check_challenge()
     request.get_hatched_eggs()
-    request.get_inventory(last_timestamp_ms = timestamp)
+    request.get_inventory(last_timestamp_ms=timestamp)
     request.check_awarded_badges()
-    request.download_settings(hash=DOWNLOAD_HASH)
     request.get_buddy_walked()
 
     response = request.call()
     success = response.get('responses', {}).get('VERIFY_CHALLENGE', {}).get('success', False)
     return success
-
-DOWNLOAD_HASH = "d3da400db60abf79ea05abc38e2396f0bbd453f9"
 
 if hasattr(config, 'AUTHKEY'):
     authkey = config.AUTHKEY
@@ -81,7 +78,7 @@ while not captcha_queue.empty():
         device_info = get_device_info(account)
         api = PGoApi(device_info=device_info)
         if HASH_KEY:
-            api.activate_hash_server(config.HASH_KEY)
+            api.activate_hash_server(HASH_KEY)
         api.set_position(lat, lon, alt)
 
         authenticated = False
@@ -102,7 +99,7 @@ while not captcha_queue.empty():
                                    provider=account.get('provider'))
 
         request = api.create_request()
-        request.download_remote_config_version(platform=1, app_version=5102)
+        request.download_remote_config_version(platform=1, app_version=5301)
         request.check_challenge()
         request.get_hatched_eggs()
         request.get_inventory()
@@ -113,7 +110,6 @@ while not captcha_queue.empty():
 
         responses = response.get('responses', {})
         challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
-        DOWNLOAD_HASH = responses.get('DOWNLOAD_SETTINGS', {}).get('hash') or DOWNLOAD_HASH
         timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
         account['location'] = lat, lon, alt
         account['inventory_timestamp'] = timestamp

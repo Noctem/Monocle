@@ -102,6 +102,8 @@ ITEM_LIMITS = {
     202:  40,  # Max Revive
 }
 
+# sent with GET_PLAYER requests, should match your region
+PLAYER_LOCALE = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'}
 
 # retry a request after failure this many times before giving up
 MAX_RETRIES = 3

@@ -74,7 +74,8 @@ _optional = {
     'GIVE_UP_UNKNOWN': 60,
     'SKIP_SPAWN': 90,
     'CACHE_CELLS': True,
-    'LOGIN_TIMEOUT': 2.5
+    'LOGIN_TIMEOUT': 2.5,
+    'PLAYER_LOCALE': {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'}
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -267,6 +268,8 @@ class Overseer:
 
         for username, account in self.accounts.items():
             account['username'] = username
+            if account.get('banned'):
+                continue
             if account.get('captcha'):
                 self.captcha_queue.put(account)
             else:
