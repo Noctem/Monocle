@@ -49,6 +49,8 @@ class Worker:
         cell_ids = load_pickle('cells') or {}
     loop = get_event_loop()
     login_semaphore = Semaphore(config.SIMULTANEOUS_LOGINS)
+    if config.CAPTCHA_KEY:
+        session = requests.Session()
 
     proxies = None
     proxy = None
@@ -905,20 +907,20 @@ class Worker:
         self.error_code = 'C'
         self.num_captchas += 1
 
-        url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
+        url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url')
         site_key = '6LeeTScTAAAAADqvhqVMhPpr_vB9D364Ia-1dSgK'
-        s = requests.Session()
+
         try:
             requrl = "http://2captcha.com/in.php?key={}&method=userrecaptcha&googlekey={}&pageurl={}"
-            response = s.post(requrl.format(config.CAPTCHA_KEY, site_key, url)).text
+            response = self.session.post(requrl.format(config.CAPTCHA_KEY, site_key, url), timeout=5).text
         except Exception as e:
             self.logger.error('Got an error while trying to solve CAPTCHA. '
-                              'Check your Api Key and account balance.')
+                              'Check your API Key and account balance.')
             raise CaptchaSolveException from e
 
         if 'ERROR_ZERO_BALANCE' in response:
             config.CAPTCHA_KEY = None
-            self.logger.error("Error: 2captcha reported zero balance, disabeling CAPTCHA solving")
+            self.logger.error("Error: 2Captcha reported zero balance, disabling CAPTCHA solving")
             raise CaptchaException
 
         if not response.startswith('OK|'):
@@ -930,14 +932,14 @@ class Worker:
         try:
             # Get the response, retry every 5 seconds if its not ready
             while True:
-                recaptcha_response = s.get("http://2captcha.com/res.php?key={}&action=get&id={}"
-                        .format(config.CAPTCHA_KEY, captcha_id)).text
+                recaptcha_response = self.session.get("http://2captcha.com/res.php?key={}&action=get&id={}"
+                        .format(config.CAPTCHA_KEY, captcha_id), timeout=5).text
                 if 'CAPCHA_NOT_READY' not in recaptcha_response:
                     break
                 sleep(5)
         except Exception as e:
             self.logger.error('Got an error while trying to solve CAPTCHA. '
-                              'Check your Api Key and account balance.')
+                              'Check your API Key and account balance.')
             raise CaptchaSolveException from e
 
         if not recaptcha_response.startswith('OK|'):
