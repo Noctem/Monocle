@@ -289,7 +289,7 @@ class Worker:
                     'shirt': randint(1,3),
                     'pants': randint(1,2),
                     'shoes': randint(1,6),
-                    'gender': randint(0,1),
+                    'avatar': randint(0,1),
                     'eyes': randint(1,4),
                     'backpack': randint(1,5)
                 })
