@@ -47,7 +47,7 @@ class Spawns:
         dump_pickle('spawns', self.pickle_objects)
 
     def get_altitude(self, point):
-        point = round_coords(point)
+        point = round_coords(point, 3)
         alt = self.altitudes.get(point)
         if not alt:
             alt = get_altitude(point)

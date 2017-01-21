@@ -59,7 +59,7 @@ app = Flask(__name__, template_folder='templates')
 
 @app.route('/')
 def fullmap():
-    map_center = utils.get_map_center()
+    map_center = utils.MAP_CENTER
     return render_template(
         'newmap.html',
         area_name=config.AREA_NAME,
@@ -109,7 +109,7 @@ if config.MAP_WORKERS:
 
     @app.route('/workers')
     def workers_map():
-        map_center = utils.get_map_center()
+        map_center = utils.MAP_CENTER
         return render_template(
             'workersmap.html',
             area_name=config.AREA_NAME,
@@ -275,7 +275,7 @@ def report_main():
             'bottom30': [sighting_to_marker(s) for s in bottom_sightings],
             'rare': [sighting_to_marker(s) for s in rare_sightings],
         },
-        'map_center': utils.get_map_center(),
+        'map_center': utils.MAP_CENTER,
         'zoom': 13,
     }
     icons = {
@@ -316,7 +316,7 @@ def report_single(pokemon_id):
         'charts_data': {
             'hours': db.get_spawns_per_hour(session, pokemon_id),
         },
-        'map_center': utils.get_map_center(),
+        'map_center': utils.MAP_CENTER,
         'zoom': 13,
     }
     session.close()

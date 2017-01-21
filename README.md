@@ -59,6 +59,7 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
     * *requests* is required for using webhooks
     * *aiosocks* is required for using SOCKS proxies
     * *cchardet* and *aiodns* provide better performance with aiohttp
+    * *numba* provides better performance through JIT compilation
 5. Run `python3` from the command line
   1. Input `import db`
   2. then `db.Base.metadata.create_all(db.get_engine())`

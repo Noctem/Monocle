@@ -385,7 +385,7 @@ def get_spawns(session):
         if not Bounds.contain(point):
             continue
 
-        rounded = utils.round_coords(point, precision=3)
+        rounded = utils.round_coords(point, 3)
         altitudes[rounded] = spawn.alt
 
         if not spawn.updated or spawn.updated < config.LAST_MIGRATION:

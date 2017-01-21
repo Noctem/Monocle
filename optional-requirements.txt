@@ -11,3 +11,4 @@ pycairo>=1.10.0
 cchardet>=1.1.0
 aiodns>=1.1.0
 aiosocks>=0.1.7
+numba>=0.30

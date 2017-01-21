@@ -607,7 +607,7 @@ class Worker:
         self.logger.info('Visiting {0[0]:.4f},{0[1]:.4f}'.format(point))
         start = time()
 
-        rounded = round_coords(point, precision=4)
+        rounded = round_coords(point, 4)
         if config.CACHE_CELLS and rounded in self.cell_ids:
             cell_ids = list(self.cell_ids[rounded])
         else:

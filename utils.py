@@ -4,6 +4,7 @@ import polyline
 import time
 import socket
 import pickle
+import functools
 
 from os import mkdir
 from math import ceil, sqrt, hypot, pi, cos
@@ -13,6 +14,23 @@ from geopy.distance import distance
 from pogo_async import utilities as pgoapi_utils
 from sys import platform
 from asyncio import sleep
+
+try:
+    from numba import jit
+    from numba.types import uint8, uint16, float32, float64, UniTuple
+except ImportError:
+    def jit(method=None, *args):
+        if method is None:
+            return functools.partial(jit)
+        @functools.wraps(method)
+        def f(*args, **kwargs):
+            return method(*args, **kwargs)
+        return f
+
+    class Stub:
+        def __init__(*args): pass
+        def __call__(*args): pass
+    uint8 = uint16 = float32 = float64 = UniTuple = Stub
 
 import config
 
@@ -49,23 +67,17 @@ IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone9,3': 'D101AP',
            'iPhone9,4': 'D111AP'}
 
-LAT_MEAN = (config.MAP_END[0] + config.MAP_START[0]) / 2
+if config.BOUNDARIES:
+    MAP_CENTER = config.BOUNDARIES.centroid.coords[0]
+    LAT_MEAN, LON_MEAN = MAP_CENTER
+else:
+    LAT_MEAN = (config.MAP_END[0] + config.MAP_START[0]) / 2
+    LON_MEAN = (config.MAP_END[1] + config.MAP_START[1]) / 2
+    MAP_CENTER = LAT_MEAN, LON_MEAN
+
 LAT_RAD = LAT_MEAN * pi / 180
 LON_MULT = cos(pi * LAT_MEAN / 180)
 METER_MULT = 111132.92 + (-559.82 * cos(2 * LAT_RAD)) + (1.175 * cos(4 * LAT_RAD)) + (-0.0023 * cos(6 * LAT_RAD))
-
-
-def get_map_center():
-    """Returns center of the map"""
-    if config.BOUNDARIES:
-        return config.BOUNDARIES.centroid.coords[0]
-    elif config.MAP_START and config.MAP_END:
-        lat = LAT_MEAN
-        lon = (config.MAP_END[1] + config.MAP_START[1]) / 2
-        return lat, lon
-    else:
-        raise ValueError(
-            'Must set either MAP_START/END or BOUNDARIES to get center')
 
 
 def get_scan_area():
@@ -76,6 +88,7 @@ def get_scan_area():
     return area
 
 
+@jit(UniTuple(float64, 2)(uint16))
 def get_start_coords(worker_no):
     """Returns center of square for given worker"""
     grid = config.GRID
@@ -84,28 +97,11 @@ def get_start_coords(worker_no):
 
     column = worker_no % per_column
     row = int(worker_no / per_column)
-    part_lat = (config.MAP_END[0] - config.MAP_START[0]) / float(grid[0])
-    part_lon = (config.MAP_END[1] - config.MAP_START[1]) / float(grid[1])
+    part_lat = (config.MAP_END[0] - config.MAP_START[0]) / grid[0]
+    part_lon = (config.MAP_END[1] - config.MAP_START[1]) / grid[1]
     start_lat = config.MAP_START[0] + part_lat * row + part_lat / 2
     start_lon = config.MAP_START[1] + part_lon * column + part_lon / 2
     return start_lat, start_lon
-
-
-def get_all_start_coords():
-    """Returns center of square for given worker"""
-    grid = config.GRID
-    total_workers = grid[0] * grid[1]
-    per_column = int(total_workers / grid[0])
-    coords = []
-    for num in range(0, total_workers):
-        column = num % per_column
-        row = int(num / per_column)
-        part_lat = (config.MAP_END[0] - config.MAP_START[0]) / float(grid[0])
-        part_lon = (config.MAP_END[1] - config.MAP_START[1]) / float(grid[1])
-        start_lat = config.MAP_START[0] + part_lat * row + part_lat / 2
-        start_lon = config.MAP_START[1] + part_lon * column + part_lon / 2
-        coords.append((start_lat, start_lon))
-    return coords
 
 
 def float_range(start, end, step):
@@ -125,7 +121,7 @@ def get_gains(dist=70):
 
     Gain is space between circles.
     """
-    start = Point(*get_map_center())
+    start = Point(*MAP_CENTER)
     base = dist * sqrt(3)
     height = base * sqrt(3) / 2
     dis_a = distance(meters=base)
@@ -135,10 +131,12 @@ def get_gains(dist=70):
     return abs(start.latitude - lat_gain), abs(start.longitude - lon_gain)
 
 
-def round_coords(point, precision=3):
+@jit
+def round_coords(point, precision):
     return round(point[0], precision), round(point[1], precision)
 
 
+@jit(float32())
 def random_altitude():
     altitude = random.uniform(*config.ALT_RANGE)
     return altitude
@@ -308,6 +306,7 @@ def get_current_hour(now=None):
     return round(now - (now % 3600))
 
 
+@jit
 def get_distance(p1, p2):
     return hypot(p1[0] - p2[0], (p1[1] - p2[1]) * LON_MULT) * METER_MULT
 
