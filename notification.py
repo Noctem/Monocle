@@ -29,7 +29,8 @@ _optional = {
     'FULL_TIME': 1800,
     'TIME_REQUIRED': 300,
     'NOTIFY_RANKING': 90,
-    'ALWAYS_NOTIFY_IDS': set()
+    'ALWAYS_NOTIFY_IDS': set(),
+    'NOTIFICATION_CACHE': 100
 }
 # set defaults for unset config options
 for setting_name, default in _optional.items():
@@ -485,7 +486,7 @@ class Notifier:
 
     def __init__(self, spawns):
         self.spawns = spawns
-        self.recent_notifications = deque(maxlen=100)
+        self.recent_notifications = deque(maxlen=config.NOTIFICATION_CACHE)
         self.notify_ranking = config.NOTIFY_RANKING
         self.session = Session(autoflush=False)
         self.initial_score = config.INITIAL_SCORE
@@ -558,10 +559,13 @@ class Notifier:
         pokemon_id = pokemon['pokemon_id']
 
         if (pokemon_id in self.never_notify
-                or pokemon_id not in self.notify_ids
                 or pokemon['encounter_id'] in self.recent_notifications):
             return False
-        if config.IGNORE_RARITY or pokemon_id in self.always_notify:
+        if pokemon_id in self.always_notify:
+            return True
+        if pokemon_id not in self.notify_ids:
+            return False
+        if config.IGNORE_RARITY:
             return True
 
         rareness = self.get_rareness_score(pokemon_id)
@@ -614,7 +618,7 @@ class Notifier:
         if score_required:
             if config.IGNORE_RARITY:
                 score = iv_score
-            elif config.IGNORE_IVS:
+            elif config.IGNORE_IVS or iv_score is None:
                 score = self.get_rareness_score(pokemon_id)
             else:
                 rareness = self.get_rareness_score(pokemon_id)

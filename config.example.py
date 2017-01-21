@@ -90,6 +90,7 @@ SPIN_COOLDOWN = 300    # spin only one PokéStop every n seconds (default 300)
 # minimum number of each item to keep if the bag is cleaned
 # remove or set to None to disable bag cleaning
 # automatically disabled if SPIN_POKESTOPS is disabled
+''' # triple quotes are comments, remove them to use this ITEM_LIMITS example
 ITEM_LIMITS = {
     1:    20,  # Poké Ball
     2:    50,  # Great Ball
@@ -101,6 +102,7 @@ ITEM_LIMITS = {
     201:   0,  # Revive
     202:  40,  # Max Revive
 }
+'''
 
 # sent with GET_PLAYER requests, should match your region
 PLAYER_LOCALE = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'}
@@ -167,8 +169,7 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 #CACHE_CELLS = True
 
 ### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
-'''
-NOTIFY = True  # enable notifications
+NOTIFY = False  # enable notifications
 
 # create images with Pokémon stats for Tweets
 # requires cairo and ENCOUNTER = 'notifying' or 'all'
@@ -192,10 +193,10 @@ NOTIFY_RANKING = 90
 #NOTIFY_IDS = (130, 89, 131, 3, 9, 134, 62, 94, 91, 87, 71, 45, 85, 114, 80, 6)
 
 # Sightings of the top (x) will always be notified about, even if below TIME_REQUIRED
+# (ignored if using NOTIFY_IDS instead of NOTIFY_RANKING)
 ALWAYS_NOTIFY = 14
 
 # Always notify about the following Pokémon even if their time remaining or scores are not high enough
-# can be combined with the ALWAYS_NOTIFY ranking
 #ALWAYS_NOTIFY_IDS = {89, 130, 144, 145, 146, 150, 151}
 
 # Never notify about the following Pokémon, even if they would otherwise be eligible
@@ -215,10 +216,14 @@ ALWAYS_NOTIFY = 14
 # to MINIMUM_SCORE over the course of FULL_TIME seconds following a notification
 # Pokémon scores are an average of the Pokémon's rarity score and IV score (from 0 to 1)
 # If NOTIFY_RANKING is 90, the 90th most common Pokémon will have a rarity of score 0, the rarest will be 1.
-# Perfect IVs have a score of 1, the worst IVs have a score of 0. Attack IV is weighted more heavily.
-FULL_TIME = 1680  # the number of seconds after a notification when only MINIMUM_SCORE will be required
+# IV score is the IV sum divided by 45 (perfect IVs).
+FULL_TIME = 1800  # the number of seconds after a notification when only MINIMUM_SCORE will be required
 INITIAL_SCORE = 0.7  # the required score immediately after a notification
-MINIMUM_SCORE = 0.55  # the required score after FULL_TIME seconds have passed
+MINIMUM_SCORE = 0.4  # the required score after FULL_TIME seconds have passed
+
+# the number of encounter_ids to retain for duplicate checking. Should be at
+# least as high as the highest number of notifications you'd send in an hour.
+NOTIFICATION_CACHE = 100
 
 ### The following values are fake, replace them with your own keys to enable
 ### PushBullet notifications and/or tweeting, otherwise leave them out of your
@@ -279,4 +284,3 @@ MINIMUM_SCORE = 0.55  # the required score after FULL_TIME seconds have passed
 #LANDMARKS.add('the University of Utah', shortname='the U of U', hashtags={'Utes'}, phrase='at', is_area=True)
 ## provide corner points to create a polygon of the area since OpenStreetMap does not have a shape for it
 #LANDMARKS.add('Yalecrest', points=((40.750263, -111.836502), (40.750377, -111.851108), (40.751515, -111.853833), (40.741212, -111.853909), (40.741188, -111.836519)), is_area=True)
-'''
