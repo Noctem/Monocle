@@ -17,20 +17,9 @@ from asyncio import sleep
 
 try:
     from numba import jit
-    from numba.types import uint8, uint16, float32, float64, UniTuple
 except ImportError:
-    def jit(method=None, *args):
-        if method is None:
-            return functools.partial(jit)
-        @functools.wraps(method)
-        def f(*args, **kwargs):
-            return method(*args, **kwargs)
-        return f
-
-    class Stub:
-        def __init__(*args): pass
-        def __call__(*args): pass
-    uint8 = uint16 = float32 = float64 = UniTuple = Stub
+    def jit(func):
+        return func
 
 import config
 
@@ -88,7 +77,7 @@ def get_scan_area():
     return area
 
 
-@jit(UniTuple(float64, 2)(uint16))
+@jit
 def get_start_coords(worker_no):
     """Returns center of square for given worker"""
     grid = config.GRID
@@ -136,7 +125,7 @@ def round_coords(point, precision):
     return round(point[0], precision), round(point[1], precision)
 
 
-@jit(float32())
+@jit
 def random_altitude():
     altitude = random.uniform(*config.ALT_RANGE)
     return altitude
