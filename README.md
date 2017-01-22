@@ -15,7 +15,7 @@ There's also a simple interface that displays active Pokemon on a map, and can g
 
 Here it is in action:
 
-![in action](static/demo/map.png)
+![in action](pokeminer/static/demo/map.png)
 
 Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and data source can easily be configured to match [any of these](https://leaflet-extras.github.io/leaflet-providers/preview/) with the `MAP_PROVIDER_URL` config option.
 
@@ -84,11 +84,11 @@ The workers' live locations and stats can be viewed from the main map by enablin
 
 Here's what the overall report looks like:
 
-[![report](https://i.imgur.com/LH8S85dm.jpg)](static/demo/report.png)
+[![report](https://i.imgur.com/LH8S85dm.jpg)](pokeminer/static/demo/report.png)
 
 The gyms statistics server is in a separate file, because it's intended to be shared publicly as a webpage.
 
-[![gyms](https://i.imgur.com/MWpHAEWm.jpg)](static/demo/gyms.png)
+[![gyms](https://i.imgur.com/MWpHAEWm.jpg)](pokeminer/static/demo/gyms.png)
 
 ## License
 
