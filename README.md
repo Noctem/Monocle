@@ -46,7 +46,7 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
 ## Setting up
 1. Install Python 3.5 or later (3.6 is recommended)
 2. `git clone https://github.com/Noctem/pokeminer.git` or download the [zip](https://github.com/Noctem/pokeminer/archive/develop.zip)
-3. Copy `config.example.py` to `config.py` and customize it with your accounts, location, database information, and any other relevant settings. The comments in the config example provide some information about the options.
+3. Copy `config.example.py` to `pokeminer/config.py` and customize it with your accounts, location, database information, and any other relevant settings. The comments in the config example provide some information about the options.
 4. `pip3 install -r requirements.txt`
   * Optionally `pip3 install` additional packages listed in optional-requirements
     * *pushbullet.py* is required for pushbullet notifications
@@ -62,11 +62,9 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
     * *aiosocks* is required for using SOCKS proxies
     * *cchardet* and *aiodns* provide better performance with aiohttp
     * *numba* provides better performance through JIT compilation
-5. Run `python3` from the command line
-  1. Input `import db`
-  2. then `db.Base.metadata.create_all(db.get_engine())`
-6. Run `scan.py`
-  * Optionally run the live map interface and reporting system: `web.py`
+5. Run `python3 scripts/create_db.py` from the command line
+6. Run `python3 scan.py`
+  * Optionally run the live map interface and reporting system: `python3 web.py`
 
 
 **Note**: Pokeminer works with Python 3.5 or later only. Python 2.7 is **not supported** and is not compatible at all since I moved from threads to coroutines. Seriously, it's 2016, Python 2.7 hasn't been developed for 6 years, why don't you upgrade already?
