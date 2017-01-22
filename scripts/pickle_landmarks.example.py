@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 try:
-    from landmarks import Landmarks
+    from pokeminer.landmarks import Landmarks
 except ImportError:
     print('Copy this script to the pokeminer directory, not scripts/')
     raise

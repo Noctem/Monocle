@@ -1,14 +1,18 @@
+#!/usr/bin/env python3
+
 from datetime import datetime
+from pkg_resources import resource_filename
+
 import argparse
 import json
 
 from flask import Flask, request, render_template, jsonify
 from multiprocessing.managers import BaseManager
 
-import config
-import db
-import utils
-from names import POKEMON_NAMES
+from pokeminer import config
+from pokeminer import db
+from pokeminer import utils
+from pokeminer.names import POKEMON_NAMES
 
 
 # Check whether config has all necessary attributes
@@ -55,7 +59,13 @@ def get_args():
     return parser.parse_args()
 
 
-app = Flask(__name__, template_folder='templates')
+app = Flask(__name__, template_folder=resource_filename('pokeminer', 'templates'), static_folder=resource_filename('pokeminer', 'static'))
+
+class AccountManager(BaseManager): pass
+AccountManager.register('worker_dict')
+manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
+manager.connect()
+worker_dict = manager.worker_dict()
 
 @app.route('/')
 def fullmap():
@@ -84,11 +94,10 @@ def get_pokestops():
 def get_scan_coords():
     return jsonify(get_scan_coords())
 
-class AccountManager(BaseManager): pass
-AccountManager.register('worker_dict')
-manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
-manager.connect()
-worker_dict = manager.worker_dict()
+@app.route('/static/<path:path>')
+def send_static(path):
+    return send_from_directory(path)
+
 
 if config.MAP_WORKERS:
     def manager_connect():
@@ -104,7 +113,7 @@ if config.MAP_WORKERS:
 
     @app.route('/workers_data')
     def workers_data():
-        return json.dumps(get_worker_markers())
+        return jsonify(get_worker_markers())
 
 
     @app.route('/workers')
@@ -149,6 +158,7 @@ if config.MAP_WORKERS:
                 'sent_notification': sent_notification
             })
         return markers
+
 
 def get_pokemarkers():
     markers = []
@@ -338,7 +348,7 @@ def report_single(pokemon_id):
 
 def sighting_to_marker(sighting):
     return {
-        'icon': '/static/icons/{}.png'.format(sighting.pokemon_id),
+        'icon': resource_filename('pokeminer', 'static/icons/{}.png'.format(sighting.pokemon_id)),
         'lat': sighting.lat,
         'lon': sighting.lon,
     }
@@ -350,9 +360,12 @@ def report_heatmap():
     pokemon_id = request.args.get('id')
     points = db.get_all_spawn_coords(session, pokemon_id=pokemon_id)
     session.close()
-    return json.dumps(points)
+    return jsonify(points)
 
 
-if __name__ == '__main__':
+def main():
     args = get_args()
     app.run(debug=args.debug, threaded=True, host=args.host, port=args.port)
+
+if __name__ == '__main__':
+    main()

@@ -1,16 +1,40 @@
 from datetime import datetime, timedelta
+from pkg_resources import resource_filename
+
 import time
+import argparse
 
 from flask import Flask, render_template
 
-from names import POKEMON_NAMES
-from web import get_args  # pretty handy function, actually
-import config
-import db
-import utils
+from pokeminer.names import POKEMON_NAMES
+from pokeminer import config
+from pokeminer import db
+from pokeminer import utils
 
 
-app = Flask(__name__, template_folder='templates')
+app = Flask(__name__, template_folder=resource_filename('pokeminer', 'templates'))
+
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-H',
+        '--host',
+        help='Set web server listening host',
+        default='127.0.0.1'
+    )
+    parser.add_argument(
+        '-P',
+        '--port',
+        type=int,
+        help='Set web server listening port',
+        default=5001
+    )
+    parser.add_argument(
+        '-d', '--debug', help='Debug Mode', action='store_true'
+    )
+    parser.set_defaults(debug=False)
+    return parser.parse_args()
 
 
 CACHE = {

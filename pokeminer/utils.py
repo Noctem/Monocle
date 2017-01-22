@@ -7,6 +7,7 @@ import pickle
 import functools
 
 from os import mkdir
+from os.path import join, exists
 from math import ceil, sqrt, hypot, pi, cos
 from uuid import uuid4
 from geopy import Point
@@ -21,7 +22,7 @@ except ImportError:
     def jit(func):
         return func
 
-import config
+from . import config
 
 _optional = {
     'ALT_RANGE': (300, 400),
@@ -33,12 +34,19 @@ _optional = {
     'PASS': None,
     'PROVIDER': None,
     'MANAGER_ADDRESS': None,
-    'BOOTSTRAP_RADIUS': 450
+    'BOOTSTRAP_RADIUS': 450,
+    'DIRECTORY': None
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
 del _optional
+
+if config.DIRECTORY is None:
+    if exists(join('..', 'pickles')):
+        config.DIRECTORY = '..'
+    else:
+        config.DIRECTORY = ''
 
 IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone5,2': 'N42AP',
@@ -314,16 +322,16 @@ def get_address():
     if config.MANAGER_ADDRESS:
         return config.MANAGER_ADDRESS
     if platform == 'win32':
-        address=r'\\.\pipe\pokeminer'
+        address = r'\\.\pipe\pokeminer'
     elif hasattr(socket, 'AF_UNIX'):
-        address='pokeminer.sock'
+        address = join(config.DIRECTORY, 'pokeminer.sock')
     else:
-        address=('127.0.0.1', 5001)
+        address = ('127.0.0.1', 5001)
     return address
 
 
 def load_pickle(name):
-    location = 'pickles/{}.pickle'.format(name)
+    location = join(config.DIRECTORY, 'pickles', '{}.pickle'.format(name))
     try:
         with open(location, 'rb') as f:
             return pickle.load(f)
@@ -332,21 +340,23 @@ def load_pickle(name):
 
 
 def dump_pickle(name, var):
+    folder = join(config.DIRECTORY, 'pickles')
     try:
-        mkdir('pickles')
+        mkdir(folder)
     except FileExistsError:
         pass
     except Exception as e:
         raise OSError("Failed to create 'pickles' folder, please create it manually") from e
 
-    location = 'pickles/{}.pickle'.format(name)
+    location = join(folder, '{}.pickle'.format(name))
     with open(location, 'wb') as f:
         pickle.dump(var, f, pickle.HIGHEST_PROTOCOL)
 
 
 def load_accounts():
+    location = join(config.DIRECTORY, 'pickles', 'accounts.pickle')
     try:
-        with open('pickles/accounts.pickle', 'rb') as f:
+        with open(location, 'rb') as f:
             accounts = pickle.load(f)
         if (config.ACCOUNTS and 
                 set(accounts) != set(acc[0] for acc in config.ACCOUNTS)):

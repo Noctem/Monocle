@@ -8,9 +8,9 @@ from random import shuffle
 
 import asyncio
 
-from utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_point_altitudes
+from .utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_point_altitudes
 
-import db
+from . import db
 
 class Spawns:
     """Manage spawn points and times"""

@@ -11,10 +11,10 @@ from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT
 from sqlalchemy.exc import DBAPIError
 
-import utils
+from . import utils
 
 try:
-    import config
+    from . import config
     DB_ENGINE = config.DB_ENGINE
 except (ImportError, AttributeError):
     DB_ENGINE = 'sqlite:///db.sqlite'

@@ -1,16 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from collections import deque
-from os import mkdir
 from math import sqrt
 from time import monotonic
 from logging import getLogger
+from pkg_resources import resource_stream
+from tempfile import NamedTemporaryFile
 
-import pickle
-
-from db import Session, get_pokemon_ranking, estimate_remaining_time
-from names import POKEMON_NAMES, MOVES
-
-import config
+from .utils import load_pickle
+from .db import Session, get_pokemon_ranking, estimate_remaining_time
+from .names import POKEMON_NAMES, MOVES
+from . import config
 
 # set unset config options to None
 for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
@@ -103,21 +102,18 @@ class PokeImage:
 
     def create(self):
         if self.time_of_day > 1:
-            bg = 'static/img/notification-bg-night.png'
+            bg = resource_stream('pokeminer', 'static/img/notification-bg-night.png')
         else:
-            bg = 'static/img/notification-bg-day.png'
+            bg = resource_stream('pokeminer', 'static/img/notification-bg-day.png', 'pokeminer')
         ims = cairo.ImageSurface.create_from_png(bg)
         self.context = cairo.Context(ims)
-        pokepic = 'static/original-icons/{}.png'.format(self.pokemon_id)
+        pokepic = resource_stream('pokeminer', 'static/original-icons/{}.png'.format(self.pokemon_id))
         self.draw_stats()
         self.draw_image(pokepic, 204, 224)
         self.draw_name()
-        image = 'notification-images/{}-notification.png'.format(self.name)
-        try:
-            mkdir('notification-images')
-        except FileExistsError:
-            pass
+        image = NamedTemporaryFile(suffix='.png', delete=True)
         ims.write_to_png(image)
+        image.mode = 'rb'
         return image
 
     def draw_stats(self):
@@ -385,15 +381,6 @@ class Notification:
         except Exception:
             self.logger.exception('Failed to create a Twitter API object.')
 
-        if config.TWEET_IMAGES:
-            try:
-                image = PokeImage(self.pokemon_id, self.iv, self.moves, self.time_of_day).create()
-            except Exception:
-                image = None
-                self.logger.exception('Failed to create a Tweet image.')
-        else:
-            image = None
-
         tag_string = generate_tag_string(self.hashtags)
 
         if self.expire_time:
@@ -457,6 +444,13 @@ class Notification:
                     d=self.description, n=self.name, e1=self.min_expire_time,
                     e2=self.max_expire_time, u=self.map_link)
 
+        image = None
+        if config.TWEET_IMAGES:
+            try:
+                image = PokeImage(self.pokemon_id, self.iv, self.moves, self.time_of_day).create()
+            except Exception:
+                self.logger.exception('Failed to create a Tweet image.')
+
         try:
             api.PostUpdate(tweet_text,
                            media=image,
@@ -469,6 +463,11 @@ class Notification:
         else:
             self.logger.info('Sent a tweet about {}.'.format(self.name))
             return True
+        finally:
+            try:
+                image.close()
+            except AttributeError:
+                pass
 
     @staticmethod
     def generic_place_string():
@@ -516,12 +515,9 @@ class Notifier:
     def set_pokemon_ranking(self, loadpickle=False):
         self.ranking_time = monotonic()
         if loadpickle:
-            try:
-                with open('pickles/ranking.pickle', 'rb') as f:
-                    self.pokemon_ranking = pickle.load(f)
-                    return
-            except (FileNotFoundError, EOFError):
-                pass
+            self.pokemon_ranking = load_pickle('ranking')
+            if self.pokemon_ranking:
+                return
         try:
             self.pokemon_ranking = get_pokemon_ranking(self.session)
             with open('pickles/ranking.pickle', 'wb') as f:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from config import LANGUAGE
+from .config import LANGUAGE
 
 EN_NAMES = {
     1: 'Bulbasaur',

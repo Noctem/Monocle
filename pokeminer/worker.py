@@ -12,14 +12,13 @@ from queue import Empty
 from aiohttp import ClientSession
 from aiohttp.errors import ProxyConnectionError
 
-from db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
-from utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
-from shared import DatabaseProcessor
-
-import config
+from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
+from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
+from .shared import DatabaseProcessor
+from . import config
 
 if config.NOTIFY:
-    from notification import Notifier
+    from .notification import Notifier
 
 if config.CONTROL_SOCKS:
     from stem import Signal

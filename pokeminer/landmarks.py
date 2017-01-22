@@ -2,6 +2,7 @@ from shapely.geometry import Point, Polygon, shape, box, LineString
 from geopy import Nominatim
 from geopy.distance import great_circle, distance
 
+
 class FailedQuery(Exception):
     """Raised when no location is found."""
 

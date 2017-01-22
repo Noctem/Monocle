@@ -33,6 +33,8 @@ GIVE_UP_KNOWN = 75   # try to find a worker for a known spawn for this many seco
 GIVE_UP_UNKNOWN = 60 # try to find a worker for an unknown point for this many seconds before giving up
 SKIP_SPAWN = 90      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
 
+# the directory that the pickles folder, socket, etc. will go in
+#DIRECTORY = None
 
 # Limit the number of simultaneous logins (and app simulations) to this many.
 # Lower numbers will increase the amount of time it takes for all workers to
