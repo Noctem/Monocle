@@ -113,7 +113,7 @@ if config.MAP_WORKERS:
 
     @app.route('/workers_data')
     def workers_data():
-        return jsonify(get_worker_markers())
+        return json.dumps(get_worker_markers())
 
 
     @app.route('/workers')
@@ -360,7 +360,7 @@ def report_heatmap():
     pokemon_id = request.args.get('id')
     points = db.get_all_spawn_coords(session, pokemon_id=pokemon_id)
     session.close()
-    return jsonify(points)
+    return json.dumps(points)
 
 
 def main():
