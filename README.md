@@ -1,5 +1,7 @@
 # pokeminer+
 
+[![Build Status](https://travis-ci.org/Noctem/pokeminer.svg?branch=develop)](https://travis-ci.org/Noctem/pokeminer)
+
 A Pokémon Go scraper capable of scanning large areas for Pokémon spawns over long periods of time. Features spawnpoint scanning, Twitter and PushBullet notifications, accurate expiration times and estimates based on historical data, pokestop and gym collection, a CAPTCHA solving script, and more.
 
 [A demonstration of the Twitter notifications can be viewed here](https://twitter.com/SLCPokemon).
