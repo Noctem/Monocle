@@ -10,6 +10,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.sql import func
 
 from . import utils
 
@@ -706,32 +707,22 @@ def get_despawn_time(session, spawn_id):
 
 
 def get_first_last(session, spawn_id):
-    query = session.execute('''
-        SELECT min(first_seconds) as min, max(last_seconds) as max
-        FROM mystery_sightings
-        WHERE spawn_id = {i}
-        AND first_seen > {m}
-    '''.format(i=spawn_id, m=config.LAST_MIGRATION))
-    result = query.first()
-    if result:
-        return result
-    else:
-        return None, None
+    result = session.query(func.min(Mystery.first_seconds), func.max(Mystery.last_seconds)) \
+        .filter(Mystery.spawn_id == spawn_id) \
+        .filter(Mystery.first_seen > config.LAST_MIGRATION) \
+        .first()
+    return result
 
 
 def get_widest_range(session, spawn_id):
-    query = session.execute('''
-        SELECT max(seen_range)
-        FROM mystery_sightings
-        WHERE spawn_id = {i}
-        AND first_seen > {m}
-    '''.format(i=spawn_id, m=config.LAST_MIGRATION))
-    largest = None
+    largest = session.query(func.max(Mystery.seen_range)) \
+        .filter(Mystery.spawn_id == spawn_id) \
+        .filter(Mystery.first_seen > config.LAST_MIGRATION) \
+        .first()
     try:
-        largest = query.first()[0]
-    except TypeError:
-        pass
-    return largest
+        return largest[0]
+    except Exception:
+        return None
 
 
 def estimate_remaining_time(session, spawn_id, seen=None):
