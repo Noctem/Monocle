@@ -163,7 +163,7 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 # Address to use for manager, leave unset or set to None if you're note sure.
 #MANAGER_ADDRESS = r'\\.\pipe\pokeminer'  # must be in this format for Windows
 #MANAGER_ADDRESS = 'pokeminer.sock'       # the socket name for Unix systems
-#MANAGER_ADDRESS = ('127.0.0.1', 5001)    # could be used for CAPTCHA solving and live worker maps on remote systems
+#MANAGER_ADDRESS = ('127.0.0.1', 5002)    # could be used for CAPTCHA solving and live worker maps on remote systems
 
 # Store the cell IDs so that they don't have to be recalculated every visit.
 # Highly recommended unless you don't have enough memory for them.

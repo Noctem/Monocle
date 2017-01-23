@@ -7,7 +7,7 @@ import argparse
 import json
 
 from flask import Flask, request, render_template, jsonify
-from multiprocessing.managers import BaseManager
+from multiprocessing.managers import BaseManager, RemoteError
 
 from pokeminer import config
 from pokeminer import db
@@ -61,11 +61,6 @@ def get_args():
 
 app = Flask(__name__, template_folder=resource_filename('pokeminer', 'templates'), static_folder=resource_filename('pokeminer', 'static'))
 
-class AccountManager(BaseManager): pass
-AccountManager.register('worker_dict')
-manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
-manager.connect()
-worker_dict = manager.worker_dict()
 
 @app.route('/')
 def fullmap():
@@ -100,6 +95,9 @@ def send_static(path):
 
 
 if config.MAP_WORKERS:
+    class AccountManager(BaseManager): pass
+    AccountManager.register('worker_dict')
+
     def manager_connect():
         global worker_dict
         global manager
@@ -107,9 +105,11 @@ if config.MAP_WORKERS:
             manager = AccountManager(address=utils.get_address(), authkey=config.AUTHKEY)
             manager.connect()
             worker_dict = manager.worker_dict()
-        except (FileNotFoundError, AttributeError):
+        except (FileNotFoundError, AttributeError, RemoteError, ConnectionRefusedError):
             print('Unable to connect to manager for worker data.')
             worker_dict = {}
+
+    manager_connect()
 
     @app.route('/workers_data')
     def workers_data():
