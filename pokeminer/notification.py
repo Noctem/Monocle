@@ -6,7 +6,7 @@ from logging import getLogger
 from pkg_resources import resource_stream
 from tempfile import NamedTemporaryFile
 
-from .utils import load_pickle
+from .utils import load_pickle, dump_pickle
 from .db import Session, get_pokemon_ranking, estimate_remaining_time
 from .names import POKEMON_NAMES, MOVES
 from . import config
@@ -520,11 +520,11 @@ class Notifier:
                 return
         try:
             self.pokemon_ranking = get_pokemon_ranking(self.session)
-            with open('pickles/ranking.pickle', 'wb') as f:
-                pickle.dump(self.pokemon_ranking, f, pickle.HIGHEST_PROTOCOL)
         except Exception:
             self.session.rollback()
             self.logger.exception('An exception occurred while trying to update rankings.')
+        dump_pickle('ranking', self.pokemon_ranking)
+
 
     def get_rareness_score(self, pokemon_id):
         if pokemon_id in self.rarity_override:
@@ -638,7 +638,7 @@ class Notifier:
                 time_till_hidden = estimate_remaining_time(self.session, spawn_id, seen)
             except Exception:
                 self.session.rollback()
-                self.logger.exception('An exception occurred while trying to esimate remaining time.')
+                self.logger.exception('An exception occurred while trying to estimate remaining time.')
             mean = sum(time_till_hidden) / 2
 
             if mean < config.TIME_REQUIRED and pokemon_id not in self.always_notify:

@@ -36,11 +36,14 @@ SKIP_SPAWN = 90      # don't even try to find a worker for a spawn if the spawn 
 # the directory that the pickles folder, socket, etc. will go in
 #DIRECTORY = None
 
-# Limit the number of simultaneous logins (and app simulations) to this many.
+# Limit the number of simultaneous logins to this many at a time.
 # Lower numbers will increase the amount of time it takes for all workers to
 # get started but are recommended to avoid suddenly flooding the servers with
 # accounts and arousing suspicion.
 SIMULTANEOUS_LOGINS = 4
+
+# Limit the number of workers simulating the app startup process simultaneously.
+SIMULTANEOUS_SIMULATION = 10
 
 ## alternatively define a Polygon to use as boundaries (requires shapely)
 ## if BOUNDARIES is set, STAY_WITHIN_MAP will be ignored

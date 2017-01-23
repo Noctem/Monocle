@@ -105,6 +105,11 @@ try:
         raise ValueError('SIMULTANEOUS_LOGINS must be at least 1.')
 except (TypeError, AttributeError):
     config.SIMULTANEOUS_LOGINS = 4
+try:
+    if config.SIMULTANEOUS_SIMULATION < 1:
+        raise ValueError('SIMULTANEOUS_SIMULATION must be at least 1.')
+except (TypeError, AttributeError):
+    config.SIMULTANEOUS_SIMULATION = config.SIMULTANEOUS_LOGINS
 
 if config.ENCOUNTER not in (None, 'notifying', 'all'):
     raise ValueError("Valid ENCOUNTER settings are: None, 'notifying', and 'all'")

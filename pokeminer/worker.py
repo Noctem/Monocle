@@ -9,8 +9,7 @@ from random import choice, randint, uniform, triangular
 from time import time, monotonic
 from array import array
 from queue import Empty
-from aiohttp import ClientSession
-from aiohttp.errors import ProxyConnectionError
+from aiohttp import ClientSession, ProxyConnectionError
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
@@ -47,6 +46,7 @@ class Worker:
         cell_ids = load_pickle('cells') or {}
     loop = get_event_loop()
     login_semaphore = Semaphore(config.SIMULTANEOUS_LOGINS)
+    sim_semaphore = Semaphore(config.SIMULTANEOUS_SIMULATION)
 
     proxies = None
     proxy = None
@@ -81,6 +81,7 @@ class Worker:
         # last time of a GetMapObjects request
         self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
+        self.player_level = self.account.get('player_level')
         self.num_captchas = 0
         self.eggs = {}
         self.unused_incubators = []
@@ -152,7 +153,7 @@ class Worker:
     async def login(self):
         """Logs worker in and prepares for scanning"""
         self.logger.info('Trying to log in')
-        self.error_code = '^'
+        self.error_code = '∨'
 
         async with self.login_semaphore:
             if self.killed:
@@ -173,16 +174,15 @@ class Worker:
                         self.logger.warning('Login attempt timed out.')
                 else:
                     break
-            if not self.ever_authenticated:
-                if config.APP_SIMULATION:
-                    await self.app_simulation_login()
-                else:
-                    # do one startup request instead of the whole login flow
-                    # will receive the full inventory and the download_hash
-                    request = self.api.create_request()
-                    request.download_remote_config_version(platform=1, app_version=5301)
-                    await self.call(request, stamp=False, buddy=False, settings=True, dl_hash=False)
-        await random_sleep(.1, .462)
+
+        self.error_code = '∧'
+        version = 5301
+        async with self.sim_semaphore:
+            self.error_code = 'APP SIMULATION'
+            if config.APP_SIMULATION and not self.ever_authenticated:
+                await self.app_simulation_login(version)
+            else:
+                await self.download_remote_config(version)
 
         self.ever_authenticated = True
         self.logged_in = True
@@ -190,16 +190,23 @@ class Worker:
         self.account_start = time()
         return True
 
-    async def app_simulation_login(self):
-        self.error_code = 'APP SIMULATION'
+    async def download_remote_config(self, version):
+        request = self.api.create_request()
+        request.download_remote_config_version(platform=1, app_version=version)
+        responses = await self.call(request, stamp=False, buddy=False, settings=True, dl_hash=False)
+
+        inventory_items = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('inventory_items', [])
+        for item in inventory_items:
+            player_stats = item.get('inventory_item_data', {}).get('player_stats', {})
+            if player_stats:
+                self.player_level = player_stats.get('level')
+                break
+        await random_sleep(.78, .95)
+
+    async def app_simulation_login(self, version):
         self.logger.info('Starting RPC login sequence (iOS app simulation)')
 
-        # empty request 1
-        request = self.api.create_request()
-        await self.call(request, chain=False)
-        await random_sleep(0.3, 0.4)
-
-        # empty request 2
+        # empty request
         request = self.api.create_request()
         await self.call(request, chain=False)
         await random_sleep(.3, .4)
@@ -219,21 +226,8 @@ class Worker:
 
         await random_sleep(.7, 1.2)
 
-        version = 5301
         # request 2: download_remote_config_version
-        request = self.api.create_request()
-        request.download_remote_config_version(platform=1, app_version=version)
-        responses = await self.call(request, stamp=False, buddy=False, settings=True, dl_hash=False)
-
-        inventory_items = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('inventory_items', [])
-        player_level = None
-        for item in inventory_items:
-            player_stats = item.get('inventory_item_data', {}).get('player_stats', {})
-            if player_stats:
-                player_level = player_stats.get('level')
-                break
-
-        await random_sleep(.78, .95)
+        await self.download_remote_config(version)
 
         # request 3: get_asset_digest
         request = self.api.create_request()
@@ -254,10 +248,10 @@ class Worker:
             await self.call(request, settings=True)
             await random_sleep(.3, .5)
 
-        if player_level:
+        if self.player_level:
             # request 5: level_up_rewards
             request = self.api.create_request()
-            request.level_up_rewards(level=player_level)
+            request.level_up_rewards(level=self.player_level)
             await self.call(request, settings=True)
             await random_sleep(.45, .7)
         else:
@@ -270,6 +264,7 @@ class Worker:
 
         self.logger.info('Finished RPC login sequence (iOS app simulation)')
         self.error_code = None
+        await random_sleep(.2, .462)
         return True
 
     async def complete_tutorial(self, tutorial_state):
@@ -434,6 +429,10 @@ class Worker:
                     break
                 else:
                     raise ex.MalformedResponseException('empty response')
+            except (ex.NotLoggedInException, ex.AuthException):
+                self.logged_in = False
+                await self.login()
+                await sleep(2)
             except ex.HashingOfflineException:
                 self.logger.warning('Hashing server busy or offline.')
                 self.error_code = 'HASHING OFFLINE'
@@ -1010,6 +1009,7 @@ class Worker:
         self.account['time'] = self.last_request
         self.account['inventory_timestamp'] = self.inventory_timestamp
         self.account['items'] = self.items
+        self.account['level'] = self.player_level
 
         if auth and self.api._auth_provider:
             self.account['refresh'] = self.api._auth_provider._refresh_token
@@ -1017,7 +1017,7 @@ class Worker:
                 self.account['auth'] = self.api._auth_provider._access_token
                 self.account['expiry'] = self.api._auth_provider._access_token_expiry
             else:
-                self.account['auth'], self.account['expiry'] = None, None
+                self.account['auth'] = self.account['expiry'] = None
 
         self.accounts[self.username] = self.account
 
@@ -1062,8 +1062,9 @@ class Worker:
         else:
             self.account = self.extra_queue.get()
         self.username = self.account.get('username')
-        self.location = self.account.get('location', (0, 0, 0))
+        self.location = self.account.get('location', get_start_coords(self.worker_no))
         self.inventory_timestamp = self.account.get('inventory_timestamp')
+        self.player_level = self.account.get('player_level')
         self.last_request = self.account.get('time', 0)
         self.last_action = self.last_request
         self.last_gmo = self.last_request
