@@ -99,7 +99,7 @@ def fullmap():
         social_links += '<a class="map_btn discord-icon" href="https://discord.gg/' + config.DISCORD_INVITE_ID + '"></a>'
 
     if config.TELEGRAM_USERNAME:
-        social_links += '<a class="map_btn telegram-icon" data-id="https://www.telegram.me/' + config.TELEGRAM_USERNAME + '"></a>'
+        social_links += '<a class="map_btn telegram-icon" href="https://www.telegram.me/' + config.TELEGRAM_USERNAME + '"></a>'
 
 
     return render_template(
