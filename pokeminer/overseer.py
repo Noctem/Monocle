@@ -560,7 +560,7 @@ class Overseer:
                 return
             try:
                 if spawn_time:
-                    time_diff = spawn_time - time.time() - 1
+                    time_diff = spawn_time - time.time() + 1
                     if time_diff > 0:
                         await asyncio.sleep(time_diff)
                     worker.after_spawn = time.time() - spawn_time

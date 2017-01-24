@@ -472,7 +472,10 @@ class Worker:
                 self.logger.warning(e)
                 self.error_code = 'MALFORMED RESPONSE'
                 await random_sleep(10, 14, 11)
-        if not response:
+        try:
+            if not response:
+                raise MaxRetriesException
+        except Exception:
             raise MaxRetriesException
 
         self.last_request = time()
