@@ -463,8 +463,12 @@ class Overseer:
                             )
                         except IndexError:
                             self.mysteries = self.spawns.get_mysteries()
+                            time_diff = time.time() - spawn_time
                             if not self.mysteries:
-                                time.sleep(time.time() - spawn_time + .5)
+                                if time_diff > 0:
+                                    time.sleep(time.time() - spawn_time + .5)
+                                else:
+                                    break
                         time_diff = time.time() - spawn_time
 
                     if time_diff > 5 and spawn_id in SIGHTING_CACHE.spawns:

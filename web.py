@@ -264,8 +264,9 @@ def report_main():
     session.close()
     count = sum(counts.values())
     counts_tuple = tuple(counts.items())
-    top_pokemon = counts_tuple[:30]
-    bottom_pokemon = counts_tuple[-30:]
+    top_pokemon = list(counts_tuple[-30:])
+    top_pokemon.reverse()
+    bottom_pokemon = counts_tuple[:30]
     nonexistent = [(x, POKEMON_NAMES[x]) for x in range(1, 152) if x not in counts]
     rare_pokemon = [r for r in counts_tuple if r[0] in config.RARE_IDS]
     if rare_pokemon:
