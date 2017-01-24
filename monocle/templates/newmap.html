@@ -334,33 +334,6 @@
                 map.locate({ enableHighAccurracy: true, setView: true });
             });
 
-            $('.facebook-icon').on('click', function () {
-                var id = $(this).data('id');
-                var appURL = 'fb://profile/'+id;
-                var browserURL = 'https://www.facebook.com/'+id;
-                openURL(appURL, browserURL);
-            });
-
-            $('.twitter-icon').on('click', function () {
-                var id = $(this).data('id');
-                var appURL = 'twitter://user?screen_name='+id;
-                var browserURL = 'https://www.twitter.com/'+id;
-                openURL(appURL, browserURL);
-            });
-
-            $('.discord-icon').on('click', function () {
-                var id = $(this).data('id');
-                document.location = id;
-            });
-
-            $('.telegram-icon').on('click', function () {
-              var id = $(this).data('id');
-              var appURL = 'tg://resolve?domain='+id;
-              var browserURL = 'https://www.telegram.me/'+id;
-              openURL(appURL, browserURL);
-            });
-
-
             setInterval(refresh, 30000);
             refresh();
             getSpawnPoints();
@@ -368,10 +341,6 @@
             getScanAreaCoords();
         });
 
-        function openURL(appURL, browserURL){
-          //This will be edited later to support app URL Schemas.
-          document.location = browserURL;
-        }
     </script>
     {{ extra_css_js }}
 </body>
