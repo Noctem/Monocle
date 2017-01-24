@@ -15,6 +15,21 @@
             z-index: 100;
         }
         .my-location {
+            background-image: url({{ url_for('static', filename='img/my-location.png') }});
+        }
+        .facebook-icon {
+            background-image: url({{ url_for('static', filename='img/facebook.png') }});
+        }
+        .twitter-icon {
+           background-image: url({{ url_for('static', filename='img/twitter.png') }});
+        }
+        .discord-icon {
+            background-image: url({{ url_for('static', filename='img/discord.png') }});
+        }
+        .telegram-icon {
+            background-image: url({{ url_for('static', filename='img/telegram.png') }});
+        }
+        .map_btn {
             z-index: 1000;
             position: absolute;
             bottom: 30px;
@@ -22,7 +37,6 @@
             padding: 10px;
             box-sizing: border-box;
             background-color: #fff;
-            background-image: url({{ url_for('static', filename='img/my-location.png') }});
             background-size: 24px 24px;
             background-position: 4px 4px;
             background-repeat: no-repeat;
@@ -33,8 +47,20 @@
             box-shadow: 0 1px 5px rgba(0,0,0,0.65);
             cursor: pointer;
         }
-        .my-location:hover {
+        .map_btn:hover {
             background-color: #f4f4f4;
+        }
+        .map_btn + .map_btn {
+            bottom: 70px;
+        }
+         .map_btn + .map_btn + .map_btn {
+            bottom: 110px;
+        }
+         .map_btn + .map_btn + .map_btn + .map_btn {
+            bottom: 150px;
+        }
+         .map_btn + .map_btn + .map_btn + .map_btn + .map_btn {
+            bottom: 190px;
         }
         .fort-icon {
             border-radius: 12px;
@@ -52,7 +78,8 @@
 
     <div id="main-map" class="map"></div>
 
-    <a class="my-location"></a>
+    <a class="map_btn my-location"></a>
+    {{ social_links }}
 
     <script src="{{ url_for('static', filename='js/jquery-3.1.1.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/leaflet.js') }}"></script>
@@ -307,12 +334,45 @@
                 map.locate({ enableHighAccurracy: true, setView: true });
             });
 
+            $('.facebook-icon').on('click', function () {
+                var id = $(this).data('id');
+                var appURL = 'fb://profile/'+id;
+                var browserURL = 'https://www.facebook.com/'+id;
+                openURL(appURL, browserURL);
+            });
+
+            $('.twitter-icon').on('click', function () {
+                var id = $(this).data('id');
+                var appURL = 'twitter://user?screen_name='+id;
+                var browserURL = 'https://www.twitter.com/'+id;
+                openURL(appURL, browserURL);
+            });
+
+            $('.discord-icon').on('click', function () {
+                var id = $(this).data('id');
+                document.location = id;
+            });
+
+            $('.telegram-icon').on('click', function () {
+              var id = $(this).data('id');
+              var appURL = 'tg://resolve?domain='+id;
+              var browserURL = 'https://www.telegram.me/'+id;
+              openURL(appURL, browserURL);
+            });
+
+
             setInterval(refresh, 30000);
             refresh();
             getSpawnPoints();
             getPokestops();
             getScanAreaCoords();
         });
+
+        function openURL(appURL, browserURL){
+          //This will be edited later to support app URL Schemas.
+          document.location = browserURL;
+        }
     </script>
+    {{ extra_css_js }}
 </body>
 </html>

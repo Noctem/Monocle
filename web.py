@@ -6,7 +6,7 @@ from pkg_resources import resource_filename
 import argparse
 import json
 
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify, Markup
 from multiprocessing.managers import BaseManager, RemoteError
 
 from monocle import config
@@ -27,8 +27,18 @@ _optional = {
     'MAP_PROVIDER_ATTRIBUTION': '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors',
     'MAP_WORKERS': True,
     'AUTHKEY': b'm3wtw0',
-    'REPORT_MAPS': True
+    'REPORT_MAPS': True,
+
+    'LOAD_CUSTOM_HTML_FILE': False,
+    'LOAD_CUSTOM_CSS_FILE': False,
+    'LOAD_CUSTOM_JS_FILE': False,
+
+    'FB_PAGE_ID': None,
+    'TWITTER_SCREEN_NAME': None,
+    'DISCORD_INVITE_LINK': None,
+    'TELEGRAM_USERNAME': None
 }
+
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
         setattr(config, setting_name, default)
@@ -66,12 +76,40 @@ app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'),
 @app.route('/')
 def fullmap():
     map_center = utils.MAP_CENTER
+    mapfile = 'newmap.html'
+    extra_css_js = ''
+    social_links = ''
+
+    if config.LOAD_CUSTOM_HTML_FILE:
+        mapfile = 'custom.html'
+
+    if config.LOAD_CUSTOM_CSS_FILE:
+        extra_css_js += '<link rel="stylesheet" href="static/css/custom.css">'
+
+    if config.LOAD_CUSTOM_JS_FILE:
+        extra_css_js += '<script type="text/javascript" src="static/js/custom.js"></script>'
+
+    if config.FB_PAGE_ID:
+        social_links += '<a class="map_btn facebook-icon" data-id="' + config.FB_PAGE_ID + '"></a>'
+
+    if config.TWITTER_SCREEN_NAME:
+        social_links += '<a class="map_btn twitter-icon" data-id="' + config.TWITTER_SCREEN_NAME + '"></a>'
+
+    if config.DISCORD_INVITE_LINK:
+        social_links += '<a class="map_btn discord-icon" data-id="' + config.DISCORD_INVITE_LINK + '"></a>'
+
+    if config.TELEGRAM_USERNAME:
+        social_links += '<a class="map_btn telegram-icon" data-id="' + config.TELEGRAM_USERNAME + '"></a>'
+
+
     return render_template(
-        'newmap.html',
+        mapfile,
         area_name=config.AREA_NAME,
         map_center=map_center,
         map_provider_url=config.MAP_PROVIDER_URL,
         map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION,
+        social_links=Markup(social_links),
+        extra_css_js=Markup(extra_css_js),
     )
 
 @app.route('/data')

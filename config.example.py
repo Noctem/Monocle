@@ -291,3 +291,13 @@ NOTIFICATION_CACHE = 100
 #LANDMARKS.add('the University of Utah', shortname='the U of U', hashtags={'Utes'}, phrase='at', is_area=True)
 ## provide corner points to create a polygon of the area since OpenStreetMap does not have a shape for it
 #LANDMARKS.add('Yalecrest', points=((40.750263, -111.836502), (40.750377, -111.851108), (40.751515, -111.853833), (40.741212, -111.853909), (40.741188, -111.836519)), is_area=True)
+
+### FRONTEND CONFIGURATION
+LOAD_CUSTOM_HTML_FILE = False # File path MUST be 'templates/custom.html'
+LOAD_CUSTOM_CSS_FILE = False  # File path MUST be 'static/css/custom.css'
+LOAD_CUSTOM_JS_FILE = False  # File path MUST be 'static/js/custom.js'
+
+FB_PAGE_ID = None
+TWITTER_SCREEN_NAME = None  # Username withouth '@' char
+DISCORD_INVITE_LINK = None  # Don't forget https:// part!
+TELEGRAM_USERNAME = None
