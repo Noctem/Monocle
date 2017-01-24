@@ -5,6 +5,7 @@ from threading import Thread
 from sqlalchemy.exc import DBAPIError
 from time import time
 from random import shuffle
+from itertools import chain
 
 import asyncio
 
@@ -14,12 +15,14 @@ from . import db
 
 class Spawns:
     """Manage spawn points and times"""
-    session = db.Session(autoflush=False)
-    spawns = OrderedDict()
-    despawn_times = {}
-    mysteries = set()
-    altitudes = {}
-    known_points = set()
+    def __init__(self):
+        self.session = db.Session(autoflush=False)
+        self.spawns = OrderedDict()
+        self.despawn_times = {}
+        self.mysteries = set()
+        self.cell_points = set()
+        self.altitudes = {}
+        self.known_points = set()
 
     def __len__(self):
         return len(self.despawn_times)
@@ -31,16 +34,15 @@ class Spawns:
         if loadpickle:
             try:
                 self.spawns, self.despawn_times, self.mysteries, self.altitudes, self.known_points = load_pickle('spawns')
-                if self.despawn_times or self.mysteries:
+                if self.mysteries or self.despawn_times:
                     return
             except Exception:
                 pass
         try:
-            self.spawns, self.despawn_times, m, a, self.known_points = db.get_spawns(self.session)
-        except Exception:
+            self.spawns, self.despawn_times, self.mysteries, a, self.known_points = db.get_spawns(self.session)
+        except DBAPIError:
             self.session.rollback()
             raise
-        self.mysteries.update(m)
         self.altitudes.update(a)
         if not self.altitudes:
             self.altitudes = get_point_altitudes()
@@ -58,7 +60,7 @@ class Spawns:
         return self.spawns.items()
 
     def get_mysteries(self):
-        mysteries = deque(self.mysteries)
+        mysteries = deque(self.mysteries | self.cell_points)
         shuffle(mysteries)
         return mysteries
 
@@ -71,20 +73,32 @@ class Spawns:
         except (StopIteration, KeyError, TypeError):
             return False
 
-    def add_mystery(self, point):
-        self.mysteries.add(point)
-
-    def remove_mystery(self, point):
-        self.mysteries.discard(point)
-
-    def have_mystery(self, point):
-        return point in self.mysteries
-
     def add_despawn(self, spawn_id, despawn_time):
         self.despawn_times[spawn_id] = despawn_time
 
+    def add_known(self, point):
+        self.known_points.add(point)
+        self.remove_mystery(point)
+
+    def add_mystery(self, point):
+        self.mysteries.add(point)
+        self.cell_points.discard(point)
+
+    def add_cell_point(self, point):
+        self.cell_points.add(point)
+
+    def remove_mystery(self, point):
+        self.mysteries.discard(point)
+        self.cell_points.discard(point)
+
     def get_despawn_seconds(self, spawn_id):
         return self.despawn_times.get(spawn_id)
+
+    def db_has(self, point):
+        return point in chain(self.known_points, self.mysteries)
+
+    def have_point(self, point):
+        return point in chain(self.cell_points, self.known_points, self.mysteries)
 
     def get_despawn_time(self, spawn_id, seen=None):
         now = seen or time()
@@ -98,10 +112,9 @@ class Spawns:
             return None
 
     def get_time_till_hidden(self, spawn_id):
-        if spawn_id not in self:
+        if spawn_id not in self.despawn_times:
             return None
-        despawn_seconds = self.get_despawn_seconds(spawn_id)
-        return time_until_time(despawn_seconds)
+        return time_until_time(self.despawn_times[spawn_id])
 
     @property
     def pickle_objects(self):
@@ -109,18 +122,22 @@ class Spawns:
 
     @property
     def total_length(self):
-        return len(self.despawn_times) + self.mysteries_count
+        return len(self.despawn_times) + self.mysteries_count + self.cells_count
 
     @property
     def mysteries_count(self):
         return len(self.mysteries)
 
+    @property
+    def cells_count(self):
+        return len(self.cell_points)
+
 
 class DatabaseProcessor(Thread):
-    spawns = Spawns()
 
     def __init__(self):
         super().__init__()
+        self.spawns = Spawns()
         self.queue = Queue()
         self.logger = getLogger('dbprocessor')
         self.running = True

@@ -17,6 +17,7 @@ from pogo_async.session import Session
 from os.path import exists, join
 from threading import Thread
 from sys import platform
+from sqlalchemy.exc import DBAPIError
 
 import time
 
@@ -271,7 +272,7 @@ def main():
 
         try:
             Worker.spawns.update()
-        except (ProgrammingError, OperationalError):
+        except (DBAPIError):
             pass
         Worker.spawns.session.close()
         manager.shutdown()

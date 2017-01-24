@@ -48,6 +48,7 @@
             });
         }
 
+        {% if google_maps_key %}
         var maps = {heat: null};
 
         function initMaps() {
@@ -79,6 +80,7 @@
                 $(this).parent().remove();
             });
         });
+        {% endif %}
     </script>
 </head>
 <body>
@@ -96,6 +98,7 @@
 
         <p>During that session, <b> {{ total_spawn_count }}</b> sightings of {{ pokemon_name }} have been seen on an area of about <b>{{ area_size }} square km</b>. Data gathering started on <b>{{ session_start.strftime('%Y-%m-%d %H:%M:%S') }}</b> and ended on <b>{{ session_end.strftime('%Y-%m-%d %H:%M:%S') }}</b>, lasting <b>{{ session_length_hours }} hours</b>.</p>
 
+        {% if google_maps_key %}
         <h3>Heatmap</h3>
 
         <p>All noticed spawn locations of {{ pokemon_name }}. The redder the point is, {{ pokemon_name }} spawned more often there.</p>
@@ -103,6 +106,7 @@
         <p><button id="displayHeatmap">Display heatmap</button> (will slow down browser!)</p>
 
         <div id="heatmap" class="map"></div>
+        {% endif %}
 
         <h3>Spawning hours</h3>
 

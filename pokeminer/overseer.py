@@ -11,7 +11,7 @@ from random import uniform
 from logging import getLogger
 from collections import deque
 from pogo_async.hash_server import HashServer
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import OperationalError
 
 import time
 
@@ -263,9 +263,10 @@ class Overseer:
 
         output = [
             'PokeMiner running for {}'.format(running_for),
-            'Known spawns: {s}, unknown: {m}'.format(
-                s=len(self.spawns),
-                m=self.spawns.mysteries_count),
+            'Known spawns: {}, unknown: {}, more: {}'.format(
+                len(self.spawns),
+                self.spawns.mysteries_count,
+                self.spawns.cells_count),
             '{w} workers, {t} threads, {c} coroutines'.format(
                 w=self.count,
                 t=active_count(),
@@ -412,9 +413,8 @@ class Overseer:
                         self.try_point(mystery_point), loop=self.loop
                     )
                 except IndexError:
-                    if self.spawns.mysteries:
-                        self.mysteries = self.spawns.get_mysteries()
-                    else:
+                    self.mysteries = self.spawns.get_mysteries()
+                    if not self.mysteries:
                         config.MORE_POINTS = True
                         break
 
@@ -462,11 +462,9 @@ class Overseer:
                                 self.try_point(mystery_point), loop=self.loop
                             )
                         except IndexError:
-                            if self.spawns.mysteries:
-                                self.mysteries = self.spawns.get_mysteries()
-                            else:
-                                config.MORE_POINTS = True
-                                break
+                            self.mysteries = self.spawns.get_mysteries()
+                            if not self.mysteries:
+                                time.sleep(time.time() - spawn_time + .5)
                         time_diff = time.time() - spawn_time
 
                     if time_diff > 5 and spawn_id in SIGHTING_CACHE.spawns:

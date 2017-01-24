@@ -34,6 +34,7 @@ GIVE_UP_UNKNOWN = 60 # try to find a worker for an unknown point for this many s
 SKIP_SPAWN = 90      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
 
 # the directory that the pickles folder, socket, etc. will go in
+# defaults to working directory if not set
 #DIRECTORY = None
 
 # Limit the number of simultaneous logins to this many at a time.
@@ -138,6 +139,7 @@ REPORT_SINCE = datetime(2016, 12, 17)  # base reports on data from after this da
 # used for altitude queries and maps in reports
 GOOGLE_MAPS_KEY = 'OYOgW1wryrp2RKJ81u7BLvHfYUA6aArIyuQCXu4'  # this key is fake
 #ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
+REPORT_MAPS = True  # Show maps on reports
 
 ## Automatically resolve captchas using 2Captcha key.
 #CAPTCHA_KEY = '1abc234de56fab7c89012d34e56fa7b8'

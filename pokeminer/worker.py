@@ -176,7 +176,7 @@ class Worker:
                     break
 
         self.error_code = '∧'
-        version = 5301
+        version = 5302
         async with self.sim_semaphore:
             self.error_code = 'APP SIMULATION'
             if config.APP_SIMULATION and not self.ever_authenticated:
@@ -721,9 +721,9 @@ class Worker:
                     points_seen += 1
                     try:
                         p = (point['latitude'], point['longitude'])
-                        if p in self.spawns.known_points or not Bounds.contain(p):
+                        if self.spawns.have_point(p) or not Bounds.contain(p):
                             continue
-                        self.spawns.add_mystery(p)
+                        self.spawns.add_cell_point(p)
                     except (KeyError, TypeError):
                         self.logger.warning('Spawn point exception ignored. {}'.format(point))
                         pass

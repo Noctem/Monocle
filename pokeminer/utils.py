@@ -81,7 +81,7 @@ def get_scan_area():
     """Returns the square kilometers for configured scan area"""
     width = get_distance(config.MAP_START, (config.MAP_START[0], config.MAP_END[1])) / 1000
     height = get_distance(config.MAP_START, (config.MAP_END[0], config.MAP_START[1])) / 1000
-    area = int(width * height)
+    area = round(width * height)
     return area
 
 
