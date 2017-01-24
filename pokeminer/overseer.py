@@ -465,10 +465,7 @@ class Overseer:
                             self.mysteries = self.spawns.get_mysteries()
                             time_diff = time.time() - spawn_time
                             if not self.mysteries:
-                                if time_diff > 0:
-                                    time.sleep(time.time() - spawn_time + .5)
-                                else:
-                                    break
+                                break
                         time_diff = time.time() - spawn_time
 
                     if time_diff > 5 and spawn_id in SIGHTING_CACHE.spawns:
@@ -563,8 +560,9 @@ class Overseer:
                 return
             try:
                 if spawn_time:
-                    if time.time() - spawn_time < 1:
-                        await asyncio.sleep(1)
+                    time_diff = spawn_time - time.time() - 1
+                    if time_diff > 0:
+                        await asyncio.sleep(time_diff)
                     worker.after_spawn = time.time() - spawn_time
 
                 if await worker.visit(point):
@@ -581,7 +579,7 @@ class Overseer:
 
     async def best_worker(self, point, spawn_time=None, must_visit=False):
         if spawn_time:
-            skip_time = time.monotonic() + config.GIVE_UP_KNOWN
+            skip_time = max(time.monotonic() + config.GIVE_UP_KNOWN, spawn_time)
         elif must_visit:
             skip_time = None
         else:
