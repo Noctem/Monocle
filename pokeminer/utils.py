@@ -275,7 +275,7 @@ def create_account_dict(account):
     else:
         entry.update(generate_device_info())
 
-    entry.update({'location': (0,0,0), 'time': 0, 'captcha': False, 'banned': False})
+    entry.update({'time': 0, 'captcha': False, 'banned': False})
 
     return entry
 

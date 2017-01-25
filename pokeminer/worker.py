@@ -153,7 +153,7 @@ class Worker:
     async def login(self):
         """Logs worker in and prepares for scanning"""
         self.logger.info('Trying to log in')
-        self.error_code = '∨'
+        self.error_code = '»'
 
         async with self.login_semaphore:
             if self.killed:
@@ -175,7 +175,7 @@ class Worker:
                 else:
                     break
 
-        self.error_code = '∧'
+        self.error_code = '°'
         version = 5302
         async with self.sim_semaphore:
             self.error_code = 'APP SIMULATION'
@@ -203,13 +203,57 @@ class Worker:
                 break
         await random_sleep(.78, .95)
 
+    async def set_avatar(self, tutorial=False):
+        await random_sleep(7, 14)
+        request = self.api.create_request()
+
+        gender = randint(0, 1)
+        if gender == 1:
+            # female
+            shirt = randint(0, 8)
+            pants = randint(0, 5)
+            backpack = randint(0, 2)
+        else:
+            # male
+            shirt = randint(0, 3)
+            pants = randint(0, 2)
+            backpack = randint(0, 5)
+
+        request.set_avatar(player_avatar={
+                'skin': randint(0, 3),
+                'hair': randint(0, 5),
+                'shirt': shirt,
+                'pants': pants,
+                'hat': randint(0, 4),
+                'shoes': randint(0, 6),
+                'avatar': gender,
+                'eyes': randint(0, 4),
+                'backpack': backpack
+            })
+        await self.call(request, buddy=not tutorial, action=1)
+
+        if tutorial:
+            await random_sleep(.3, .5)
+
+            request = self.api.create_request()
+            request.mark_tutorial_complete(tutorials_completed=1)
+            await self.call(request, buddy=False)
+            await random_sleep(2.5, 2.75)
+        else:
+            await random_sleep(1, 1.2)
+
+        request = self.api.create_request()
+        request.get_player_profile()
+        await self.call(request, action=1)
+
     async def app_simulation_login(self, version):
         self.logger.info('Starting RPC login sequence (iOS app simulation)')
+        reset_avatar = False
 
         # empty request
         request = self.api.create_request()
         await self.call(request, chain=False)
-        await random_sleep(.3, .4)
+        await random_sleep(.3, .5)
 
         # request 1: get_player
         request = self.api.create_request()
@@ -217,12 +261,23 @@ class Worker:
 
         responses = await self.call(request, chain=False)
 
-        get_player = responses.get('GET_PLAYER', {})
-        tutorial_state = get_player.get('player_data', {}).get('tutorial_state', [])
-        self.item_capacity = get_player.get('player_data', {}).get('max_item_storage', 350)
+        try:
+            get_player = responses['GET_PLAYER']
 
-        if get_player.get('banned', False):
-            raise ex.BannedAccountException
+            if get_player.get('banned', False):
+                raise ex.BannedAccountException
+
+            player_data = get_player['player_data']
+            tutorial_state = player_data['tutorial_state']
+            self.item_capacity = player_data['max_item_storage']
+            if 'created' not in self.account:
+                self.account['created'] = player_data['creation_timestamp_ms'] / 1000
+            avatar = player_data['avatar']
+            if avatar['avatar'] == 1 and avatar['backpack'] > 2:
+                self.logger.warning('Invalid backpack for female, resetting avatar.')
+                reset_avatar = True
+        except (KeyError, TypeError):
+            pass
 
         await random_sleep(.7, 1.2)
 
@@ -234,7 +289,7 @@ class Worker:
         request.get_asset_digest(platform=1, app_version=version)
         await self.call(request, buddy=False, settings=True)
 
-        await random_sleep(.9, 3.4)
+        await random_sleep(.9, 3.1)
 
         if (config.COMPLETE_TUTORIAL and
                 tutorial_state is not None and
@@ -248,78 +303,74 @@ class Worker:
             await self.call(request, settings=True)
             await random_sleep(.3, .5)
 
-        if self.player_level:
-            # request 5: level_up_rewards
+            if self.player_level:
+                # request 5: level_up_rewards
+                request = self.api.create_request()
+                request.level_up_rewards(level=self.player_level)
+                await self.call(request, settings=True)
+                await random_sleep(.45, .7)
+            else:
+                self.logger.warning('No player level')
+
+            # request 6: register_background_device
             request = self.api.create_request()
-            request.level_up_rewards(level=self.player_level)
-            await self.call(request, settings=True)
-            await random_sleep(.45, .7)
-        else:
-            self.logger.warning('No player level')
+            request.register_background_device(device_type='apple_watch')
+            await self.call(request, action=0.1)
 
-        # request 6: register_background_device
-        request = self.api.create_request()
-        request.register_background_device(device_type='apple_watch')
-        await self.call(request, action=0.1)
+            self.logger.info('Finished RPC login sequence (iOS app simulation)')
+            if reset_avatar:
+                await self.set_avatar()
 
-        self.logger.info('Finished RPC login sequence (iOS app simulation)')
+            await random_sleep(.2, .462)
         self.error_code = None
-        await random_sleep(.2, .462)
         return True
 
     async def complete_tutorial(self, tutorial_state):
         self.error_code = 'TUTORIAL'
         if 0 not in tutorial_state:
-            await random_sleep(1, 5)
+            # legal screen
             request = self.api.create_request()
-            request.mark_tutorial_complete(tutorials_completed=0)
+            request.mark_tutorial_complete(tutorials_completed=[0])
             await self.call(request, buddy=False)
+
+            await random_sleep(.475, .525)
+
+            request = self.api.create_request()
+            request.get_player(player_locale=config.PLAYER_LOCALE)
+            await self.call(request, buddy=False)
+            await sleep(1)
 
         if 1 not in tutorial_state:
-            await random_sleep(5, 12)
-            request = self.api.create_request()
-            request.set_avatar(player_avatar={
-                    'hair': randint(1,5),
-                    'shirt': randint(1,3),
-                    'pants': randint(1,2),
-                    'shoes': randint(1,6),
-                    'avatar': randint(0,1),
-                    'eyes': randint(1,4),
-                    'backpack': randint(1,5)
-                })
-            await self.call(request, buddy=False)
-
-            await random_sleep(.3, .5)
-
-            request = self.api.create_request()
-            request.mark_tutorial_complete(tutorials_completed=1)
-            await self.call(request, buddy=False, action=1)
+            # avatar selection
+            await self.set_avatar(tutorial=True)
 
         await random_sleep(.5, .6)
         request = self.api.create_request()
-        request.get_player_profile()
+        await self.call(request, chain=False)
+
+        await sleep(.05)
+
+        request = self.api.create_request()
+        request.register_background_device(device_type='apple_watch')
         await self.call(request)
 
         starter_id = None
         if 3 not in tutorial_state:
-            await random_sleep(1, 1.5)
+            # encounter tutorial
+            await sleep(1)
             request = self.api.create_request()
             request.get_download_urls(asset_id=['1a3c2816-65fa-4b97-90eb-0b301c064b7a/1477084786906000',
                                                 'aa8f7687-a022-4773-b900-3a8c170e9aea/1477084794890000',
                                                 'e89109b0-9a54-40fe-8431-12f7826c8194/1477084802881000'])
             await self.call(request)
 
-            await random_sleep(1, 1.6)
-            request = self.api.create_request()
-            await self.call(request, chain=False)
-
-            await random_sleep(6, 13)
+            await random_sleep(5, 10)
             request = self.api.create_request()
             starter = choice((1, 4, 7))
             request.encounter_tutorial_complete(pokemon_id=starter)
             await self.call(request, action=1)
 
-            await random_sleep(.5, .6)
+            await random_sleep(.4, .55)
             request = self.api.create_request()
             request.get_player(player_locale=config.PLAYER_LOCALE)
             responses = await self.call(request)
@@ -332,23 +383,25 @@ class Worker:
 
 
         if 4 not in tutorial_state:
-            await random_sleep(5, 12)
+            # name selection
+            await random_sleep(10, 16)
             request = self.api.create_request()
             request.claim_codename(codename=self.username)
             await self.call(request, action=1)
 
             await random_sleep(1, 1.3)
             request = self.api.create_request()
+            request.get_player(player_locale=config.PLAYER_LOCALE)
+            await self.call(request)
+            await sleep(.1)
+
+            request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=4)
             await self.call(request, buddy=False)
 
-            await sleep(.1)
-            request = self.api.create_request()
-            request.get_player(player_locale=config.PLAYER_LOCALE)
-            await self.call(request)
-
         if 7 not in tutorial_state:
-            await random_sleep(4, 10)
+            # first time experience
+            await random_sleep(3.75, 4.5)
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=7)
             await self.call(request)
@@ -358,7 +411,7 @@ class Worker:
             request = self.api.create_request()
             request.set_buddy_pokemon(pokemon_id=starter_id)
             await self.call(request, action=1)
-            await random_sleep(.8, 1.8)
+            await random_sleep(.8, 1.2)
 
         await sleep(.2)
         return True
