@@ -261,6 +261,7 @@ class Worker:
 
         responses = await self.call(request, chain=False)
 
+        tutorial_state = None
         try:
             get_player = responses['GET_PLAYER']
 
