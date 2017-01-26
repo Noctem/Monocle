@@ -7,4 +7,4 @@ install:
   - pip install -r requirements.txt
   - python setup.py install
 # command to run tests
-script: python scripts/create_db.py
+script: python create_db.py
