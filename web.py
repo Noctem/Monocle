@@ -90,16 +90,16 @@ def fullmap():
         extra_css_js += '<script type="text/javascript" src="static/js/custom.js"></script>'
 
     if config.FB_PAGE_ID:
-        social_links += '<a class="map_btn facebook-icon" href="https://www.facebook.com/' + config.FB_PAGE_ID + '"></a>'
+        social_links += '<a class="map_btn facebook-icon" target="_blank" href="https://www.facebook.com/' + config.FB_PAGE_ID + '"></a>'
 
     if config.TWITTER_SCREEN_NAME:
-        social_links += '<a class="map_btn twitter-icon" href="https://www.twitter.com/' + config.TWITTER_SCREEN_NAME + '"></a>'
+        social_links += '<a class="map_btn twitter-icon" target="_blank" href="https://www.twitter.com/' + config.TWITTER_SCREEN_NAME + '"></a>'
 
     if config.DISCORD_INVITE_ID:
-        social_links += '<a class="map_btn discord-icon" href="https://discord.gg/' + config.DISCORD_INVITE_ID + '"></a>'
+        social_links += '<a class="map_btn discord-icon" target="_blank" href="https://discord.gg/' + config.DISCORD_INVITE_ID + '"></a>'
 
     if config.TELEGRAM_USERNAME:
-        social_links += '<a class="map_btn telegram-icon" href="https://www.telegram.me/' + config.TELEGRAM_USERNAME + '"></a>'
+        social_links += '<a class="map_btn telegram-icon" target="_blank" href="https://www.telegram.me/' + config.TELEGRAM_USERNAME + '"></a>'
 
 
     return render_template(
