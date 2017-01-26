@@ -15,10 +15,6 @@ If you don't have an existing database of spawn points it will spread your worke
 
 There's also a simple interface that displays active Pokemon on a map, and can generate nice-looking reports.
 
-Here it is in action:
-
-![in action](pokeminer/static/demo/map.png)
-
 Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and data source can easily be configured to match [any of these](https://leaflet-extras.github.io/leaflet-providers/preview/) with the `MAP_PROVIDER_URL` config option.
 
 ## Features
@@ -81,10 +77,6 @@ There are three reports, all available as web pages on the same server as the li
 3. Gym statistics page, available by running `gyms.py`
 
 The workers' live locations and stats can be viewed from the main map by enabling the workers layer, or at `/workers` (communicates directly with the worker process and requires no DB queries).
-
-Here's what the overall report looks like:
-
-[![report](https://i.imgur.com/LH8S85dm.jpg)](pokeminer/static/demo/report.png)
 
 The gyms statistics server is in a separate file, because it's intended to be shared publicly as a webpage.
 
