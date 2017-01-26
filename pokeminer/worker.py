@@ -280,6 +280,11 @@ class Worker:
         except (KeyError, TypeError):
             pass
 
+        # Sometimes we don't get tutorial_state in new accounts
+        # Line 264 can be [] too and we forget about this if.
+        if tutorial_state is None:
+            tutorial_state = []
+
         await random_sleep(.7, 1.2)
 
         # request 2: download_remote_config_version
@@ -295,7 +300,7 @@ class Worker:
         if (config.COMPLETE_TUTORIAL and
                 tutorial_state is not None and
                 not all(x in tutorial_state for x in (0, 1, 3, 4, 7))):
-            self.logger.warning('Starting tutorial')
+            self.logger.warning('{} is starting tutorial'.format(self.username))
             await self.complete_tutorial(tutorial_state)
         else:
             # request 4: get_player_profile
