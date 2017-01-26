@@ -102,9 +102,9 @@ class PokeImage:
 
     def create(self):
         if self.time_of_day > 1:
-            bg = resource_stream('pokeminer', 'static/img/notification-bg-night.png')
+            bg = resource_stream('pokeminer', 'static/assets/notification-bg-night.png')
         else:
-            bg = resource_stream('pokeminer', 'static/img/notification-bg-day.png')
+            bg = resource_stream('pokeminer', 'static/assets/notification-bg-day.png')
         ims = cairo.ImageSurface.create_from_png(bg)
         self.context = cairo.Context(ims)
         pokepic = resource_stream('pokeminer', 'static/original-icons/{}.png'.format(self.pokemon_id))

@@ -74,21 +74,21 @@
             options: {
                 iconSize: [20, 20],
                 className: 'worker-icon',
-                iconUrl: '{{ url_for("static", filename="img/pokeball.png") }}'
+                iconUrl: '{{ url_for("static", filename="assets/ball.png") }}'
             }
         });
         var NotificationIcon = L.Icon.extend({
             options: {
                 iconSize: [35, 35],
                 className: 'notification-icon',
-                iconUrl: '{{ url_for("static", filename="img/masterball.png") }}'
+                iconUrl: '{{ url_for("static", filename="assets/ultra.png") }}'
             }
         });
         var PokestopIcon = L.Icon.extend({
             options: {
                 iconSize: [20, 20],
                 className: 'pokestop-icon',
-                iconUrl: '{{ url_for("static", filename="img/pokestop.png") }}'
+                iconUrl: '{{ url_for("static", filename="assets/stop.png") }}'
             }
         });
 
