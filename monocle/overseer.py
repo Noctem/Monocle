@@ -262,7 +262,7 @@ class Overseer:
         visits_per_second = self.visits / seconds_since_start
 
         output = [
-            'PokeMiner running for {}'.format(running_for),
+            'Monocle running for {}'.format(running_for),
             'Known spawns: {}, unknown: {}, more: {}'.format(
                 len(self.spawns),
                 self.spawns.mysteries_count,

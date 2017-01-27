@@ -322,9 +322,9 @@ def get_address():
     if config.MANAGER_ADDRESS:
         return config.MANAGER_ADDRESS
     if platform == 'win32':
-        address = r'\\.\pipe\pokeminer'
+        address = r'\\.\pipe\monocle'
     elif hasattr(socket, 'AF_UNIX'):
-        address = join(config.DIRECTORY, 'pokeminer.sock')
+        address = join(config.DIRECTORY, 'monocle.sock')
     else:
         address = ('127.0.0.1', 5001)
     return address

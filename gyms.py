@@ -6,13 +6,13 @@ import argparse
 
 from flask import Flask, render_template
 
-from pokeminer.names import POKEMON_NAMES
-from pokeminer import config
-from pokeminer import db
-from pokeminer import utils
+from monocle.names import POKEMON_NAMES
+from monocle import config
+from monocle import db
+from monocle import utils
 
 
-app = Flask(__name__, template_folder=resource_filename('pokeminer', 'templates'))
+app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'))
 
 
 def get_args():

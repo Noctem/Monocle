@@ -22,7 +22,7 @@ from sqlalchemy.exc import DBAPIError
 import time
 
 try:
-    from pokeminer import config
+    from monocle import config
 except ImportError as e:
     raise ImportError('Please copy config.example.py to config.py and customize it.') from e
 
@@ -121,9 +121,9 @@ if config.DIRECTORY is None:
     else:
         config.DIRECTORY = ''
 
-from pokeminer.utils import get_address, dump_pickle
-from pokeminer.worker import Worker
-from pokeminer.overseer import Overseer
+from monocle.utils import get_address, dump_pickle
+from monocle.worker import Worker
+from monocle.overseer import Overseer
 
 class AccountManager(BaseManager):
     pass

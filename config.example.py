@@ -1,8 +1,8 @@
 ### All lines that are commented out (and some that aren't) are optional ###
 
 DB_ENGINE = 'sqlite:///db.sqlite'
-#DB_ENGINE = 'mysql://user:pass@localhost/pokeminer'
-#DB_ENGINE = 'postgresql://user:pass@localhost/pokeminer
+#DB_ENGINE = 'mysql://user:pass@localhost/monocle'
+#DB_ENGINE = 'postgresql://user:pass@localhost/monocle
 
 AREA_NAME = 'SLC'   # the city or region you are scanning
 LANGUAGE = 'EN'     # ISO 639-1 codes EN, DE, FR, and ZH for Pokémon names.
@@ -166,8 +166,8 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 # Bytestring key to authenticate with manager for inter-process communication
 #AUTHKEY = b'm3wtw0'
 # Address to use for manager, leave unset or set to None if you're note sure.
-#MANAGER_ADDRESS = r'\\.\pipe\pokeminer'  # must be in this format for Windows
-#MANAGER_ADDRESS = 'pokeminer.sock'       # the socket name for Unix systems
+#MANAGER_ADDRESS = r'\\.\pipe\monocle'  # must be in this format for Windows
+#MANAGER_ADDRESS = 'monocle.sock'       # the socket name for Unix systems
 #MANAGER_ADDRESS = ('127.0.0.1', 5002)    # could be used for CAPTCHA solving and live worker maps on remote systems
 
 # Store the cell IDs so that they don't have to be recalculated every visit.
@@ -184,7 +184,7 @@ TWEET_IMAGES = True
 
 # As many hashtags as can fit will be included in your tweets, these will
 # be combined with landmark-specific hashtags (if applicable).
-HASHTAGS = {AREA_NAME, 'Pokeminer+', 'PokemonGO'}
+HASHTAGS = {AREA_NAME, 'Monocle', 'PokemonGO'}
 #TZ_OFFSET = 0  # UTC offset in hours (if different from system time)
 
 # the required number of seconds remaining to notify about a Pokémon

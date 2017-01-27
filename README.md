@@ -1,10 +1,12 @@
-# pokeminer+
+# Monocle
 
-[![Build Status](https://travis-ci.org/Noctem/pokeminer.svg?branch=develop)](https://travis-ci.org/Noctem/pokeminer)
+[![Build Status](https://travis-ci.org/Noctem/Monocle.svg?branch=develop)](https://travis-ci.org/Noctem/Monocle)
 
-A Pokémon Go scraper capable of scanning large areas for Pokémon spawns over long periods of time. Features spawnpoint scanning, Twitter and PushBullet notifications, accurate expiration times and estimates based on historical data, pokestop and gym collection, a CAPTCHA solving script, and more.
+Monocle is the distinguished Pokémon Go scanner capable of scanning large areas for spawns. Features spawnpoint scanning, Twitter and PushBullet notifications, accurate expiration times and estimates based on historical data, pokestop and gym collection, a CAPTCHA solving script, and more.
 
-[A demonstration of the Twitter notifications can be viewed here](https://twitter.com/SLCPokemon).
+A [demonstration of the Twitter notifications can be viewed here](https://twitter.com/SLCPokemon).
+
+[![Distinguished Pokemon](https://i.imgur.com/9vud1wo.jpg)](https://darkestnight.deviantart.com/art/A-Distinguished-Pokeman-208009200)
 
 
 ## How does it work?
@@ -41,8 +43,9 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
 
 ## Setting up
 1. Install Python 3.5 or later (3.6 is recommended)
-2. `git clone https://github.com/Noctem/pokeminer.git` or download the [zip](https://github.com/Noctem/pokeminer/archive/develop.zip)
-3. Copy `config.example.py` to `pokeminer/config.py` and customize it with your accounts, location, database information, and any other relevant settings. The comments in the config example provide some information about the options.
+2. `git clone --recursive https://github.com/Noctem/Monocle.git`
+  * Optionally install a custom icon package from elsewhere
+3. Copy `config.example.py` to `monocle/config.py` and customize it with your accounts, location, database information, and any other relevant settings. The comments in the config example provide some information about the options.
 4. `pip3 install -r requirements.txt`
   * Optionally `pip3 install` additional packages listed in optional-requirements
     * *pushbullet.py* is required for pushbullet notifications
@@ -63,7 +66,7 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
   * Optionally run the live map interface and reporting system: `python3 web.py`
 
 
-**Note**: Pokeminer works with Python 3.5 or later only. Python 2.7 is **not supported** and is not compatible at all since I moved from threads to coroutines. Seriously, it's 2016, Python 2.7 hasn't been developed for 6 years, why don't you upgrade already?
+**Note**: Monocle works with Python 3.5 or later only. Python 2.7 is **not supported** and is not compatible at all since I moved from threads to coroutines. Seriously, it's 2016, Python 2.7 hasn't been developed for 6 years, why don't you upgrade already?
 
 Note that if you want more than 10 workers simultaneously running, SQLite is likely not the best choice. I personally use and recommend PostgreSQL, but MySQL and SQLite should also work.
 
@@ -80,10 +83,12 @@ The workers' live locations and stats can be viewed from the main map by enablin
 
 The gyms statistics server is in a separate file, because it's intended to be shared publicly as a webpage.
 
-[![gyms](https://i.imgur.com/MWpHAEWm.jpg)](pokeminer/static/demo/gyms.png)
+[![gyms](https://i.imgur.com/MWpHAEWm.jpg)](monocle/static/demo/gyms.png)
 
 ## License
 
 See [LICENSE](LICENSE).
 
-This project is based on the coroutines branch of (now discontinued) [pokeminer](https://github.com/modrzew/pokeminer/tree/coroutines). Pokeminer was originally based on an early version of [PokemonGo-Map](https://github.com/AHAAAAAAA/PokemonGo-Map), but no longer shares any code with it. It currently uses my lightly modified fork of [pgoapi](https://github.com/Noctem/pgoapi).
+This project is based on the coroutines branch of [pokeminer](https://github.com/modrzew/pokeminer/tree/coroutines) (now discontinued). *Pokeminer* was originally based on an early version of [PokemonGo-Map](https://github.com/AHAAAAAAA/PokemonGo-Map), but no longer shares any code with it. It uses my [pogo_async](https://github.com/Noctem/pgoapi), my fork of pgoapi which uses *aiohttp* for asynchronous network requests.
+
+The [excellent image](https://darkestnight.deviantart.com/art/A-Distinguished-Pokeman-208009200) near the top of this README was painted by [darkestnight](https://darkestnight.deviantart.com/).

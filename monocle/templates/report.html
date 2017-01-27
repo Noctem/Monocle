@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Pokeminer Report - {{ area_name }}</title>
+    <title>Monocle Report - {{ area_name }}</title>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
 
     <style>
@@ -100,12 +100,12 @@
 </head>
 <body>
     <div class="container">
-        <h1>Pokeminer Report</h1>
+        <h1>Monocle Report</h1>
         <h4>Generated on {{ current_date.strftime('%Y-%m-%d %H:%M:%S') }}</h4>
 
-        <p><b>Disclaimer:</b> data may be incomplete due to various issues that might have happened (bugs, unstable servers, bugs on the servers etc.). If there is data about a sighting of a Pokemon in given location at particular time, almost certainly such spawning happened. On the other hand, there is no guarantee that Pokeminer database contains <i>all</i> spawnings, so there might be wild Pokemon not contained in this report. Your mileage may vary.</p>
+        <p><b>Disclaimer:</b> data may be incomplete due to various issues that might have happened (bugs, unstable servers, bugs on the servers etc.). If there is data about a sighting of a Pokemon, that spawn almost certainly happened. On the other hand, there is no guarantee that the database contains <i>all</i> spawns, so there may be Pokemon missing from this report. Your mileage may vary.</p>
 
-        <p>This report contains statistics about data gathered during mining session for {{ area_name }}.</p>
+        <p>This report contains statistics about data gathered from scanning {{ area_name }}.</p>
 
         <p>During that session, <b> {{ total_spawn_count }}</b> Pokemon have been seen on an area of about <b>{{ area_size }} square km</b>. Data gathering started on <b>{{ session_start.strftime('%Y-%m-%d %H:%M:%S') }}</b> and ended on <b>{{ session_end.strftime('%Y-%m-%d %H:%M:%S') }}</b>, lasting <b>{{ session_length_hours }} hours</b>. There were {{ spawns_per_hour }} spawns per hour on average.</p>
 
@@ -182,9 +182,9 @@
 
         <h2>Footnotes</h2>
 
-        <p>This report was generated using pokeminer+, a tool for gathering data about Pokemon Go.</p>
+        <p>This report was generated using Monocle, a tool for gathering data about Pokemon Go.</p>
 
-        <p>Visit <a href="https://github.com/Noctem/pokeminer">https://github.com/Noctem/pokeminer</a> for more info.</p>
+        <p>Check out <a href="https://github.com/Noctem/Monocle">Monocle on GitHub</a> for more info.</p>
 
         <p>This report is available under Creative Commons CC-BY-4.0 license: <a href="https://creativecommons.org/licenses/by/4.0/">https://creativecommons.org/licenses/by/4.0/</a>.</p>
     </div>

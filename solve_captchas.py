@@ -14,8 +14,8 @@ from time import time
 
 import socket
 
-from pokeminer import config
-from pokeminer.utils import random_altitude, get_device_info, get_address, LAT_MEAN, LON_MEAN
+from monocle import config
+from monocle.utils import random_altitude, get_device_info, get_address, LAT_MEAN, LON_MEAN
 
 
 async def solve_captcha(url, api, driver, timestamp):

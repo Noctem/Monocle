@@ -9,10 +9,10 @@ import json
 from flask import Flask, request, render_template, jsonify
 from multiprocessing.managers import BaseManager, RemoteError
 
-from pokeminer import config
-from pokeminer import db
-from pokeminer import utils
-from pokeminer.names import POKEMON_NAMES
+from monocle import config
+from monocle import db
+from monocle import utils
+from monocle.names import POKEMON_NAMES
 
 
 # Check whether config has all necessary attributes
@@ -60,7 +60,7 @@ def get_args():
     return parser.parse_args()
 
 
-app = Flask(__name__, template_folder=resource_filename('pokeminer', 'templates'), static_folder=resource_filename('pokeminer', 'static'))
+app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'), static_folder=resource_filename('monocle', 'static'))
 
 
 @app.route('/')

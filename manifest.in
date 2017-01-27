@@ -1,4 +1,4 @@
-recursive-include pokeminer/static *.png
-recursive-include pokeminer/static/css *.css
-recursive-include pokeminer/static/js *.js
-recursive-include pokeminer/templates *.html
+recursive-include monocle/static *.png
+recursive-include monocle/static/css *.css
+recursive-include monocle/static/js *.js
+recursive-include monocle/templates *.html

@@ -1,4 +1,4 @@
 [submodule "monocle-icons"]
-	path = pokeminer/static/monocle-icons
+	path = monocle/static/monocle-icons
 	url = https://github.com/Noctem/monocle-icons.git
 	ignore = all

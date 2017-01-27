@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
 try:
-    from pokeminer.landmarks import Landmarks
-except ImportError:
-    print('Copy this script to the pokeminer directory, not scripts/')
-    raise
+    from monocle.landmarks import Landmarks
+except ImportError as e:
+    raise ImportError('Run this script from your Monocle directory') from e
 
 import pickle
 

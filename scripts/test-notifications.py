@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 
-from pokeminer import config
+from monocle import config
 config.ALWAYS_NOTIFY_IDS = {71}
 config.HASHTAGS = {'test'}
 
-from pokeminer.names import POKEMON_NAMES
-POKEMON_NAMES[0] = 'Test'
+from monocle.names import POKEMON_NAMES
 
-from pokeminer.notification import Notifier
-from pokeminer.shared import Spawns
+from monocle.notification import Notifier
+from monocle.shared import Spawns
 
 
 spawns = Spawns()

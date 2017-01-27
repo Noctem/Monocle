@@ -1,4 +1,4 @@
-__title__ = 'Pokeminer+'
+__title__ = 'monocle'
 __version__ = '0.8a'
 __author__ = 'Noctem'
 __license__ = 'MIT License'
