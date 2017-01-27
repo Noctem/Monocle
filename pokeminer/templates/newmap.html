@@ -74,21 +74,21 @@
             options: {
                 iconSize: [20, 20],
                 className: 'worker-icon',
-                iconUrl: '{{ url_for("static", filename="assets/ball.png") }}'
+                iconUrl: '{{ url_for("static", filename="monocle-icons/assets/ball.png") }}'
             }
         });
         var NotificationIcon = L.Icon.extend({
             options: {
                 iconSize: [30, 30],
                 className: 'notification-icon',
-                iconUrl: '{{ url_for("static", filename="assets/ultra.png") }}'
+                iconUrl: '{{ url_for("static", filename="monocle-icons/assets/ultra.png") }}'
             }
         });
         var PokestopIcon = L.Icon.extend({
             options: {
                 iconSize: [10, 20],
                 className: 'pokestop-icon',
-                iconUrl: '{{ url_for("static", filename="assets/stop.png") }}'
+                iconUrl: '{{ url_for("static", filename="monocle-icons/assets/stop.png") }}'
             }
         });
 
@@ -128,7 +128,7 @@
         }
 
         function PokemonMarker (raw) {
-            var icon = new PokemonIcon({iconUrl: '/static/icons/' + raw.pokemon_id + '.png'});
+            var icon = new PokemonIcon({iconUrl: '/static/monocle-icons/icons/' + raw.pokemon_id + '.png'});
             var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: 1});
             marker.raw = raw;
             markers[raw.id] = marker;
