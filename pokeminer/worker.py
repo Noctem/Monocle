@@ -269,7 +269,7 @@ class Worker:
                 raise ex.BannedAccountException
 
             player_data = get_player['player_data']
-            tutorial_state = player_data['tutorial_state']
+            tutorial_state = player_data.get('tutorial_state', [])
             self.item_capacity = player_data['max_item_storage']
             if 'created' not in self.account:
                 self.account['created'] = player_data['creation_timestamp_ms'] / 1000
@@ -277,13 +277,8 @@ class Worker:
             if avatar['avatar'] == 1 and avatar['backpack'] > 2:
                 self.logger.warning('Invalid backpack for female, resetting avatar.')
                 reset_avatar = True
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, AttributeError):
             pass
-
-        # Sometimes we don't get tutorial_state in new accounts
-        # Line 264 can be [] too and we forget about this if.
-        if tutorial_state is None:
-            tutorial_state = []
 
         await random_sleep(.7, 1.2)
 
