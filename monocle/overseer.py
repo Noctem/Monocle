@@ -29,7 +29,7 @@ from .worker import Worker
 BAD_STATUSES = (
     'FAILED LOGIN',
     'EXCEPTION',
-    'NOT AUTHENTICATED'
+    'NOT AUTHENTICATED',
     'BAD LOGIN',
     'HASHING OFFLINE',
     'NIANTIC OFFLINE',
