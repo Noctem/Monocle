@@ -107,7 +107,7 @@ class PokeImage:
             bg = resource_stream('monocle', 'static/monocle-icons/assets/notification-bg-day.png')
         ims = cairo.ImageSurface.create_from_png(bg)
         self.context = cairo.Context(ims)
-        pokepic = resource_stream('monocle', 'static/original-icons/{}.png'.format(self.pokemon_id))
+        pokepic = resource_stream('monocle', 'static/monocle-icons/original-icons/{}.png'.format(self.pokemon_id))
         self.draw_stats()
         self.draw_image(pokepic, 204, 224)
         self.draw_name()
