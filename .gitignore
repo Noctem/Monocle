@@ -1,3 +1,10 @@
+### Images ###
+pokeminer/static/assets/
+pokeminer/static/forts/
+pokeminer/static/icons/
+pokeminer/static/larger-icons/
+pokeminer/static/original-icons/
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
