@@ -69,7 +69,7 @@ function getOpacity (item) {
 }
 
 function PokemonMarker (raw) {
-    var icon = new PokemonIcon({iconUrl: '/static/icons/' + raw.pokemon_id + '.png'});
+    var icon = new PokemonIcon({iconUrl: '/static/monocle-icons/icons/' + raw.pokemon_id + '.png'});
     var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: 1});
     marker.raw = raw;
     markers[raw.id] = marker;
@@ -103,7 +103,7 @@ function PokemonMarker (raw) {
 }
 
 function FortMarker (raw) {
-    var icon = new FortIcon({iconUrl: '/static/forts/' + raw.team + '.png'});
+    var icon = new FortIcon({iconUrl: '/static/monocle-icons/forts/' + raw.team + '.png'});
     var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: 1});
     marker.raw = raw;
     markers[raw.id] = marker;
