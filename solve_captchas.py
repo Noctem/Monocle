@@ -31,8 +31,24 @@ async def solve_captcha(url, api, driver, timestamp):
     request.get_buddy_walked()
     request.check_challenge()
 
-    response = await request.call()
-    return response.get('responses', {}).get('VERIFY_CHALLENGE', {}).get('success', False)
+    for attempt in range(-1, config.MAX_RETRIES):
+        try:
+            response = await request.call()
+            return response['responses']['VERIFY_CHALLENGE']['success']
+        except (ex.HashServerException, ex.MalformedResponseException, ex.ServerBusyOrOfflineException) as e:
+            if attempt == config.MAX_RETRIES - 1:
+                raise
+            else:
+                print('{}, trying again soon.'.format(e))
+                await sleep(4)
+        except ex.NianticThrottlingException:
+            if attempt == config.MAX_RETRIES - 1:
+                raise
+            else:
+                print('Throttled, trying again in 11 seconds.')
+                await sleep(11)
+        except (KeyError, TypeError):
+            return False
 
 
 async def main():

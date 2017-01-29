@@ -211,7 +211,7 @@ def configure_logger(filename='scan.log'):
 
 def exception_handler(loop, context):
     logger = getLogger('eventloop')
-    logger.exception('A wild exception appeared!')
+    logger.error('A wild exception appeared!')
     logger.error(context)
 
 
