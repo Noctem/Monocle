@@ -57,7 +57,17 @@ function getPopupContent (item) {
     var minutes = parseInt(diff / 60);
     var seconds = parseInt(diff - (minutes * 60));
     var expires_at = minutes + 'm ' + seconds + 's';
-    return '<b>#' + item.pokemon_id + ' ' + item.name + '</b> ' + expires_at;
+    var content = '<b>' + item.name + '</b> - <a href="https://pokemongo.gamepress.gg/pokemon/' + item.pokemon_id + '">#' + item.pokemon_id + '</a>';
+    if(item.atk != undefined){
+        var totaliv = 100 * (item.atk + item.def + item.sta) / 45;
+        content += ' - <b>' + totaliv.toFixed(2) + '%</b></br>';
+        content += 'Disappears in: ' + expires_at + '<br>';
+        content += 'Move 1: ' + item.move1 + ' ( ' + item.damage1 + ' dps )</br>';
+        content += 'Move 2: ' + item.move2 + ' ( ' + item.damage2 + ' dps )';
+    } else {
+        content += '<br>Disappears in: ' + expires_at + '<br>';
+    }
+    return content;
 }
 
 function getOpacity (item) {
