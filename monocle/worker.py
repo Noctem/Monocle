@@ -43,7 +43,7 @@ else:
 class Worker:
     """Single worker walking on the map"""
 
-    download_hash = "11dcdeb848ed224924f8a8e14d94d620c8966d44"
+    download_hash = "1de302dba2e542b8db8250455fa3e340d78c86f3"
     g = {'seen': 0, 'captchas': 0}
     db_processor = DatabaseProcessor()
     spawns = db_processor.spawns
@@ -182,7 +182,7 @@ class Worker:
                     break
 
         self.error_code = '°'
-        version = 5302
+        version = 5500
         async with self.sim_semaphore:
             self.error_code = 'APP SIMULATION'
             if config.APP_SIMULATION and not self.ever_authenticated:
