@@ -11,16 +11,16 @@ from array import array
 from queue import Empty
 from aiohttp import ClientSession, ProxyConnectionError
 
+from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
+from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
+from .shared import DatabaseProcessor
+from . import config
+
 if config.FORCED_KILL:
     try:
         import _thread
     except ImportError as e:
         raise OSError('Your platform does not support _thread so FORCED_KILL will not work.') from e
-
-from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
-from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
-from .shared import DatabaseProcessor
-from . import config
 
 if config.NOTIFY:
     from .notification import Notifier
