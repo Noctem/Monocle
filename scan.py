@@ -65,7 +65,8 @@ _optional = {
     'PLAYER_LOCALE': {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'},
     'CAPTCHA_KEY': None,
     'CAPTCHAS_ALLOWED': 3,
-    'DIRECTORY': None
+    'DIRECTORY': None,
+    'FORCED_KILL': None
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -120,6 +121,9 @@ if config.DIRECTORY is None:
         config.DIRECTORY = '..'
     else:
         config.DIRECTORY = ''
+
+if config.FORCED_KILL is True:
+    config.FORCED_KILL = '0.53.0'
 
 from monocle.utils import get_address, dump_pickle
 from monocle.worker import Worker

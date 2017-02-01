@@ -123,6 +123,9 @@ LOGIN_TIMEOUT = 2.5
 # disable if your workers already have more than enough points to visit
 MORE_POINTS = True
 
+# Set to True to kill the scanner when a newer version is forced
+#FORCED_KILL = False
+
 # exclude these Pokémon from the map by default (only visible in trash layer)
 TRASH_IDS = (
     16, 19, 21, 29, 32, 41, 46, 48, 50, 52, 56, 74, 77, 96, 111, 133

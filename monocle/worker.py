@@ -11,6 +11,12 @@ from array import array
 from queue import Empty
 from aiohttp import ClientSession, ProxyConnectionError
 
+if config.FORCED_KILL:
+    try:
+        import _thread
+    except ImportError as e:
+        raise OSError('Your platform does not support _thread so FORCED_KILL will not work.') from e
+
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
 from .shared import DatabaseProcessor
@@ -539,6 +545,15 @@ class Worker:
 
         responses = response.get('responses')
         if chain:
+            try:
+                if settings and config.FORCED_KILL
+                        and responses['DOWNLOAD_SETTINGS']['settings']['minimum_client_version'] != config.FORCED_KILL:
+                    err = 'A new version is being forced, exiting.'
+                    self.logger.error(err)
+                    print(err)
+                    _thread.interrupt_main()
+            except KeyError:
+                pass
             delta = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
             timestamp = delta.get('new_timestamp_ms')
             inventory_items = delta.get('inventory_items', [])
