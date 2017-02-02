@@ -160,7 +160,8 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 #MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 
 # set of proxy addresses and ports
-#PROXIES = {'socks5://127.0.0.1:1080', 'socks5://127.0.0.1:1081'}
+# SOCKS requires aiosocks to be installed
+#PROXIES = {'http://127.0.0.1:8080', 'https://127.0.0.1:8443', 'socks5://127.0.0.1:1080'}
 
 # convert spawn_id to integer for more efficient DB storage, set to False if
 # using an old database since the data types are incompatible.
