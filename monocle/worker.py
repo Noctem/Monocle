@@ -546,8 +546,8 @@ class Worker:
         responses = response.get('responses')
         if chain:
             try:
-                if (settings and config.FORCED_KILL
-                        and responses['DOWNLOAD_SETTINGS']['settings']['minimum_client_version'] != config.FORCED_KILL):
+                if (settings and config.FORCED_KILL and
+                        responses['DOWNLOAD_SETTINGS']['settings']['minimum_client_version'] not in config.FORCED_KILL):
                     err = 'A new version is being forced, exiting.'
                     self.logger.error(err)
                     print(err)
