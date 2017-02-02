@@ -263,7 +263,7 @@ NOTIFICATION_CACHE = 100
 
 ### if you do pickle it, just load the pickle and omit everything below this point
 
-#from landmarks import Landmarks
+#from monocle.landmarks import Landmarks
 #LANDMARKS = Landmarks(query_suffix=AREA_NAME)
 
 # Landmarks to reference when Pokémon are nearby
