@@ -386,7 +386,7 @@ def report_single(pokemon_id):
 
 def sighting_to_marker(sighting):
     return {
-        'icon': 'static/icons/{}.png'.format(sighting.pokemon_id),
+        'icon': 'static/monocle-icons/icons/{}.png'.format(sighting.pokemon_id),
         'lat': sighting.lat,
         'lon': sighting.lon,
     }
