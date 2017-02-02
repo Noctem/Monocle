@@ -236,7 +236,10 @@ def get_pokemarkers():
 
     if config.MAP_WORKERS:
         # Worker stats
-        markers.extend(get_worker_markers())
+        try:
+            markers.extend(get_worker_markers())
+        except RemoteError:
+            print('Unable to connect to manager for worker data.')
     return markers
 
 def get_spawnpointsmarkers():
