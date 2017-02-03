@@ -11,6 +11,9 @@ from .db import Session, get_pokemon_ranking, estimate_remaining_time
 from .names import POKEMON_NAMES, MOVES
 from . import config
 
+import requests
+
+
 # set unset config options to None
 for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
                       'TWITTER_CONSUMER_SECRET', 'TWITTER_ACCESS_KEY',
@@ -38,9 +41,11 @@ for setting_name, default in _optional.items():
 del _optional
 
 if config.NOTIFY:
+
     WEBHOOK = False
     TWITTER = False
     PUSHBULLET = False
+    TELEGRAM = False
 
     if all((config.TWITTER_CONSUMER_KEY, config.TWITTER_CONSUMER_SECRET,
             config.TWITTER_ACCESS_KEY, config.TWITTER_ACCESS_SECRET)):
@@ -74,8 +79,10 @@ if config.NOTIFY:
         except ImportError as e:
             raise ImportError("You specified a WEBHOOKS address but you don't have requests installed.") from e
         WEBHOOK = True
+    if config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID:
+        TELEGRAM=True
 
-    NATIVE = TWITTER or PUSHBULLET
+    NATIVE = TWITTER or PUSHBULLET or TELEGRAM
 
     if not (NATIVE or WEBHOOK):
         raise ValueError('NOTIFY is enabled but no keys or webhook address were provided.')
@@ -295,8 +302,42 @@ class Notification:
 
         if TWITTER:
             tweeted = self.tweet()
+        if TELEGRAM:
+            telegram = self.sendToTelegram()
 
-        return tweeted or pushed
+        return tweeted or pushed or telegram
+
+    def sendToTelegram(self):
+        try:
+            TELEGRAM_BASE_URL = "https://api.telegram.org/bot{token}/sendVenue"
+            title = self.name
+            if self.expire_time:
+                minutes, seconds = divmod(self.delta.total_seconds(), 60)
+                description = 'Expires at: {e} ({m}m{s:.0f}s left)'.format(e=self.expire_time, m=int(minutes), s=seconds)
+            else:
+                description = ("It'll expire between {e1} & {e2}.").format(e1=self.min_expire_time, e2=self.max_expire_time)
+            
+            if self.iv[0] is not None:
+                title += ' ({0[0]}/{0[1]}/{0[2]})'.format(self.iv)
+
+            payload = {
+                'chat_id': config.TELEGRAM_CHAT_ID,
+                'latitude': self.coordinates[0],
+                'longitude': self.coordinates[1],
+                'title' : title,
+                'address' : description,
+            }
+
+            r = requests.get(TELEGRAM_BASE_URL.format(token=config.TELEGRAM_BOT_TOKEN), params=payload)
+            if r.status_code == 200:
+                self.logger.info('Sent a Telegram notification about {}.'.format(self.name))
+                return True
+            else:
+                self.logger.info('Failed to send a Telegram notification about {}.'.format(self.name))
+                return False
+        except Exception:
+            self.logger.exception('Exception caught in Telegram notification.')
+            return False
 
     def pbpush(self):
         """ Send a PushBullet notification either privately or to a channel,
