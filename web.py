@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pkg_resources import resource_filename
+from contextlib import contextmanager
 
 import argparse
 import json
@@ -28,11 +29,9 @@ _optional = {
     'MAP_WORKERS': True,
     'AUTHKEY': b'm3wtw0',
     'REPORT_MAPS': True,
-
     'LOAD_CUSTOM_HTML_FILE': False,
     'LOAD_CUSTOM_CSS_FILE': False,
     'LOAD_CUSTOM_JS_FILE': False,
-
     'FB_PAGE_ID': None,
     'TWITTER_SCREEN_NAME': None,
     'DISCORD_INVITE_ID': None,
@@ -48,26 +47,18 @@ if not config.REPORT_MAPS:
     config.GOOGLE_MAPS_KEY = None
 
 
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '-H',
-        '--host',
-        help='Set web server listening host',
-        default='127.0.0.1'
-    )
-    parser.add_argument(
-        '-P',
-        '--port',
-        type=int,
-        help='Set web server listening port',
-        default=5000
-    )
-    parser.add_argument(
-        '-d', '--debug', help='Debug Mode', action='store_true'
-    )
-    parser.set_defaults(debug=False)
-    return parser.parse_args()
+@contextmanager
+def session_scope():
+    """Provide a transactional scope around a series of operations."""
+    session = db.Session(autoflush=False)
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'), static_folder=resource_filename('monocle', 'static'))
@@ -112,21 +103,26 @@ def fullmap():
         extra_css_js=Markup(extra_css_js),
     )
 
+
 @app.route('/data')
 def pokemon_data():
     return jsonify(get_pokemarkers())
 
+
 @app.route('/spawnpoints')
 def get_spawn_points():
-    return jsonify(get_spawnpointsmarkers())
+    return jsonify(get_spawnpoint_markers())
+
 
 @app.route('/pokestops')
 def get_pokestops():
-    return jsonify(get_pokestopsmarkers())
+    return jsonify(get_pokestop_markers())
+
 
 @app.route('/scan_coords')
 def get_scan_coords():
     return jsonify(get_scan_coords())
+
 
 @app.route('/static/<path:path>')
 def send_static(path):
@@ -136,6 +132,7 @@ def send_static(path):
 if config.MAP_WORKERS:
     class AccountManager(BaseManager): pass
     AccountManager.register('worker_dict')
+
 
     def manager_connect():
         global worker_dict
@@ -149,6 +146,7 @@ if config.MAP_WORKERS:
             worker_dict = {}
 
     manager_connect()
+
 
     @app.route('/workers_data')
     def workers_data():
@@ -165,6 +163,7 @@ if config.MAP_WORKERS:
             map_provider_url=config.MAP_PROVIDER_URL,
             map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION
         )
+
 
     def get_worker_markers():
         markers = []
@@ -201,94 +200,94 @@ if config.MAP_WORKERS:
 
 def get_pokemarkers():
     markers = []
-    session = db.Session(autoflush=False)
-    pokemons = db.get_sightings(session)
-    forts = db.get_forts(session)
-    session.close()
+    with session_scope() as session:
+        pokemons = db.get_sightings(session)
+        forts = db.get_forts(session)
 
-    for pokemon in pokemons:
-        content = {
-            'id': 'pokemon-{}'.format(pokemon.id),
-            'type': 'pokemon',
-            'trash': pokemon.pokemon_id in config.TRASH_IDS,
-            'name': POKEMON_NAMES[pokemon.pokemon_id],
-            'pokemon_id': pokemon.pokemon_id,
-            'lat': pokemon.lat,
-            'lon': pokemon.lon,
-            'expires_at': pokemon.expire_timestamp,
-        }
-        if pokemon.move_1:
-            iv = {
-                'atk': pokemon.atk_iv,
-                'def': pokemon.def_iv,
-                'sta': pokemon.sta_iv,
-                'move1': POKEMON_MOVES[pokemon.move_1],
-                'move2': POKEMON_MOVES[pokemon.move_2],
-                'damage1': MOVES.get(pokemon.move_1, {}).get('damage'),
-                'damage2': MOVES.get(pokemon.move_2, {}).get('damage'),
+        for pokemon in pokemons:
+            content = {
+                'id': 'pokemon-{}'.format(pokemon.id),
+                'type': 'pokemon',
+                'trash': pokemon.pokemon_id in config.TRASH_IDS,
+                'name': POKEMON_NAMES[pokemon.pokemon_id],
+                'pokemon_id': pokemon.pokemon_id,
+                'lat': pokemon.lat,
+                'lon': pokemon.lon,
+                'expires_at': pokemon.expire_timestamp,
             }
-            content.update(iv)
+            if pokemon.move_1:
+                iv = {
+                    'atk': pokemon.atk_iv,
+                    'def': pokemon.def_iv,
+                    'sta': pokemon.sta_iv,
+                    'move1': POKEMON_MOVES[pokemon.move_1],
+                    'move2': POKEMON_MOVES[pokemon.move_2],
+                    'damage1': MOVES.get(pokemon.move_1, {}).get('damage'),
+                    'damage2': MOVES.get(pokemon.move_2, {}).get('damage'),
+                }
+                content.update(iv)
 
-        markers.append(content)
-    for fort in forts:
-        if fort['guard_pokemon_id']:
-            pokemon_name = POKEMON_NAMES[fort['guard_pokemon_id']]
-        else:
-            pokemon_name = 'Empty'
-        markers.append({
-            'id': 'fort-{}'.format(fort['fort_id']),
-            'sighting_id': fort['id'],
-            'type': 'fort',
-            'prestige': fort['prestige'],
-            'pokemon_id': fort['guard_pokemon_id'],
-            'pokemon_name': pokemon_name,
-            'team': fort['team'],
-            'lat': fort['lat'],
-            'lon': fort['lon'],
-        })
+            markers.append(content)
+        for fort in forts:
+            if fort['guard_pokemon_id']:
+                pokemon_name = POKEMON_NAMES[fort['guard_pokemon_id']]
+            else:
+                pokemon_name = 'Empty'
+            markers.append({
+                'id': 'fort-{}'.format(fort['fort_id']),
+                'sighting_id': fort['id'],
+                'type': 'fort',
+                'prestige': fort['prestige'],
+                'pokemon_id': fort['guard_pokemon_id'],
+                'pokemon_name': pokemon_name,
+                'team': fort['team'],
+                'lat': fort['lat'],
+                'lon': fort['lon'],
+            })
 
-    if config.MAP_WORKERS:
-        # Worker stats
-        try:
-            markers.extend(get_worker_markers())
-        except RemoteError:
-            print('Unable to connect to manager for worker data.')
-    return markers
+        if config.MAP_WORKERS:
+            # Worker stats
+            try:
+                markers.extend(get_worker_markers())
+            except RemoteError:
+                print('Unable to connect to manager for worker data.')
+        return markers
 
-def get_spawnpointsmarkers():
+
+def get_spawnpoint_markers():
     markers = []
-    session = db.Session()
-    spawns = db.get_spawn_points(session)
-    session.close()
+    with session_scope() as session:
+        spawns = db.get_spawn_points(session)
 
-    for spawn in spawns:
-        markers.append({
-            'id': 'spawn-{}'.format(spawn.id),
-            'type': 'spawn',
-            'spawn_id': spawn.spawn_id,
-            'despawn_time': spawn.despawn_time,
-            'lat': spawn.lat,
-            'lon': spawn.lon,
-            'alt': spawn.alt,
-            'duration': spawn.duration
-        })
-    return markers
+        for spawn in spawns:
+            markers.append({
+                'id': 'spawn-{}'.format(spawn.id),
+                'type': 'spawn',
+                'spawn_id': spawn.spawn_id,
+                'despawn_time': spawn.despawn_time,
+                'lat': spawn.lat,
+                'lon': spawn.lon,
+                'alt': spawn.alt,
+                'duration': spawn.duration
+            })
+        return markers
 
-def get_pokestopsmarkers():
+
+def get_pokestop_markers():
     markers = []
-    session = db.Session()
-    pokestops = db.get_pokestops(session)
-    session.close()
+    with session_scope() as session:
+        pokestops = db.get_pokestops(session)
 
-    for pokestop in pokestops:
-        markers.append({
-            'id': 'pokestop-{}'.format(pokestop.id),
-            'type': 'pokestop',
-            'external_id': pokestop.external_id,
-            'lat': pokestop.lat,
-            'lon': pokestop.lon
-        })
-    return markers
+        for pokestop in pokestops:
+            markers.append({
+                'id': 'pokestop-{}'.format(pokestop.id),
+                'type': 'pokestop',
+                'external_id': pokestop.external_id,
+                'lat': pokestop.lat,
+                'lon': pokestop.lon
+            })
+        return markers
+
 
 def get_scan_coords():
     markers = []
@@ -310,42 +309,43 @@ def get_scan_coords():
         })
     return markers
 
+
 @app.route('/report')
 def report_main():
-    session = db.Session(autoflush=False)
-    counts = db.get_sightings_per_pokemon(session)
-    session_stats = db.get_session_stats(session)
-    session.close()
-    count = sum(counts.values())
-    counts_tuple = tuple(counts.items())
-    top_pokemon = list(counts_tuple[-30:])
-    top_pokemon.reverse()
-    bottom_pokemon = counts_tuple[:30]
-    nonexistent = [(x, POKEMON_NAMES[x]) for x in range(1, 152) if x not in counts]
-    rare_pokemon = [r for r in counts_tuple if r[0] in config.RARE_IDS]
-    if rare_pokemon:
-        rare_sightings = db.get_all_sightings(
-            session, [r[0] for r in rare_pokemon]
-        )
-    else:
-        rare_sightings = []
-    js_data = {
-        'charts_data': {
-            'punchcard': db.get_punch_card(session),
-            'top30': [(POKEMON_NAMES[r[0]], r[1]) for r in top_pokemon],
-            'bottom30': [
-                (POKEMON_NAMES[r[0]], r[1]) for r in bottom_pokemon
-            ],
-            'rare': [
-                (POKEMON_NAMES[r[0]], r[1]) for r in rare_pokemon
-            ],
-        },
-        'maps_data': {
-            'rare': [sighting_to_marker(s) for s in rare_sightings],
-        },
-        'map_center': utils.MAP_CENTER,
-        'zoom': 13,
-    }
+    with session_scope() as session:
+        counts = db.get_sightings_per_pokemon(session)
+        session_stats = db.get_session_stats(session)
+
+        count = sum(counts.values())
+        counts_tuple = tuple(counts.items())
+        top_pokemon = list(counts_tuple[-30:])
+        top_pokemon.reverse()
+        bottom_pokemon = counts_tuple[:30]
+        nonexistent = [(x, POKEMON_NAMES[x]) for x in range(1, 152) if x not in counts]
+        rare_pokemon = [r for r in counts_tuple if r[0] in config.RARE_IDS]
+        if rare_pokemon:
+            rare_sightings = db.get_all_sightings(
+                session, [r[0] for r in rare_pokemon]
+            )
+        else:
+            rare_sightings = []
+        js_data = {
+            'charts_data': {
+                'punchcard': db.get_punch_card(session),
+                'top30': [(POKEMON_NAMES[r[0]], r[1]) for r in top_pokemon],
+                'bottom30': [
+                    (POKEMON_NAMES[r[0]], r[1]) for r in bottom_pokemon
+                ],
+                'rare': [
+                    (POKEMON_NAMES[r[0]], r[1]) for r in rare_pokemon
+                ],
+            },
+            'maps_data': {
+                'rare': [sighting_to_marker(s) for s in rare_sightings],
+            },
+            'map_center': utils.MAP_CENTER,
+            'zoom': 13,
+        }
     icons = {
         'top30': [(r[0], POKEMON_NAMES[r[0]]) for r in top_pokemon],
         'bottom30': [(r[0], POKEMON_NAMES[r[0]]) for r in bottom_pokemon],
@@ -373,31 +373,29 @@ def report_main():
 
 @app.route('/report/<int:pokemon_id>')
 def report_single(pokemon_id):
-    session = db.Session(autoflush=False)
-    session_stats = db.get_session_stats(session)
-    js_data = {
-        'charts_data': {
-            'hours': db.get_spawns_per_hour(session, pokemon_id),
-        },
-        'map_center': utils.MAP_CENTER,
-        'zoom': 13,
-    }
-    template = render_template(
-        'report_single.html',
-        current_date=datetime.now(),
-        area_name=config.AREA_NAME,
-        area_size=utils.get_scan_area(),
-        pokemon_id=pokemon_id,
-        pokemon_name=POKEMON_NAMES[pokemon_id],
-        total_spawn_count=db.get_total_spawns_count(session, pokemon_id),
-        session_start=session_stats['start'],
-        session_end=session_stats['end'],
-        session_length_hours=int(session_stats['length_hours']),
-        google_maps_key=config.GOOGLE_MAPS_KEY,
-        js_data=js_data,
-    )
-    session.close()
-    return template
+    with session_scope() as session:
+        session_stats = db.get_session_stats(session)
+        js_data = {
+            'charts_data': {
+                'hours': db.get_spawns_per_hour(session, pokemon_id),
+            },
+            'map_center': utils.MAP_CENTER,
+            'zoom': 13,
+        }
+        return render_template(
+            'report_single.html',
+            current_date=datetime.now(),
+            area_name=config.AREA_NAME,
+            area_size=utils.get_scan_area(),
+            pokemon_id=pokemon_id,
+            pokemon_name=POKEMON_NAMES[pokemon_id],
+            total_spawn_count=db.get_total_spawns_count(session, pokemon_id),
+            session_start=session_stats['start'],
+            session_end=session_stats['end'],
+            session_length_hours=int(session_stats['length_hours']),
+            google_maps_key=config.GOOGLE_MAPS_KEY,
+            js_data=js_data,
+        )
 
 
 def sighting_to_marker(sighting):
@@ -410,16 +408,37 @@ def sighting_to_marker(sighting):
 
 @app.route('/report/heatmap')
 def report_heatmap():
-    session = db.Session(autoflush=False)
     pokemon_id = request.args.get('id')
-    points = db.get_all_spawn_coords(session, pokemon_id=pokemon_id)
-    session.close()
-    return json.dumps(points)
+    with session_scope() as session:
+        return json.dumps(db.get_all_spawn_coords(session, pokemon_id=pokemon_id))
+
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-H',
+        '--host',
+        help='Set web server listening host',
+        default='127.0.0.1'
+    )
+    parser.add_argument(
+        '-P',
+        '--port',
+        type=int,
+        help='Set web server listening port',
+        default=5000
+    )
+    parser.add_argument(
+        '-d', '--debug', help='Debug Mode', action='store_true'
+    )
+    parser.set_defaults(debug=False)
+    return parser.parse_args()
 
 
 def main():
     args = get_args()
     app.run(debug=args.debug, threaded=True, host=args.host, port=args.port)
+
 
 if __name__ == '__main__':
     main()
