@@ -175,9 +175,10 @@ class Worker:
                         )
                 except ex.AuthTimeoutException:
                     if attempt >= config.MAX_RETRIES - 1:
+                        self.logger.warning('Login attempts timed out. Giving up')
                         raise
                     else:
-                        self.logger.warning('Login attempt timed out.')
+                        self.logger.info('Login attempt timed out.')
                 else:
                     break
 
@@ -482,27 +483,37 @@ class Worker:
             else:
                 await sleep(0.5)
 
-        for _ in range(-1, config.MAX_RETRIES):
+        response = None
+        err = None
+        for attempt in range(-1, config.MAX_RETRIES):
             try:
                 response = await request.call()
                 if response:
                     break
                 else:
                     raise ex.MalformedResponseException('empty response')
-            except (ex.NotLoggedInException, ex.AuthException):
+            except (ex.NotLoggedInException, ex.AuthException) as e:
+                self.logger.info('{} is not authenticated.'.format(self.username))
+                err = e
                 self.logged_in = False
                 await self.login()
                 await sleep(2)
-            except ex.HashingOfflineException:
-                self.logger.warning('Hashing server busy or offline.')
+            except ex.HashingOfflineException as e:
+                if err != e:
+                    err = e
+                    self.logger.warning('Hashing server busy or offline.')
                 self.error_code = 'HASHING OFFLINE'
                 await sleep(7.5)
-            except ex.NianticOfflineException:
-                self.logger.warning('Niantic busy or offline.')
+            except ex.NianticOfflineException as e:
+                if err != e:
+                    err = e
+                    self.logger.warning('Niantic busy or offline.')
                 self.error_code = 'NIANTIC OFFLINE'
                 await random_sleep()
-            except ex.HashingQuotaExceededException:
-                self.logger.warning('Exceeded your hashing quota, sleeping.')
+            except ex.HashingQuotaExceededException as e:
+                if err != e:
+                    err = e
+                    self.logger.warning('Exceeded your hashing quota, sleeping.')
                 self.error_code = 'QUOTA EXCEEDED'
                 refresh = HashServer.status.get('period')
                 now = time()
@@ -513,11 +524,15 @@ class Worker:
                         await sleep(5)
                 else:
                     await sleep(30)
-            except ex.NianticThrottlingException:
-                self.logger.warning('Server throttling - sleeping for a bit')
+            except ex.NianticThrottlingException as e:
+                if err != e:
+                    err = e
+                    self.logger.warning('Server throttling - sleeping for a bit')
                 self.error_code = 'THROTTLE'
                 await random_sleep(11, 22, 12)
-            except ProxyConnectionError:
+            except ProxyConnectionError as e:
+                if err != e:
+                    err = e
                 self.error_code = 'PROXY ERROR'
 
                 if self.proxies:
@@ -526,17 +541,18 @@ class Worker:
                     while proxy == self.proxy:
                         self.new_proxy()
                 else:
-                    self.logger.error('Proxy connection error')
+                    if err != e:
+                        self.logger.error('Proxy connection error')
                     await sleep(5)
             except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
-                self.logger.warning(e)
+                if err != e:
+                    self.logger.warning(e)
                 self.error_code = 'MALFORMED RESPONSE'
                 await random_sleep(10, 14, 11)
-        try:
-            if not response:
-                raise MaxRetriesException
-        except Exception:
-            raise MaxRetriesException
+            else:
+                err = None
+        if err is not None:
+            raise err
 
         self.last_request = time()
         if action:
@@ -552,6 +568,7 @@ class Worker:
                     self.logger.error(err)
                     print(err)
                     _thread.interrupt_main()
+                    self.kill()
             except KeyError:
                 pass
             delta = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
@@ -604,9 +621,9 @@ class Worker:
                     return False
             return await self.visit_point(point, bootstrap=bootstrap)
         except (ex.AuthException, ex.NotLoggedInException):
-            self.logger.warning('{} is not authenticated.'.format(self.username))
+            self.logger.info('{} is not authenticated.'.format(self.username))
             self.error_code = 'NOT AUTHENTICATED'
-            await sleep(1)
+            await sleep(3)
             await self.swap_account(reason='login failed')
         except CaptchaException:
             self.error_code = 'CAPTCHA'
@@ -617,9 +634,6 @@ class Worker:
             self.error_code = 'CAPTCHA'
             await sleep(1)
             await self.swap_account(reason='solving CAPTCHA failed')
-        except MaxRetriesException:
-            self.logger.warning('Hit the maximum number of attempt retries.')
-            self.error_code = 'MAX RETRIES'
         except ex.TempHashingBanException:
             self.error_code = 'HASHING BAN'
             self.logger.error('Temporarily banned from hashing server for using invalid keys.')
@@ -655,7 +669,18 @@ class Worker:
                 await random_sleep(minimum=12, maximum=20)
             else:
                 self.logger.error('IP banned.')
-                await sleep(150)
+                self.kill()
+        except ex.HashingOfflineException:
+            self.logger.warning('Hashing server busy or offline. Giving up.')
+        except ex.NianticOfflineException:
+            self.logger.warning('Niantic busy or offline. Giving up.')
+        except ex.ExpiredHashKeyException:
+            self.error_code = 'KEY EXPIRED'
+            err = 'Hash key has expired: {}'.format(config.HASH_KEY)
+            self.logger.error(err)
+            print(err)
+            _thread.interrupt_main()
+            self.kill()
         except ex.HashServerException as e:
             self.logger.warning(e)
             self.error_code = 'HASHING ERROR'
@@ -1269,9 +1294,6 @@ class BusyLock(Lock):
             return True
         else:
             return False
-
-class MaxRetriesException(Exception):
-    """Raised when the maximum number of request retries is reached"""
 
 class CaptchaException(Exception):
     """Raised when a CAPTCHA is needed."""
