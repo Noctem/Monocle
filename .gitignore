@@ -125,3 +125,6 @@ Desktop.ini
 
 ### Images ###
 monocle/static/monocle-icons
+
+### IntelliJ IDEA ###
+.idea

@@ -12,7 +12,7 @@ from multiprocessing.managers import BaseManager, RemoteError
 from monocle import config
 from monocle import db
 from monocle import utils
-from monocle.names import POKEMON_NAMES
+from monocle.names import POKEMON_NAMES, MOVES, POKEMON_MOVES
 
 
 # Check whether config has all necessary attributes
@@ -207,7 +207,7 @@ def get_pokemarkers():
     session.close()
 
     for pokemon in pokemons:
-        markers.append({
+        content = {
             'id': 'pokemon-{}'.format(pokemon.id),
             'type': 'pokemon',
             'trash': pokemon.pokemon_id in config.TRASH_IDS,
@@ -216,7 +216,20 @@ def get_pokemarkers():
             'lat': pokemon.lat,
             'lon': pokemon.lon,
             'expires_at': pokemon.expire_timestamp,
-        })
+        }
+        if pokemon.move_1:
+            iv = {
+                'atk': pokemon.atk_iv,
+                'def': pokemon.def_iv,
+                'sta': pokemon.sta_iv,
+                'move1': POKEMON_MOVES[pokemon.move_1],
+                'move2': POKEMON_MOVES[pokemon.move_2],
+                'damage1': MOVES.get(pokemon.move_1, {}).get('damage'),
+                'damage2': MOVES.get(pokemon.move_2, {}).get('damage'),
+            }
+            content.update(iv)
+
+        markers.append(content)
     for fort in forts:
         if fort['guard_pokemon_id']:
             pokemon_name = POKEMON_NAMES[fort['guard_pokemon_id']]
