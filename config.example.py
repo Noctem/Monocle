@@ -237,14 +237,8 @@ MINIMUM_SCORE = 0.4  # the required score after FULL_TIME seconds have passed
 NOTIFICATION_CACHE = 100
 
 ### The following values are fake, replace them with your own keys to enable
-### PushBullet notifications and/or tweeting, otherwise leave them out of your
-### config or set them to None.
-## you must provide keys for at least one service (PushBullet, Telegram, and/or Twitter) to use notifications
-## Telegram bot token is the one Botfather sends to you after completing bot creation.
-## Chat ID can be two different values:
-## 1) '@channel_name' for channels
-## 2) Your chat_id if you will use your own account. To retrieve your ID, write to your bot and check this URL:
-##     https://api.telegram.org/bot<BOT_TOKEN_HERE>/getUpdates
+### notifications, otherwise leave them out of your config or set them to None.
+### You must provide keys for at least one service to use notifications.
 
 #PB_API_KEY = 'o.9187cb7d5b857c97bfcaa8d63eaa8494'
 #PB_CHANNEL = 0  # set to the integer of your channel, or to None to push privately
@@ -253,6 +247,12 @@ NOTIFICATION_CACHE = 100
 #TWITTER_CONSUMER_SECRET = '64b9ebf618829a51f8c0535b56cebc808eb3e80d3d18bf9e00'
 #TWITTER_ACCESS_KEY = '1dfb143d4f29-6b007a5917df2b23d0f6db951c4227cdf768b'
 #TWITTER_ACCESS_SECRET = 'e743ed1353b6e9a45589f061f7d08374db32229ec4a61'
+
+## Telegram bot token is the one Botfather sends to you after completing bot creation.
+## Chat ID can be two different values:
+## 1) '@channel_name' for channels
+## 2) Your chat_id if you will use your own account. To retrieve your ID, write to your bot and check this URL:
+##     https://api.telegram.org/bot<BOT_TOKEN_HERE>/getUpdates
 #TELEGRAM_BOT_TOKEN = '123456789:AA12345qT6QDd12345RekXSQeoZBXVt-AAA'
 #TELEGRAM_CHAT_ID = '@your_channel'
 

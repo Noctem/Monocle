@@ -22,9 +22,9 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
 ## Features
 
 - accurate timestamp information whenever possible with historical data
-- Twitter and PushBullet notifications
+- Twitter, PushBullet, and Telegram notifications
   - references nearest landmark from your own list
-- IV/moves detection, storage, and notification
+- IV/moves detection, storage, notification, and display
   - produces nice image of Pokémon with stats for Twitter
   - can configure to get IVs for all Pokémon or only those eligible for notification
 - stores Pokémon, gyms, and pokestops in database
@@ -35,7 +35,7 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
 - closely emulates the client to reduce CAPTCHAs and bans
 - automatic device_info generation and retention
 - aims at being very stable for long-term runs
-- able to map entire city (or larger area) in real time
+- able to map entire city (or larger area)
 - reports for gathered data
 - asyncio coroutines
 - support for Bossland's hashing server
