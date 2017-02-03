@@ -296,12 +296,14 @@ class Notification:
 
         tweeted = False
         pushed = False
+        telegram = False
 
         if PUSHBULLET:
             pushed = self.pbpush()
 
         if TWITTER:
             tweeted = self.tweet()
+
         if TELEGRAM:
             telegram = self.sendToTelegram()
 
