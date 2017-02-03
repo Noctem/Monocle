@@ -22,7 +22,7 @@ for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
                       'NOTIFY', 'NAME_FONT', 'IV_FONT', 'MOVE_FONT',
                       'TWEET_IMAGES', 'NOTIFY_IDS', 'NEVER_NOTIFY_IDS',
                       'RARITY_OVERRIDE', 'IGNORE_IVS', 'IGNORE_RARITY',
-                      'WEBHOOKS'):
+                      'WEBHOOKS', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'):
     if not hasattr(config, variable_name):
         setattr(config, variable_name, None)
 
