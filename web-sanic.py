@@ -2,15 +2,20 @@
 
 from datetime import datetime
 from pkg_resources import resource_filename
+from contextlib import contextmanager
+from multiprocessing.managers import BaseManager, RemoteError
 
-import json
+import argparse
 
-from flask import Flask, request, render_template, jsonify, Markup
+from sanic import Sanic
+from sanic.response import html, json
+from jinja2 import Environment, PackageLoader, Markup
 
 from monocle import config
 from monocle import db
 from monocle import utils
 from monocle.names import POKEMON_NAMES, MOVES, POKEMON_MOVES
+
 
 # Set defaults for missing config options
 _optional = {
@@ -43,11 +48,14 @@ from monocle.web_utils import *
 if not config.REPORT_MAPS:
     config.GOOGLE_MAPS_KEY = None
 
-app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'), static_folder=resource_filename('monocle', 'static'))
+env = Environment(loader=PackageLoader('monocle', 'templates'), enable_async=True)
+
+app = Sanic(__name__)
+app.static('/static', resource_filename('monocle', 'static'))
 
 
 @app.route('/')
-def fullmap():
+async def fullmap(request):
     extra_css_js = ''
     social_links = ''
 
@@ -74,9 +82,8 @@ def fullmap():
     if config.TELEGRAM_USERNAME:
         social_links += '<a class="map_btn telegram-icon" target="_blank" href="https://www.telegram.me/' + config.TELEGRAM_USERNAME + '"></a>'
 
-
-    return render_template(
-        mapfile,
+    template = env.get_template(mapfile)
+    html_content = await template.render_async(
         area_name=config.AREA_NAME,
         map_center=utils.MAP_CENTER,
         map_provider_url=config.MAP_PROVIDER_URL,
@@ -84,26 +91,27 @@ def fullmap():
         social_links=Markup(social_links),
         extra_css_js=Markup(extra_css_js)
     )
+    return html(html_content)
 
 
 @app.route('/data')
-def pokemon_data():
-    return jsonify(get_pokemarkers())
+async def pokemon_data(request):
+    return json(get_pokemarkers())
 
 
 @app.route('/spawnpoints')
-def get_spawn_points():
-    return jsonify(get_spawnpoint_markers())
+async def get_spawn_points(request):
+    return json(get_spawnpoint_markers())
 
 
 @app.route('/pokestops')
-def get_pokestops():
-    return jsonify(get_pokestop_markers())
+async def get_pokestops(request):
+    return json(get_pokestop_markers())
 
 
 @app.route('/scan_coords')
-def scan_coords():
-    return jsonify(get_scan_coords())
+async def scan_coords(request):
+    return json(get_scan_coords())
 
 
 if config.MAP_WORKERS:
@@ -111,26 +119,29 @@ if config.MAP_WORKERS:
 
 
     @app.route('/workers_data')
-    def workers_data():
-        return jsonify(get_worker_markers(workers))
+    async def workers_data(request):
+        return json(get_worker_markers(workers))
 
 
     @app.route('/workers')
-    def workers_map():
-        return render_template(
-            'workersmap.html',
+    async def workers_map(request):
+        template = env.get_template('workersmap.html')
+
+        html_content = await template.render_async(
             area_name=config.AREA_NAME,
-            map_center=utils.MAP_CENTER,
+            map_center = utils.MAP_CENTER,
             map_provider_url=config.MAP_PROVIDER_URL,
             map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION
         )
+        return html(html_content)
 else:
     @app.route('/workers_data')
-    def workers_data():
-        jsonify([])
+    def workers_data(request):
+        json([])
+
 
 @app.route('/report')
-def report_main():
+async def report_main(request):
     with session_scope() as session:
         counts = db.get_sightings_per_pokemon(session)
         session_stats = db.get_session_stats(session)
@@ -174,9 +185,8 @@ def report_main():
 
     area = utils.get_scan_area()
 
-    return render_template(
-        'report.html',
-        current_date=datetime.now(),
+    template = env.get_template('report.html')
+    html_content = await template.render_async(
         area_name=config.AREA_NAME,
         area_size=area,
         total_spawn_count=count,
@@ -186,12 +196,13 @@ def report_main():
         session_length_hours=session_stats['length_hours'],
         js_data=js_data,
         icons=icons,
-        google_maps_key=config.GOOGLE_MAPS_KEY,
+        google_maps_key=config.GOOGLE_MAPS_KEY
     )
+    return html(html_content)
 
 
 @app.route('/report/<int:pokemon_id>')
-def report_single(pokemon_id):
+async def report_single(request, pokemon_id):
     with session_scope() as session:
         session_stats = db.get_session_stats(session)
         js_data = {
@@ -201,8 +212,8 @@ def report_single(pokemon_id):
             'map_center': utils.MAP_CENTER,
             'zoom': 13,
         }
-        return render_template(
-            'report_single.html',
+        template = env.get_template('report_single.html')
+        html_content = await template.render_async(
             current_date=datetime.now(),
             area_name=config.AREA_NAME,
             area_size=utils.get_scan_area(),
@@ -213,21 +224,23 @@ def report_single(pokemon_id):
             session_end=session_stats['end'],
             session_length_hours=int(session_stats['length_hours']),
             google_maps_key=config.GOOGLE_MAPS_KEY,
-            js_data=js_data,
+            js_data=js_data
         )
+        return html(html_content)
 
 
 @app.route('/report/heatmap')
-def report_heatmap():
+async def report_heatmap(request):
     pokemon_id = request.args.get('id')
     with session_scope() as session:
-        return json.dumps(db.get_all_spawn_coords(session, pokemon_id=pokemon_id))
+        return json(db.get_all_spawn_coords(session, pokemon_id=pokemon_id))
 
 
 def main():
     args = get_args()
-    app.run(debug=args.debug, threaded=True, host=args.host, port=args.port)
+    app.run(debug=args.debug, host=args.host, port=args.port)
 
 
 if __name__ == '__main__':
     main()
+

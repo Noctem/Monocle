@@ -3,37 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <title>Monocle - {{ area_name }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/leaflet.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href='static/css/leaflet.css'>
+    <link rel="stylesheet" href='static/css/main.css'>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 </head>
 <body>
     <h1>Monocle is initializing, please wait.</h1>
     <style>
         .leaflet-control-layers-toggle {
-            background-image: url({{ url_for('static', filename='img/layers.png') }});
+            background-image: url('static/img/layers.png');
         }
         .my-location {
-            background-image: url({{ url_for('static', filename='img/my-location.png') }});
+            background-image: url('static/img/my-location.png');
         }
         .facebook-icon {
-            background-image: url({{ url_for('static', filename='img/facebook.png') }});
+            background-image: url('static/img/facebook.png');
         }
         .twitter-icon {
-            background-image: url({{ url_for('static', filename='img/twitter.png') }});
+            background-image: url('static/img/twitter.png');
         }
         .discord-icon {
-            background-image: url({{ url_for('static', filename='img/discord.png') }});
+            background-image: url('static/img/discord.png');
         }
         .telegram-icon {
-            background-image: url({{ url_for('static', filename='img/telegram.png') }});
+            background-image: url('static/img/telegram.png');
         }
     </style>
 
     <script>
-        var _WorkerIconUrl = '{{ url_for("static", filename="monocle-icons/assets/ball.png") }}';
-        var _NotificationIconUrl = '{{ url_for("static", filename="monocle-icons/assets/ultra.png") }}';
-        var _PokestopIconUrl = '{{ url_for("static", filename="monocle-icons/assets/stop.png") }}';
+        var _WorkerIconUrl = 'static/monocle-icons/assets/ball.png';
+        var _NotificationIconUrl = 'static/monocle-icons/assets/ultra.png';
+        var _PokestopIconUrl = 'static/monocle-icons/assets/stop.png';
         var _MapCoords = [{{ map_center[0] }}, {{ map_center[1] }}];
         var _MapProviderUrl = '{{ map_provider_url }}';
         var _MapProviderAttribution = '{{ map_provider_attribution|safe }}';
@@ -43,9 +43,9 @@
     <a class="map_btn my-location"></a>
     {{ social_links }}
 
-    <script src="{{ url_for('static', filename='js/jquery-3.1.1.min.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/leaflet.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src='static/js/jquery-3.1.1.min.js'></script>
+    <script src='static/js/leaflet.js'></script>
+    <script src='static/js/main.js'></script>
 
     {{ extra_css_js }}
 </body>
