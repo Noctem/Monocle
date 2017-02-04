@@ -134,7 +134,6 @@ class DatabaseProcessor(Thread):
 
     def __init__(self):
         super().__init__()
-        self.spawns = Spawns()
         self.queue = Queue()
         self.logger = getLogger('dbprocessor')
         self.running = True
@@ -171,9 +170,9 @@ class DatabaseProcessor(Thread):
                     if item['valid']:
                         db.add_sighting(session, item)
                         if item['valid'] == True:
-                            db.add_spawnpoint(session, item, self.spawns)
+                            db.add_spawnpoint(session, item, SPAWNS)
                     else:
-                        db.add_mystery(session, item, self.spawns)
+                        db.add_mystery(session, item, SPAWNS)
                     self.count += 1
                 elif item['type'] == 'fort':
                     db.add_fort_sighting(session, item)
@@ -205,3 +204,7 @@ class DatabaseProcessor(Thread):
 
     def commit(self):
         self._commit = True
+
+
+SPAWNS = Spawns()
+DB = DatabaseProcessor()

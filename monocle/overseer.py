@@ -24,6 +24,7 @@ from .db import SIGHTING_CACHE, FORT_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points
 
 from . import config
+from . import shared
 from .worker import Worker
 
 BAD_STATUSES = (
@@ -50,8 +51,6 @@ START_TIME = time.monotonic()
 
 
 class Overseer:
-    db_processor = Worker.db_processor
-    spawns = Worker.spawns
     accounts = Worker.accounts
     loop = asyncio.get_event_loop()
 
@@ -93,7 +92,7 @@ class Overseer:
                 self.extra_queue.put(account)
 
         self.workers = tuple(Worker(worker_no=x) for x in range(self.count))
-        self.db_processor.start()
+        shared.DB.start()
 
     def check(self):
         now = time.monotonic()
@@ -108,10 +107,10 @@ class Overseer:
                 now = time.monotonic()
                 # Clean cache
                 if now - last_cleaned_cache > 900:  # clean cache after 15min
-                    self.db_processor.clean_cache()
+                    shared.DB.clean_cache()
                     last_cleaned_cache = now
                 if now - last_commit > 5:
-                    self.db_processor.commit()
+                    shared.DB.commit()
                     last_commit = now
                 if not self.paused and now - last_swap > 600:
                     if not self.extra_queue.empty():
@@ -131,7 +130,7 @@ class Overseer:
                     last_stats_updated = now
                 if not self.paused and now - last_things_found_updated > 10:
                     self.things_count = self.things_count[-9:]
-                    self.things_count.append(str(self.db_processor.count))
+                    self.things_count.append(str(shared.DB.count))
                     last_things_found_updated = now
                 if self.status_bar:
                     if platform == 'win32':
@@ -150,13 +149,13 @@ class Overseer:
         try:
             while (self.coroutines_count > 0 or
                        self.coroutines_count == '?' or
-                       not self.db_processor.queue.empty()):
+                       not shared.DB.queue.empty()):
                 try:
                     self.coroutines_count = sum(not t.done()
                                             for t in asyncio.Task.all_tasks(self.loop))
                 except RuntimeError:
                     self.coroutines_count = 0
-                pending = self.db_processor.queue.qsize()
+                pending = shared.DB.queue.qsize()
                 # Spaces at the end are important, as they clear previously printed
                 # output - \r doesn't clean whole line
                 print(
@@ -168,7 +167,7 @@ class Overseer:
         except Exception:
             self.logger.exception('A wild exception appeared during exit.')
         finally:
-            self.db_processor.queue.put({'type': 'kill'})
+            shared.DB.queue.put({'type': 'kill'})
             print('Done.                                          ')
 
     @staticmethod
@@ -264,13 +263,13 @@ class Overseer:
         output = [
             'Monocle running for {}'.format(running_for),
             'Known spawns: {}, unknown: {}, more: {}'.format(
-                len(self.spawns),
-                self.spawns.mysteries_count,
-                self.spawns.cells_count),
-            '{w} workers, {t} threads, {c} coroutines'.format(
-                w=self.count,
-                t=active_count(),
-                c=self.coroutines_count),
+                len(shared.SPAWNS),
+                shared.SPAWNS.mysteries_count,
+                shared.SPAWNS.cells_count),
+            '{} workers, {} threads, {} coroutines'.format(
+                self.count,
+                active_count(),
+                self.coroutines_count),
             '',
             'Seen per worker: min {min}, max {max}, med {med:.0f}'.format(
                 **self.seen_stats),
@@ -280,19 +279,19 @@ class Overseer:
                 **self.delay_stats),
             'Speed: min {min:.1f}, max {max:.1f}, med {med:.1f}'.format(
                 **self.speed_stats),
-            'Extra accounts: {a}, CAPTCHAs needed: {c}'.format(
-                a=self.extra_queue.qsize(),
-                c=self.captcha_queue.qsize()),
+            'Extra accounts: {}, CAPTCHAs needed: {}'.format(
+                self.extra_queue.qsize(),
+                self.captcha_queue.qsize()),
             '',
             'Pokemon found count (10s interval):',
             ' '.join(self.things_count),
             '',
-            'Visits: {v}, per second: {ps:.2f}'.format(
-                v=self.visits,
-                ps=visits_per_second),
-            'Skipped: {s}, unnecessary: {u}'.format(
-                s=self.skipped,
-                u=self.redundant)
+            'Visits: {}, per second: {:.2f}'.format(
+                self.visits,
+                visits_per_second),
+            'Skipped: {}, unnecessary: {}'.format(
+                self.skipped,
+                self.redundant)
         ]
 
         try:
@@ -366,7 +365,7 @@ class Overseer:
         now = time.time() % 3600
         closest = None
 
-        for spawn_id, spawn in self.spawns.items():
+        for spawn_id, spawn in shared.SPAWNS.items():
             time_diff = now - spawn[1]
             if 0 < time_diff < smallest_diff:
                 smallest_diff = time_diff
@@ -385,7 +384,7 @@ class Overseer:
 
             while True:
                 try:
-                    self.spawns.update(loadpickle=pickle)
+                    shared.SPAWNS.update(loadpickle=pickle)
                 except OperationalError as e:
                     self.logger.exception('Operational error while trying to update spawns.')
                     if initial:
@@ -398,14 +397,14 @@ class Overseer:
                 else:
                     break
 
-            if not self.spawns or bootstrap:
+            if not shared.SPAWNS or bootstrap:
                 bootstrap = True
                 pickle = False
 
             if bootstrap:
                 self.bootstrap()
 
-            while len(self.spawns) < 10 and not self.killed:
+            while len(shared.SPAWNS) < 10 and not self.killed:
                 try:
                     mystery_point = list(self.mysteries.popleft())
                     self.coroutine_semaphore.acquire()
@@ -413,13 +412,13 @@ class Overseer:
                         self.try_point(mystery_point), loop=self.loop
                     )
                 except IndexError:
-                    self.mysteries = self.spawns.get_mysteries()
+                    self.mysteries = shared.SPAWNS.get_mysteries()
                     if not self.mysteries:
                         config.MORE_POINTS = True
                         break
 
             current_hour = get_current_hour()
-            if self.spawns.after_last():
+            if shared.SPAWNS.after_last():
                 current_hour += 3600
                 initial = False
 
@@ -430,7 +429,7 @@ class Overseer:
             else:
                 dump_pickle('accounts', self.accounts)
 
-            for spawn_id, spawn in self.spawns.items():
+            for spawn_id, spawn in shared.SPAWNS.items():
                 try:
                     if initial:
                         if spawn_id == start_point:
@@ -462,7 +461,7 @@ class Overseer:
                                 self.try_point(mystery_point), loop=self.loop
                             )
                         except IndexError:
-                            self.mysteries = self.spawns.get_mysteries()
+                            self.mysteries = shared.SPAWNS.get_mysteries()
                             time_diff = time.time() - spawn_time
                             if not self.mysteries:
                                 break

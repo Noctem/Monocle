@@ -128,6 +128,7 @@ if config.FORCED_KILL is True:
 from monocle.utils import get_address, dump_pickle
 from monocle.worker import Worker
 from monocle.overseer import Overseer
+from monocle import shared
 
 class AccountManager(BaseManager):
     pass
@@ -272,13 +273,12 @@ def main():
         except Exception:
             logger.exception('A wild exception appeared during exit!')
 
-        Worker.db_processor.stop()
+        shared.DB.stop()
 
         try:
-            Worker.spawns.update()
-        except (DBAPIError):
+            shared.spawns.update()
+        except Exception:
             pass
-        Worker.spawns.session.close()
         manager.shutdown()
         Session.close()
 

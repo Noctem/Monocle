@@ -526,8 +526,7 @@ class Notification:
 
 class Notifier:
 
-    def __init__(self, spawns):
-        self.spawns = spawns
+    def __init__(self):
         self.recent_notifications = deque(maxlen=config.NOTIFICATION_CACHE)
         self.notify_ranking = config.NOTIFY_RANKING
         self.initial_score = config.INITIAL_SCORE

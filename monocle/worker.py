@@ -13,8 +13,8 @@ from aiohttp import ClientSession, ProxyConnectionError
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
-from .shared import DatabaseProcessor
 from . import config
+from . import shared
 
 if config.FORCED_KILL:
     try:
@@ -45,8 +45,7 @@ class Worker:
 
     download_hash = "1de302dba2e542b8db8250455fa3e340d78c86f3"
     g = {'seen': 0, 'captchas': 0}
-    db_processor = DatabaseProcessor()
-    spawns = db_processor.spawns
+
     accounts = load_accounts()
     if config.CACHE_CELLS:
         cell_ids = load_pickle('cells') or {}
@@ -63,7 +62,7 @@ class Worker:
             proxies = config.PROXIES.copy()
 
     if config.NOTIFY:
-        notifier = Notifier(spawns)
+        notifier = Notifier()
         g['sent'] = 0
 
     def __init__(self, worker_no):
@@ -612,7 +611,7 @@ class Worker:
         """
         visited = False
         try:
-            altitude = self.spawns.get_altitude(point)
+            altitude = shared.SPAWNS.get_altitude(point)
             altitude = uniform(altitude - 1, altitude + 1)
             self.location = point + [altitude]
             self.api.set_position(*self.location)
@@ -766,7 +765,7 @@ class Worker:
                     request_time_ms
                 )
                 if invalid_tth:
-                    despawn_time = self.spawns.get_despawn_time(
+                    despawn_time = shared.SPAWNS.get_despawn_time(
                         normalized['spawn_id'], normalized['seen'])
                     if despawn_time:
                         normalized['expire_timestamp'] = despawn_time
@@ -793,7 +792,7 @@ class Worker:
                         except Exception:
                             self.logger.exception('Exception during encounter.')
 
-                self.db_processor.add(normalized)
+                shared.DB.add(normalized)
 
             for fort in map_cell.get('forts', []):
                 if not fort.get('enabled'):
@@ -805,24 +804,24 @@ class Worker:
                         pokemon_seen += 1
                         if norm not in SIGHTING_CACHE:
                             self.account_seen += 1
-                            self.db_processor.add(norm)
+                            shared.DB.add(norm)
                     pokestop = self.normalize_pokestop(fort)
-                    self.db_processor.add(pokestop)
+                    shared.DB.add(pokestop)
                     if self.pokestops and not self.bag_full() and time() > self.next_spin:
                         cooldown = fort.get('cooldown_complete_timestamp_ms')
                         if not cooldown or time() > cooldown / 1000:
                             await self.spin_pokestop(pokestop)
                 else:
-                    self.db_processor.add(self.normalize_gym(fort))
+                    shared.DB.add(self.normalize_gym(fort))
 
             if config.MORE_POINTS or bootstrap:
                 for point in map_cell.get('spawn_points', []):
                     points_seen += 1
                     try:
                         p = (point['latitude'], point['longitude'])
-                        if self.spawns.have_point(p) or not Bounds.contain(p):
+                        if shared.SPAWNS.have_point(p) or not Bounds.contain(p):
                             continue
-                        self.spawns.add_cell_point(p)
+                        shared.SPAWNS.add_cell_point(p)
                     except (KeyError, TypeError):
                         self.logger.warning('Spawn point exception ignored. {}'.format(point))
                         pass
