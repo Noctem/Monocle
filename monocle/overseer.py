@@ -468,7 +468,7 @@ class Overseer:
                                 break
                         time_diff = time.time() - spawn_time
 
-                    if time_diff > 5 and spawn_id in SIGHTING_CACHE.spawns:
+                    if time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
                         self.redundant += 1
                         continue
                     elif time_diff > config.SKIP_SPAWN:

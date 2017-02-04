@@ -147,19 +147,18 @@ class SightingCache(object):
     """
     def __init__(self):
         self.store = {}
-        self.spawns = set()
 
     def add(self, sighting):
-        self.store[combine_key(sighting)] = sighting['expire_timestamp']
-        self.spawns.add(sighting['spawn_id'])
+        self.store[sighting['spawn_id']] = sighting['expire_timestamp']
 
     def __contains__(self, raw_sighting):
-        expire_timestamp = self.store.get(combine_key(raw_sighting))
-        if not expire_timestamp:
+        try:
+            expire_timestamp = self.store[raw_sighting['spawn_id']]
+        except KeyError:
             return False
         within_range = (
-            expire_timestamp > raw_sighting['expire_timestamp'] - 1 and
-            expire_timestamp < raw_sighting['expire_timestamp'] + 1
+            expire_timestamp > raw_sighting['expire_timestamp'] - 2 and
+            expire_timestamp < raw_sighting['expire_timestamp'] + 2
         )
         return within_range
 
@@ -168,10 +167,6 @@ class SightingCache(object):
         for key, timestamp in self.store.items():
             if time.time() > timestamp:
                 to_remove.append(key)
-                try:
-                    self.spawns.remove(key[1])
-                except KeyError:
-                    pass
         for key in to_remove:
             del self.store[key]
 
