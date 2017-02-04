@@ -20,7 +20,7 @@ try:
 except ImportError:
     import _dummy_thread as _thread
 
-from .db import SIGHTING_CACHE
+from .db import SIGHTING_CACHE, FORT_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points
 
 from . import config
@@ -620,6 +620,8 @@ class Overseer:
         print('Killing workers.')
         for worker in self.workers:
             worker.kill()
+
+        FORT_CACHE.pickle()
 
         while not self.extra_queue.empty():
             account = self.extra_queue.get()

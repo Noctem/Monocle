@@ -229,7 +229,7 @@ class MysteryCache(object):
 class FortCache(object):
     """Simple cache for storing fort sightings"""
     def __init__(self):
-        self.store = {}
+        self.store = utils.load_pickle('forts') or {}
 
     def add(self, sighting):
         if sighting['type'] == 'pokestop':
@@ -253,6 +253,9 @@ class FortCache(object):
             params[2] == sighting['guard_pokemon_id']
         )
         return is_the_same
+
+    def pickle(self):
+        utils.dump_pickle('forts', self.store)
 
 
 SIGHTING_CACHE = SightingCache()
