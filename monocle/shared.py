@@ -13,10 +13,10 @@ from .utils import dump_pickle, load_pickle, get_current_hour, time_until_time, 
 
 from . import db
 
+
 class Spawns:
     """Manage spawn points and times"""
     def __init__(self):
-        self.session = db.Session(autoflush=False)
         self.spawns = OrderedDict()
         self.despawn_times = {}
         self.mysteries = set()
@@ -38,11 +38,8 @@ class Spawns:
                     return
             except Exception:
                 pass
-        try:
-            self.spawns, self.despawn_times, self.mysteries, a, self.known_points = db.get_spawns(self.session)
-        except DBAPIError:
-            self.session.rollback()
-            raise
+        with db.session_scope() as session:
+            self.spawns, self.despawn_times, self.mysteries, a, self.known_points = db.get_spawns(session)
         self.altitudes.update(a)
         if not self.altitudes:
             self.altitudes = get_point_altitudes()

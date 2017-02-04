@@ -7,7 +7,7 @@ from pkg_resources import resource_stream
 from tempfile import NamedTemporaryFile
 
 from .utils import load_pickle, dump_pickle
-from .db import Session, get_pokemon_ranking, estimate_remaining_time
+from .db import session_scope, get_pokemon_ranking, estimate_remaining_time
 from .names import POKEMON_NAMES, MOVES
 from . import config
 
@@ -530,7 +530,6 @@ class Notifier:
         self.spawns = spawns
         self.recent_notifications = deque(maxlen=config.NOTIFICATION_CACHE)
         self.notify_ranking = config.NOTIFY_RANKING
-        self.session = Session(autoflush=False)
         self.initial_score = config.INITIAL_SCORE
         self.minimum_score = config.MINIMUM_SCORE
         self.last_notification = monotonic() - (config.FULL_TIME / 2)
@@ -562,12 +561,12 @@ class Notifier:
             if self.pokemon_ranking:
                 return
         try:
-            self.pokemon_ranking = get_pokemon_ranking(self.session)
+            with session_scope() as session:
+                self.pokemon_ranking = get_pokemon_ranking(session)
         except Exception:
-            self.session.rollback()
             self.logger.exception('An exception occurred while trying to update rankings.')
-        dump_pickle('ranking', self.pokemon_ranking)
-
+        else:
+            dump_pickle('ranking', self.pokemon_ranking)
 
     def get_rareness_score(self, pokemon_id):
         if pokemon_id in self.rarity_override:
@@ -678,10 +677,12 @@ class Notifier:
         if not time_till_hidden:
             seen = pokemon['seen'] % 3600
             try:
-                time_till_hidden = estimate_remaining_time(self.session, spawn_id, seen)
+                with session_scope() as session:
+                    time_till_hidden = estimate_remaining_time(session, spawn_id, seen)
             except Exception:
-                self.session.rollback()
                 self.logger.exception('An exception occurred while trying to estimate remaining time.')
+                return False
+
             mean = sum(time_till_hidden) / 2
 
             if mean < config.TIME_REQUIRED and pokemon_id not in self.always_notify:
