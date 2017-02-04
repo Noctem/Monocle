@@ -95,7 +95,6 @@ class Overseer:
     def check(self):
         now = time.monotonic()
         last_commit = now
-        last_cleaned_cache = now
         last_things_found_updated = now
         last_swap = now
         last_stats_updated = 0
@@ -103,10 +102,6 @@ class Overseer:
         while not self.killed:
             try:
                 now = time.monotonic()
-                # Clean cache
-                if now - last_cleaned_cache > 900:  # clean cache after 15min
-                    shared.DB.clean_cache()
-                    last_cleaned_cache = now
                 if now - last_commit > 5:
                     shared.DB.commit()
                     last_commit = now
@@ -623,6 +618,8 @@ class Overseer:
         for worker in self.workers:
             worker.kill()
 
+        SIGHTING_CACHE.running = False
+        MYSTERY_CACHE.running = False
         FORT_CACHE.pickle()
 
         while not self.extra_queue.empty():
