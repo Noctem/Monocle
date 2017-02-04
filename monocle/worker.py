@@ -158,33 +158,33 @@ class Worker:
     async def login(self):
         """Logs worker in and prepares for scanning"""
         self.logger.info('Trying to log in')
-        self.error_code = '»'
 
-        async with self.login_semaphore:
-            if self.killed:
-                return False
-            self.error_code = 'LOGIN'
-            for attempt in range(-1, config.MAX_RETRIES):
-                try:
+        for attempt in range(-1, config.MAX_RETRIES):
+            try:
+                self.error_code = '»'
+                async with self.login_semaphore:
+                    self.error_code = 'LOGIN'
                     await self.api.set_authentication(
-                            username=self.username,
-                            password=self.account['password'],
-                            provider=self.account.get('provider', 'ptc'),
-                            timeout=config.LOGIN_TIMEOUT
-                        )
-                except ex.AuthException:
-                    if attempt >= config.MAX_RETRIES - 1:
-                        self.logger.warning('Login attempts failed. Giving up')
-                        raise
-                    else:
-                        self.logger.info('Login attempt failed.')
-                    await sleep(1)
+                        username=self.username,
+                        password=self.account['password'],
+                        provider=self.account.get('provider', 'ptc'),
+                        timeout=config.LOGIN_TIMEOUT
+                    )
+            except ex.AuthException:
+                if attempt >= config.MAX_RETRIES - 1:
+                    self.logger.warning('Login attempts failed. Giving up')
+                    raise
                 else:
-                    break
+                    self.logger.info('Login attempt failed.')
+                await sleep(1)
+            else:
+                break
 
         self.error_code = '°'
         version = 5500
         async with self.sim_semaphore:
+            if self.killed:
+                return False
             self.error_code = 'APP SIMULATION'
             if config.APP_SIMULATION and not self.ever_authenticated:
                 await self.app_simulation_login(version)
