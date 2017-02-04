@@ -73,14 +73,6 @@
             }
         });
 
-        function getMarkers () {
-            return new Promise(function (resolve, reject) {
-                $.get('/workers_data', function (response) {
-                    resolve($.parseJSON(response));
-                });
-            });
-        }
-
         var markers = {};
         var overlays = {
             Workers: L.layerGroup([])
@@ -100,11 +92,10 @@
             return marker;
         }
 
-
         function getMarkers () {
             return new Promise(function (resolve, reject) {
                 $.get('/workers_data', function (response) {
-                    resolve($.parseJSON(response));
+                    resolve(response);
                 });
             });
         }

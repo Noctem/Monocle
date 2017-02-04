@@ -234,10 +234,19 @@ function getPokestops() {
     });
 }
 
-
 function getScanAreaCoords() {
     new Promise(function (resolve, reject) {
         $.get('/scan_coords', function (response) {
+            resolve(response);
+        });
+    }).then(function (data) {
+        addMarkersToMap(data, map);
+    });
+}
+
+function getWorkers() {
+    new Promise(function (resolve, reject) {
+        $.get('/workers_data', function (response) {
             resolve(response);
         });
     }).then(function (data) {
@@ -257,8 +266,9 @@ map.whenReady(function () {
     $('.my-location').on('click', function () {
         map.locate({ enableHighAccurracy: true, setView: true });
     });
-
+    getWorkers();
     setInterval(refresh, 30000);
+    setInterval(getWorkers, 15000);
     refresh();
     getSpawnPoints();
     getPokestops();

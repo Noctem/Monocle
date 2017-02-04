@@ -6,36 +6,14 @@ import argparse
 
 from flask import Flask, render_template
 
-from monocle.names import POKEMON_NAMES
 from monocle import config
 from monocle import db
 from monocle import utils
+from monocle.names import POKEMON_NAMES
+from monocle.web_utils import get_args, session_scope
 
 
 app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'))
-
-
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '-H',
-        '--host',
-        help='Set web server listening host',
-        default='127.0.0.1'
-    )
-    parser.add_argument(
-        '-P',
-        '--port',
-        type=int,
-        help='Set web server listening port',
-        default=5001
-    )
-    parser.add_argument(
-        '-d', '--debug', help='Debug Mode', action='store_true'
-    )
-    parser.set_defaults(debug=False)
-    return parser.parse_args()
-
 
 CACHE = {
     'data': None,
@@ -50,9 +28,8 @@ def get_stats():
     )
     if cache_valid:
         return CACHE['data']
-    session = db.Session()
-    forts = db.get_forts(session)
-    session.close()
+    with session_scope() as session:
+        forts = db.get_forts(session)
     count = {t.value: 0 for t in db.Team}
     strongest = {t.value: None for t in db.Team}
     guardians = {t.value: {} for t in db.Team}
@@ -66,7 +43,7 @@ def get_stats():
         if fort['last_modified'] > last_date:
             last_date = fort['last_modified']
         team = fort['team']
-        count[team] = count[team] + 1
+        count[team] += 1
         if team != 0:
             # Strongest gym
             existing = strongest[team]
@@ -89,12 +66,11 @@ def get_stats():
             prestige[team] += fort['prestige']
     total_prestige = sum(prestige.values())
     for team in db.Team:
-        # TODO: remove float(...) as soon as we move to Python 3
         percentages[team.value] = (
-            count.get(team.value) / float(len(forts)) * 100
+            count.get(team.value) / len(forts) * 100
         )
         prestige_percent[team.value] = (
-            prestige.get(team.value) / float(total_prestige) * 100
+            prestige.get(team.value) / total_prestige * 100
         )
         if guardians[team.value]:
             pokemon_id = sorted(
@@ -138,4 +114,4 @@ def index():
 
 if __name__ == '__main__':
     args = get_args()
-    app.run(debug=True, host=args.host, port=args.port)
+    app.run(debug=args.debug, host=args.host, port=args.port)
