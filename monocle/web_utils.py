@@ -11,19 +11,6 @@ from monocle.names import POKEMON_NAMES, MOVES, POKEMON_MOVES
 if config.BOUNDARIES:
     from shapely.geometry import mapping
 
-@contextmanager
-def session_scope():
-    """Provide a transactional scope around a series of operations."""
-    session = db.Session(autoflush=False)
-    try:
-        yield session
-        session.commit()
-    except:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
 
 def get_args():
     parser = ArgumentParser()
@@ -60,7 +47,7 @@ class Workers:
         try:
             self._manager.connect()
             self._data = self._manager.worker_dict()
-        except (FileNotFoundError, AttributeError, RemoteError, ConnectionRefusedError):
+        except (FileNotFoundError, AttributeError, RemoteError, ConnectionRefusedError, BrokenPipeError):
             print('Unable to connect to manager for worker data.')
             self._data = {}
 
@@ -71,7 +58,7 @@ class Workers:
                 return self._data.items()
             else:
                 raise ValueError
-        except (FileNotFoundError, RemoteError, ConnectionRefusedError, ValueError):
+        except (FileNotFoundError, RemoteError, ConnectionRefusedError, ValueError, BrokenPipeError):
             self.connect()
             return self._data.items()
 
@@ -106,7 +93,7 @@ def get_worker_markers(workers):
 
 def get_pokemarkers():
     markers = []
-    with session_scope() as session:
+    with db.session_scope() as session:
         pokemons = db.get_sightings(session)
         forts = db.get_forts(session)
 
@@ -132,7 +119,6 @@ def get_pokemarkers():
                     'damage2': MOVES.get(pokemon.move_2, {}).get('damage'),
                 }
                 content.update(iv)
-
             markers.append(content)
         for fort in forts:
             if fort['guard_pokemon_id']:
@@ -155,7 +141,7 @@ def get_pokemarkers():
 
 def get_spawnpoint_markers():
     markers = []
-    with session_scope() as session:
+    with db.session_scope() as session:
         spawns = db.get_spawn_points(session)
 
         for spawn in spawns:
@@ -194,7 +180,7 @@ def get_scan_coords():
 
 def get_pokestop_markers():
     markers = []
-    with session_scope() as session:
+    with db.session_scope() as session:
         pokestops = db.get_pokestops(session)
 
         for pokestop in pokestops:

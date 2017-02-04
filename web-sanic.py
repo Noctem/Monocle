@@ -134,15 +134,11 @@ if config.MAP_WORKERS:
             map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION
         )
         return html(html_content)
-else:
-    @app.route('/workers_data')
-    def workers_data(request):
-        json([])
 
 
 @app.route('/report')
 async def report_main(request):
-    with session_scope() as session:
+    with db.session_scope() as session:
         counts = db.get_sightings_per_pokemon(session)
         session_stats = db.get_session_stats(session)
 
@@ -203,7 +199,7 @@ async def report_main(request):
 
 @app.route('/report/<int:pokemon_id>')
 async def report_single(request, pokemon_id):
-    with session_scope() as session:
+    with db.session_scope() as session:
         session_stats = db.get_session_stats(session)
         js_data = {
             'charts_data': {
@@ -232,7 +228,7 @@ async def report_single(request, pokemon_id):
 @app.route('/report/heatmap')
 async def report_heatmap(request):
     pokemon_id = request.args.get('id')
-    with session_scope() as session:
+    with db.session_scope() as session:
         return json(db.get_all_spawn_coords(session, pokemon_id=pokemon_id))
 
 

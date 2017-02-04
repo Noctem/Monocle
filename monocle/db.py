@@ -1,5 +1,7 @@
 from datetime import datetime
 from collections import OrderedDict
+from contextlib import contextmanager
+
 import enum
 import time
 
@@ -369,6 +371,20 @@ class Pokestop(Base):
 
 
 Session = sessionmaker(bind=get_engine())
+
+
+@contextmanager
+def session_scope(autoflush=False):
+    """Provide a transactional scope around a series of operations."""
+    session = Session(autoflush=autoflush)
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def get_spawns(session):
