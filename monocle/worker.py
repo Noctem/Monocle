@@ -173,12 +173,13 @@ class Worker:
                             provider=self.account.get('provider', 'ptc'),
                             timeout=config.LOGIN_TIMEOUT
                         )
-                except ex.AuthTimeoutException:
+                except ex.AuthException:
                     if attempt >= config.MAX_RETRIES - 1:
-                        self.logger.warning('Login attempts timed out. Giving up')
+                        self.logger.warning('Login attempts failed. Giving up')
                         raise
                     else:
-                        self.logger.info('Login attempt timed out.')
+                        self.logger.info('Login attempt failed.')
+                    await sleep(1)
                 else:
                     break
 
@@ -206,7 +207,7 @@ class Worker:
         for item in inventory_items:
             player_stats = item.get('inventory_item_data', {}).get('player_stats', {})
             if player_stats:
-                self.player_level = player_stats.get('level')
+                self.player_level = player_stats.get('level') or self.player_level
                 break
         await random_sleep(.78, .95)
 
@@ -489,6 +490,7 @@ class Worker:
             try:
                 response = await request.call()
                 if response:
+                    err = None
                     break
                 else:
                     raise ex.MalformedResponseException('empty response')
@@ -549,8 +551,6 @@ class Worker:
                     self.logger.warning(e)
                 self.error_code = 'MALFORMED RESPONSE'
                 await random_sleep(10, 14, 11)
-            else:
-                err = None
         if err is not None:
             raise err
 
@@ -674,6 +674,8 @@ class Worker:
             self.logger.warning('Hashing server busy or offline. Giving up.')
         except ex.NianticOfflineException:
             self.logger.warning('Niantic busy or offline. Giving up.')
+        except ex.NianticThrottlingException:
+            self.logger.warning('Throttled by Niantic. Giving up.')
         except ex.ExpiredHashKeyException:
             self.error_code = 'KEY EXPIRED'
             err = 'Hash key has expired: {}'.format(config.HASH_KEY)
@@ -1167,7 +1169,6 @@ class Worker:
         self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
         self.num_captchas = 0
-        self.pokestops = config.SPIN_POKESTOPS
         self.eggs = {}
         self.unused_incubators = []
         self.initialize_api()
