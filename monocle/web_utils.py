@@ -79,7 +79,6 @@ def get_worker_markers(workers):
         markers.append({
             'lat': coords[0],
             'lon': coords[1],
-            'type': 'worker',
             'worker_no': worker_no,
             'time': time,
             'speed': speed,
@@ -95,12 +94,9 @@ def get_pokemarkers():
     markers = []
     with db.session_scope() as session:
         pokemons = db.get_sightings(session)
-        forts = db.get_forts(session)
-
         for pokemon in pokemons:
             content = {
                 'id': 'pokemon-{}'.format(pokemon.id),
-                'type': 'pokemon',
                 'trash': pokemon.pokemon_id in config.TRASH_IDS,
                 'name': POKEMON_NAMES[pokemon.pokemon_id],
                 'pokemon_id': pokemon.pokemon_id,
@@ -120,23 +116,29 @@ def get_pokemarkers():
                 }
                 content.update(iv)
             markers.append(content)
-        for fort in forts:
-            if fort['guard_pokemon_id']:
-                pokemon_name = POKEMON_NAMES[fort['guard_pokemon_id']]
-            else:
-                pokemon_name = 'Empty'
-            markers.append({
-                'id': 'fort-{}'.format(fort['fort_id']),
-                'sighting_id': fort['id'],
-                'type': 'fort',
-                'prestige': fort['prestige'],
-                'pokemon_id': fort['guard_pokemon_id'],
-                'pokemon_name': pokemon_name,
-                'team': fort['team'],
-                'lat': fort['lat'],
-                'lon': fort['lon'],
-            })
         return markers
+
+
+def get_gym_markers():
+    markers = []
+    with db.session_scope() as session:
+        forts = db.get_forts(session)
+    for fort in forts:
+        if fort['guard_pokemon_id']:
+            pokemon_name = POKEMON_NAMES[fort['guard_pokemon_id']]
+        else:
+            pokemon_name = 'Empty'
+        markers.append({
+            'id': 'fort-{}'.format(fort['fort_id']),
+            'sighting_id': fort['id'],
+            'prestige': fort['prestige'],
+            'pokemon_id': fort['guard_pokemon_id'],
+            'pokemon_name': pokemon_name,
+            'team': fort['team'],
+            'lat': fort['lat'],
+            'lon': fort['lon'],
+        })
+    return markers
 
 
 def get_spawnpoint_markers():
@@ -146,13 +148,10 @@ def get_spawnpoint_markers():
 
         for spawn in spawns:
             markers.append({
-                'id': 'spawn-{}'.format(spawn.id),
-                'type': 'spawn',
                 'spawn_id': spawn.spawn_id,
                 'despawn_time': spawn.despawn_time,
                 'lat': spawn.lat,
                 'lon': spawn.lon,
-                'alt': spawn.alt,
                 'duration': spawn.duration
             })
         return markers
@@ -185,8 +184,6 @@ def get_pokestop_markers():
 
         for pokestop in pokestops:
             markers.append({
-                'id': 'pokestop-{}'.format(pokestop.id),
-                'type': 'pokestop',
                 'external_id': pokestop.external_id,
                 'lat': pokestop.lat,
                 'lon': pokestop.lon

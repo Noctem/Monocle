@@ -91,6 +91,11 @@ def pokemon_data():
     return jsonify(get_pokemarkers())
 
 
+@app.route('/gym_data')
+def gym_data():
+    return jsonify(get_gym_markers())
+
+
 @app.route('/spawnpoints')
 def get_spawn_points():
     return jsonify(get_spawnpoint_markers())
