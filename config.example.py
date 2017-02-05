@@ -179,6 +179,9 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 # Disabling will increase processor usage.
 #CACHE_CELLS = True
 
+# Disable to use Python's event loop even if uvloop is installed
+#UVLOOP = True
+
 ### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
 NOTIFY = False  # enable notifications
 

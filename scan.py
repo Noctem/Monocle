@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 
+try:
+    from monocle import config
+except ImportError as e:
+    raise ImportError('Please copy config.example.py to config.py and customize it.') from e
+
 import asyncio
 try:
-    from uvloop import EventLoopPolicy
-
-    asyncio.set_event_loop_policy(EventLoopPolicy())
+    if not hasattr(config, 'UVLOOP') or config.UVLOOP:
+        from uvloop import EventLoopPolicy
+        asyncio.set_event_loop_policy(EventLoopPolicy())
 except ImportError:
     pass
 
@@ -20,11 +25,6 @@ from sys import platform
 from sqlalchemy.exc import DBAPIError
 
 import time
-
-try:
-    from monocle import config
-except ImportError as e:
-    raise ImportError('Please copy config.example.py to config.py and customize it.') from e
 
 # Check whether config has all necessary attributes
 _required = (
