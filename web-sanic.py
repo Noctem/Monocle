@@ -6,10 +6,12 @@ from contextlib import contextmanager
 from multiprocessing.managers import BaseManager, RemoteError
 
 import argparse
+import time
 
 from sanic import Sanic
 from sanic.response import html, json
 from jinja2 import Environment, PackageLoader, Markup
+from asyncpg import create_pool
 
 from monocle import config
 from monocle import db
@@ -42,7 +44,7 @@ for setting_name, default in _optional.items():
         setattr(config, setting_name, default)
 del _optional
 
-from monocle.web_utils import *
+from monocle.web_utils import get_scan_coords, get_worker_markers, Workers, get_args
 
 
 if not config.REPORT_MAPS:
@@ -52,6 +54,14 @@ env = Environment(loader=PackageLoader('monocle', 'templates'), enable_async=Tru
 
 app = Sanic(__name__)
 app.static('/static', resource_filename('monocle', 'static'))
+
+
+def jsonify(records):
+    """
+    Parse asyncpg record response into JSON format
+    """
+    return [{key: value for key, value in
+            zip(r.keys(), r.values())} for r in records]
 
 
 @app.route('/')
@@ -96,17 +106,22 @@ async def fullmap(request):
 
 @app.route('/data')
 async def pokemon_data(request):
-    return json(get_pokemarkers())
+    return json(await get_pokemarkers_async())
+
+
+@app.route('/gym_data')
+async def gym_data(request):
+    return json(await get_gyms_async())
 
 
 @app.route('/spawnpoints')
 async def get_spawn_points(request):
-    return json(get_spawnpoint_markers())
+    return json(await get_spawnpoints_async())
 
 
 @app.route('/pokestops')
 async def get_pokestops(request):
-    return json(get_pokestop_markers())
+    return json(await get_pokestops_async())
 
 
 @app.route('/scan_coords')
@@ -136,106 +151,103 @@ if config.MAP_WORKERS:
         return html(html_content)
 
 
-@app.route('/report')
-async def report_main(request):
-    with db.session_scope() as session:
-        counts = db.get_sightings_per_pokemon(session)
-        session_stats = db.get_session_stats(session)
+async def get_pokemarkers_async():
+    markers = []
 
-        count = sum(counts.values())
-        counts_tuple = tuple(counts.items())
-        top_pokemon = list(counts_tuple[-30:])
-        top_pokemon.reverse()
-        bottom_pokemon = counts_tuple[:30]
-        nonexistent = [(x, POKEMON_NAMES[x]) for x in range(1, 152) if x not in counts]
-        rare_pokemon = [r for r in counts_tuple if r[0] in config.RARE_IDS]
-        if rare_pokemon:
-            rare_sightings = db.get_all_sightings(
-                session, [r[0] for r in rare_pokemon]
-            )
-        else:
-            rare_sightings = []
-        js_data = {
-            'charts_data': {
-                'punchcard': db.get_punch_card(session),
-                'top30': [(POKEMON_NAMES[r[0]], r[1]) for r in top_pokemon],
-                'bottom30': [
-                    (POKEMON_NAMES[r[0]], r[1]) for r in bottom_pokemon
-                ],
-                'rare': [
-                    (POKEMON_NAMES[r[0]], r[1]) for r in rare_pokemon
-                ],
-            },
-            'maps_data': {
-                'rare': [sighting_to_marker(s) for s in rare_sightings],
-            },
-            'map_center': utils.MAP_CENTER,
-            'zoom': 13,
-        }
-    icons = {
-        'top30': [(r[0], POKEMON_NAMES[r[0]]) for r in top_pokemon],
-        'bottom30': [(r[0], POKEMON_NAMES[r[0]]) for r in bottom_pokemon],
-        'rare': [(r[0], POKEMON_NAMES[r[0]]) for r in rare_pokemon],
-        'nonexistent': nonexistent
-    }
+    async with create_pool(**config.DB) as pool:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                results = await conn.fetch('''
+                    SELECT id, pokemon_id, expire_timestamp, lat, lon, atk_iv, def_iv, sta_iv, move_1, move_2
+                    FROM sightings
+                    WHERE expire_timestamp > {}
+                '''.format(time.time()))
 
-    area = utils.get_scan_area()
-
-    template = env.get_template('report.html')
-    html_content = await template.render_async(
-        area_name=config.AREA_NAME,
-        area_size=area,
-        total_spawn_count=count,
-        spawns_per_hour=count // session_stats['length_hours'],
-        session_start=session_stats['start'],
-        session_end=session_stats['end'],
-        session_length_hours=session_stats['length_hours'],
-        js_data=js_data,
-        icons=icons,
-        google_maps_key=config.GOOGLE_MAPS_KEY
-    )
-    return html(html_content)
+                for row in results:
+                    content = {
+                        'id': 'pokemon-{}'.format(row[0]),
+                        'trash': row[1] in config.TRASH_IDS,
+                        'name': POKEMON_NAMES[row[1]],
+                        'pokemon_id': row[1],
+                        'lat': row[3],
+                        'lon': row[4],
+                        'expires_at': row[2]
+                    }
+                    if row[5]:
+                        content.update({
+                            'atk': row[5],
+                            'def': row[6],
+                            'sta': row[7],
+                            'move1': row[8],
+                            'move2': row[9],
+                            'damage1': MOVES.get(row[8], {}).get('damage'),
+                            'damage2': MOVES.get(row[9], {}).get('damage')
+                        })
+                    markers.append(content)
+    return markers
 
 
-@app.route('/report/<int:pokemon_id>')
-async def report_single(request, pokemon_id):
-    with db.session_scope() as session:
-        session_stats = db.get_session_stats(session)
-        js_data = {
-            'charts_data': {
-                'hours': db.get_spawns_per_hour(session, pokemon_id),
-            },
-            'map_center': utils.MAP_CENTER,
-            'zoom': 13,
-        }
-        template = env.get_template('report_single.html')
-        html_content = await template.render_async(
-            current_date=datetime.now(),
-            area_name=config.AREA_NAME,
-            area_size=utils.get_scan_area(),
-            pokemon_id=pokemon_id,
-            pokemon_name=POKEMON_NAMES[pokemon_id],
-            total_spawn_count=db.get_total_spawns_count(session, pokemon_id),
-            session_start=session_stats['start'],
-            session_end=session_stats['end'],
-            session_length_hours=int(session_stats['length_hours']),
-            google_maps_key=config.GOOGLE_MAPS_KEY,
-            js_data=js_data
-        )
-        return html(html_content)
+async def get_gyms_async():
+    markers = []
+
+    async with create_pool(**config.DB) as pool:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                results = await conn.fetch('''
+                    SELECT
+                        fs.fort_id,
+                        fs.id,
+                        fs.team,
+                        fs.prestige,
+                        fs.guard_pokemon_id,
+                        fs.last_modified,
+                        f.lat,
+                        f.lon
+                    FROM fort_sightings fs
+                    JOIN forts f ON f.id=fs.fort_id
+                    WHERE (fs.fort_id, fs.last_modified) IN (
+                        SELECT fort_id, MAX(last_modified)
+                        FROM fort_sightings
+                        GROUP BY fort_id
+                    )
+                ''')
+                for row in results:
+                    if row[4]:
+                        pokemon_name = POKEMON_NAMES[row[4]]
+                    else:
+                        pokemon_name = 'Empty'
+                    markers.append({
+                        'id': 'fort-{}'.format(row[0]),
+                        'sighting_id': row[1],
+                        'prestige': row[3],
+                        'pokemon_id': row[4],
+                        'pokemon_name': pokemon_name,
+                        'team': row[2],
+                        'lat': row[6],
+                        'lon': row[7],
+                    })
+    return markers
 
 
-@app.route('/report/heatmap')
-async def report_heatmap(request):
-    pokemon_id = request.args.get('id')
-    with db.session_scope() as session:
-        return json(db.get_all_spawn_coords(session, pokemon_id=pokemon_id))
+async def get_spawnpoints_async():
+    async with create_pool(**config.DB) as pool:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                results = await conn.fetch('SELECT spawn_id, despawn_time, lat, lon, duration FROM spawnpoints')
+                return jsonify(results)
+
+
+async def get_pokestops_async():
+    async with create_pool(**config.DB) as pool:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                results = await conn.fetch('SELECT external_id, lat, lon FROM pokestops')
+                return jsonify(results)
 
 
 def main():
     args = get_args()
     app.run(debug=args.debug, host=args.host, port=args.port)
-
 
 if __name__ == '__main__':
     main()

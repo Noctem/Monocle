@@ -61,6 +61,7 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
     * *aiosocks* is required for using SOCKS proxies
     * *cchardet* and *aiodns* provide better performance with aiohttp
     * *numba* provides better performance through JIT compilation
+    * *sanic* and *asyncpg* (and a Postgres DB) are required for web-sanic
 5. Run `python3 create_db.py` from the command line
 6. Run `python3 scan.py`
   * Optionally run the live map interface and reporting system: `python3 web.py`
