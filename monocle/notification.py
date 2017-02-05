@@ -8,7 +8,7 @@ from tempfile import NamedTemporaryFile
 
 from .utils import load_pickle, dump_pickle
 from .db import session_scope, get_pokemon_ranking, estimate_remaining_time
-from .names import POKEMON_NAMES, MOVES
+from .names import POKEMON_NAMES, POKEMON_MOVES
 from . import config
 
 import requests
@@ -648,8 +648,8 @@ class Notifier:
         iv = (pokemon.get('individual_attack'),
               pokemon.get('individual_defense'),
               pokemon.get('individual_stamina'))
-        moves = (MOVES.get(pokemon.get('move_1'), {}).get('name'),
-                 MOVES.get(pokemon.get('move_2'), {}).get('name'))
+        moves = (POKEMON_MOVES.get(pokemon.get('move_1')),
+                 POKEMON_MOVES.get(pokemon.get('move_2')))
 
         iv_score = self.get_iv_score(iv)
         if score_required:
