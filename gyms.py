@@ -6,11 +6,9 @@ import argparse
 
 from flask import Flask, render_template
 
-from monocle import config
-from monocle import db
-from monocle import utils
+from monocle import config, db, utils
 from monocle.names import POKEMON_NAMES
-from monocle.web_utils import get_args, session_scope
+from monocle.web_utils import get_args
 
 
 app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'))
@@ -28,7 +26,7 @@ def get_stats():
     )
     if cache_valid:
         return CACHE['data']
-    with session_scope() as session:
+    with db.session_scope() as session:
         forts = db.get_forts(session)
     count = {t.value: 0 for t in db.Team}
     strongest = {t.value: None for t in db.Team}
