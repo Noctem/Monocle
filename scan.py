@@ -261,7 +261,11 @@ def main():
     launcher_thread.start()
 
     try:
-        loop.run_forever()
+        while True:
+            try:
+                loop.run_forever()
+            except Exception:
+                logger.exception('Caught error on run_forever, restarting loop')
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
         overseer.kill()

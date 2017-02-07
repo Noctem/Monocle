@@ -467,6 +467,9 @@ class Overseer:
                                 break
                         time_diff = time.time() - spawn_time
 
+                    if self.killed:
+                        return
+
                     if time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
                         self.redundant += 1
                         continue
@@ -474,8 +477,6 @@ class Overseer:
                         self.skipped += 1
                         continue
 
-                    if self.killed:
-                        return
                     self.coroutine_semaphore.acquire()
                     asyncio.run_coroutine_threadsafe(
                         self.try_point(point, spawn_time), loop=self.loop
