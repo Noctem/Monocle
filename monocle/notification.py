@@ -100,11 +100,17 @@ if config.NOTIFY:
 
 
 class PokeImage:
-    def __init__(self, pokemon_id, iv, moves, time_of_day):
-        self.pokemon_id =  pokemon_id
-        self.name = POKEMON_NAMES[pokemon_id]
-        self.attack, self.defense, self.stamina = iv
-        self.move1, self.move2 = moves
+    def __init__(self, pokemon, move1, move2, time_of_day=0):
+        self.pokemon_id = pokemon['pokemon_id']
+        self.name = POKEMON_NAMES[self.pokemon_id]
+        try:
+            self.attack = pokemon['individual_attack']
+            self.defense = pokemon['individual_defense']
+            self.stamina = pokemon['individual_stamina']
+        except KeyError:
+            pass
+        self.move1 = move1
+        self.move2 = move2
         self.time_of_day = time_of_day
 
     def create(self):
@@ -129,7 +135,7 @@ class PokeImage:
         self.context.set_line_width(1.75)
         text_x = 240
 
-        if self.attack is not None:
+        try:
             self.context.select_font_face(config.IV_FONT or "monospace")
             self.context.set_font_size(22)
 
@@ -143,6 +149,8 @@ class PokeImage:
             self.draw_ivs(text_x)
             self.context.set_source_rgba(1, 1, 1)
             self.context.fill()
+        except AttributeError:
+            pass
 
         if self.move1 or self.move2:
             self.context.select_font_face(config.MOVE_FONT or "sans-serif")
@@ -220,16 +228,23 @@ class PokeImage:
 
 class Notification:
 
-    def __init__(self, pokemon_id, coordinates, time_till_hidden, iv, moves, score, time_of_day):
-        self.pokemon_id = pokemon_id
-        self.name = POKEMON_NAMES[pokemon_id]
-        self.coordinates = coordinates
-        self.moves = moves
+    def __init__(self, pokemon, score, time_of_day):
+        self.pokemon = pokemon
+        self.name = POKEMON_NAMES[pokemon['pokemon_id']]
+        self.coordinates = pokemon['lat'], pokemon['lon']
         self.score = score
-        self.iv = iv
         self.time_of_day = time_of_day
         self.logger = getLogger('notifier')
         self.description = 'wild'
+        try:
+            _m1 = pokemon['move_1']
+            _m2 = pokemon['move_2']
+        except KeyError:
+            self.move1 = None
+            self.move2 = None
+        else:
+            self.move1 = POKEMON_MOVES.get(_m1, _m1)
+            self.move2 = POKEMON_MOVES.get(_m2, _m2)
 
         try:
             if self.score == 1:
@@ -242,9 +257,10 @@ class Notification:
             pass
 
         if config.TZ_OFFSET:
-            now = datetime.now(timezone(timedelta(hours=config.TZ_OFFSET)))
+            _tz = timezone(timedelta(hours=config.TZ_OFFSET))
         else:
-            now = datetime.now()
+            _tz = None
+        now = datetime.fromtimestamp(pokemon['seen'], _tz)
 
         if TWITTER and config.HASHTAGS:
             self.hashtags = config.HASHTAGS.copy()
@@ -252,47 +268,53 @@ class Notification:
             self.hashtags = set()
 
         # check if expiration time is known, or a range
-        if isinstance(time_till_hidden, (tuple, list)):
-            soonest, latest = time_till_hidden
-            self.min_delta = timedelta(seconds=soonest)
-            self.max_delta = timedelta(seconds=latest)
+        try:
+            self.tth = pokemon['time_till_hidden']
+            delta = timedelta(seconds=self.tth)
+            self.expire_time = (now + delta).strftime('%I:%M %p').lstrip('0')
+        except KeyError:
+            self.earliest_tth = pokemon['earliest_tth']
+            self.latest_tth = pokemon['latest_tth']
+            min_delta = timedelta(seconds=self.earliest_tth)
+            max_delta = timedelta(seconds=self.latest_tth)
+            self.earliest = now + min_delta
+            self.latest = now + max_delta
+
             # check if the two TTHs end on same minute
-            if ((now + self.min_delta).strftime('%I:%M') ==
-                    (now + self.max_delta).strftime('%I:%M')):
-                average = (soonest + latest) / 2
-                time_till_hidden = average
-                self.delta = timedelta(seconds=average)
+            if (self.earliest.minute == self.latest.minute
+                    and self.earliest.hour == self.latest.hour):
+                self.tth = (self.earliest_tth + self.latest_tth) / 2
+                self.delta = timedelta(seconds=self.tth)
                 self.expire_time = (
                     now + self.delta).strftime('%I:%M %p').lstrip('0')
             else:
-                self.delta = None
-                self.expire_time = None
                 self.min_expire_time = (
-                    now + self.min_delta).strftime('%I:%M').lstrip('0')
+                    now + min_delta).strftime('%I:%M').lstrip('0')
                 self.max_expire_time = (
-                    now + self.max_delta).strftime('%I:%M %p').lstrip('0')
-        else:
-            self.delta = timedelta(seconds=time_till_hidden)
-            self.expire_time = (
-                now + self.delta).strftime('%I:%M %p').lstrip('0')
-            self.min_delta = None
+                    now + max_delta).strftime('%I:%M %p').lstrip('0')
 
         self.map_link = 'https://maps.google.com/maps?q={0[0]:.5f},{0[1]:.5f}'.format(
             self.coordinates)
         self.place = None
 
     def notify(self):
-        if config.LANDMARKS:
+        if config.LANDMARKS and (TWITTER or PUSHBULLET):
             self.landmark = config.LANDMARKS.find_landmark(self.coordinates)
-        else:
-            self.landmark = None
 
-        if self.landmark:
+        try:
             self.place = self.landmark.generate_string(self.coordinates)
             if TWITTER and self.landmark.hashtags:
                 self.hashtags.update(self.landmark.hashtags)
-        else:
+        except AttributeError:
             self.place = self.generic_place_string()
+
+        if PUSHBULLET or TELEGRAM:
+            try:
+                self.attack = self.pokemon['individual_attack']
+                self.defense = self.pokemon['individual_defense']
+                self.stamina = self.pokemon['individual_stamina']
+            except KeyError:
+                pass
 
         tweeted = False
         pushed = False
@@ -311,16 +333,18 @@ class Notification:
 
     def sendToTelegram(self):
         try:
-            TELEGRAM_BASE_URL = "https://api.telegram.org/bot{token}/sendVenue"
+            TELEGRAM_BASE_URL = "https://api.telegram.org/bot{token}/sendVenue".format(token=config.TELEGRAM_BOT_TOKEN)
             title = self.name
-            if self.expire_time:
-                minutes, seconds = divmod(self.delta.total_seconds(), 60)
-                description = 'Expires at: {e} ({m}m{s:.0f}s left)'.format(e=self.expire_time, m=int(minutes), s=seconds)
-            else:
-                description = ("It'll expire between {e1} & {e2}.").format(e1=self.min_expire_time, e2=self.max_expire_time)
-            
-            if self.iv[0] is not None:
-                title += ' ({0[0]}/{0[1]}/{0[2]})'.format(self.iv)
+            try:
+                minutes, seconds = divmod(self.tth, 60)
+                description = 'Expires at: {} ({:.0f}m{:.0f}s left)'.format(self.expire_time, minutes, seconds)
+            except AttributeError:
+                description = "It'll expire between {} & {}.".format(self.min_expire_time, self.max_expire_time)
+
+            try:
+                title += ' ({}/{}/{})'.format(self.attack, self.defense, self.stamina)
+            except AttributeError:
+                pass
 
             payload = {
                 'chat_id': config.TELEGRAM_CHAT_ID,
@@ -330,7 +354,7 @@ class Notification:
                 'address' : description,
             }
 
-            r = requests.get(TELEGRAM_BASE_URL.format(token=config.TELEGRAM_BOT_TOKEN), params=payload)
+            r = requests.get(TELEGRAM_BASE_URL, params=payload, timeout=5)
             if r.status_code == 200:
                 self.logger.info('Sent a Telegram notification about {}.'.format(self.name))
                 return True
@@ -362,33 +386,29 @@ class Notification:
             pass
 
         area = config.AREA_NAME
-        if self.delta:
+        try:
             expiry = 'until {}'.format(self.expire_time)
+            minutes, seconds = divmod(self.tth, 60)
+            remaining = 'for {:.0f}m{:.0f}s'.format(minutes, seconds)
+        except AttributeError:
+            expiry = 'until between {} and {}'.format(self.min_expire_time, self.max_expire_time)
+            minutes, seconds = divmod(self.earliest_tth, 60)
+            min_remaining = '{:.0f}m{:.0f}s'.format(minutes, seconds)
+            minutes, seconds = divmod(self.latest_tth, 60)
+            max_remaining = '{:.0f}m{:.0f}s'.format(minutes, seconds)
+            remaining = 'for between {} and {}'.format(min_remaining, max_remaining)
 
-            minutes, seconds = divmod(self.delta.total_seconds(), 60)
-            remaining = 'for {m}m{s:.0f}s'.format(m=int(minutes), s=seconds)
-        else:
-            expiry = 'until between {t1} and {t2}'.format(
-                     t1=self.min_expire_time, t2=self.max_expire_time)
+        title = 'A {} {} will be in {} {}!'.format(description, self.name, area, expiry)
 
-            minutes, seconds = divmod(self.min_delta.total_seconds(), 60)
-            min_remaining = '{m}m{s:.0f}s'.format(m=int(minutes), s=seconds)
-            minutes, seconds = divmod(self.max_delta.total_seconds(), 60)
-            max_remaining = '{m}m{s:.0f}s'.format(m=int(minutes), s=seconds)
-
-            remaining = 'for between {r1} and {r2}'.format(
-                        r1=min_remaining, r2=max_remaining)
-
-        title = ('A {d} {n} will be in {a} {e}!'
-                 ).format(d=description, n=self.name, a=area, e=expiry)
-
-        body = ('It will be {p} {r}.\n\n'
-                'Attack: {iv[0]}\n'
-                'Defense: {iv[1]}\n'
-                'Stamina: {iv[2]}\n'
-                'Move 1: {m[0]}\n'
-                'Move 2: {m[1]}\n\n').format(
-                p=self.place, r=remaining, iv=self.iv, m=self.moves)
+        body = 'It will be {} {}.\n\n'.format(self.place, remaining)
+        try:
+            body += ('Attack: {}\n'
+                     'Defense: {}\n'
+                     'Stamina: {}\n'
+                     'Move 1: {}\n'
+                     'Move 2: {}\n\n').format(self.attack, self.defense, self.stamina, self.move1, self.move2)
+        except AttributeError:
+            pass
 
         try:
             try:
@@ -426,12 +446,12 @@ class Notification:
 
         tag_string = generate_tag_string(self.hashtags)
 
-        if self.expire_time:
+        try:
             tweet_text = (
                 'A {d} {n} appeared! It will be {p} until {e}. {t} {u}').format(
                 d=self.description, n=self.name, p=self.place,
                 e=self.expire_time, t=tag_string, u=self.map_link)
-        else:
+        except AttributeError:
             tweet_text = (
                 'A {d} {n} appeared {p}! It will expire sometime between '
                 '{e1} and {e2}. {t} {u}').format(
@@ -450,27 +470,29 @@ class Notification:
             else:
                 break
 
-        if (calc_expected_status_length(tweet_text) > 140 and
-                self.landmark.shortname):
-            tweet_text = tweet_text.replace(self.landmark.name,
-                                            self.landmark.shortname)
+        try:
+            if calc_expected_status_length(tweet_text) > 140:
+                tweet_text = tweet_text.replace(self.landmark.name,
+                                                self.landmark.shortname)
+
+            if calc_expected_status_length(tweet_text) > 140:
+                place = self.landmark.shortname or self.landmark.name
+                phrase = self.landmark.phrase
+                if self.place.startswith(phrase):
+                    place_string = '{ph} {pl}'.format(ph=phrase, pl=place)
+                else:
+                    place_string = 'near {}'.format(place)
+                tweet_text = tweet_text.replace(self.place, place_string)
+        except AttributeError:
+            pass
 
         if calc_expected_status_length(tweet_text) > 140:
-            place = self.landmark.shortname or self.landmark.name
-            phrase = self.landmark.phrase
-            if self.place.startswith(phrase):
-                place_string = '{ph} {pl}'.format(ph=phrase, pl=place)
-            else:
-                place_string = 'near {}'.format(place)
-            tweet_text = tweet_text.replace(self.place, place_string)
-
-        if calc_expected_status_length(tweet_text) > 140:
-            if self.expire_time:
+            try:
                 tweet_text = 'A {d} {n} will be {p} until {e}. {u}'.format(
                              d=self.description, n=self.name,
                              p=place_string, e=self.expire_time,
                              u=self.map_link)
-            else:
+            except AttributeError:
                 tweet_text = (
                     "A {d} {n} appeared {p}! It'll expire between {e1} & {e2}."
                     ' {u}').format(d=self.description, n=self.name,
@@ -478,10 +500,10 @@ class Notification:
                                    e2=self.max_expire_time, u=self.map_link)
 
         if calc_expected_status_length(tweet_text) > 140:
-            if self.expire_time:
+            try:
                 tweet_text = 'A {d} {n} will expire at {e}. {u}'.format(
                              n=self.name, e=self.expire_time, u=self.map_link)
-            else:
+            except AttributeError:
                 tweet_text = (
                     'A {d} {n} will expire between {e1} & {e2}. {u}').format(
                     d=self.description, n=self.name, e1=self.min_expire_time,
@@ -490,7 +512,7 @@ class Notification:
         image = None
         if config.TWEET_IMAGES:
             try:
-                image = PokeImage(self.pokemon_id, self.iv, self.moves, self.time_of_day).create()
+                image = PokeImage(self.pokemon, self.move1, self.move2, self.time_of_day).create()
             except Exception:
                 self.logger.exception('Failed to create a Tweet image.')
 
@@ -501,7 +523,7 @@ class Notification:
                            longitude=self.coordinates[1],
                            display_coordinates=True)
         except Exception:
-            self.logger.exception('Failed to Tweet about {}.'.format(self.name))
+            self.logger.exception('Failed to tweet about {}.'.format(self.name))
             return False
         else:
             self.logger.info('Sent a tweet about {}.'.format(self.name))
@@ -576,12 +598,6 @@ class Notifier:
         percentile = 1 - (ranking / total)
         return percentile
 
-    def get_iv_score(self, iv):
-        try:
-            return sum(iv) / 45
-        except TypeError:
-            return None
-
     def get_required_score(self, now=None):
         if self.initial_score == self.minimum_score or config.FULL_TIME == 0:
             return self.initial_score
@@ -594,16 +610,23 @@ class Notifier:
 
     def eligible(self, pokemon):
         pokemon_id = pokemon['pokemon_id']
+        encounter_id = pokemon['encounter_id']
 
-        if (pokemon_id in self.never_notify
-                or pokemon['encounter_id'] in self.recent_notifications):
+        if pokemon_id in self.never_notify:
             return False
         if pokemon_id in self.always_notify:
-            return True
+            return encounter_id not in self.recent_notifications
         if pokemon_id not in self.notify_ids:
             return False
         if config.IGNORE_RARITY:
-            return True
+            return encounter_id not in self.recent_notifications
+        try:
+            if pokemon['time_till_hidden'] < config.TIME_REQUIRED:
+                return False
+        except KeyError:
+            pass
+        if encounter_id in self.recent_notifications:
+            return False
 
         rareness = self.get_rareness_score(pokemon_id)
         highest_score = (rareness + 1) / 2
@@ -615,20 +638,8 @@ class Notifier:
         respective API keys have been set in config.
         """
 
-        spawn_id = pokemon['spawn_id']
-        coordinates = (pokemon['lat'], pokemon['lon'])
         pokemon_id = pokemon['pokemon_id']
-        encounter_id = pokemon['encounter_id']
         name = POKEMON_NAMES[pokemon_id]
-
-        if encounter_id in self.recent_notifications:
-            # skip duplicate
-            return False
-
-        if pokemon['valid']:
-            time_till_hidden = pokemon['time_till_hidden_ms'] / 1000
-        else:
-            time_till_hidden = None
 
         now = monotonic()
         if self.auto:
@@ -639,74 +650,75 @@ class Notifier:
         if pokemon_id in self.always_notify:
             score_required = 0
         else:
-            if time_till_hidden and time_till_hidden < config.TIME_REQUIRED:
-                self.logger.info('{n} has only {s} seconds remaining.'.format(
-                    n=name, s=time_till_hidden))
-                return False
             score_required = self.get_required_score(now)
 
-        iv = (pokemon.get('individual_attack'),
-              pokemon.get('individual_defense'),
-              pokemon.get('individual_stamina'))
-        moves = (POKEMON_MOVES.get(pokemon.get('move_1')),
-                 POKEMON_MOVES.get(pokemon.get('move_2')))
+        try:
+            iv_score = (pokemon['individual_attack'] + pokemon['individual_defense'] + pokemon['individual_stamina']) / 45
+        except KeyError:
+            if config.IGNORE_IVS:
+                iv_score = None
+            else:
+                self.logger.warning('IVs are supposed to be considered but were not found.')
+                return False
 
-        iv_score = self.get_iv_score(iv)
         if score_required:
             if config.IGNORE_RARITY:
                 score = iv_score
-            elif config.IGNORE_IVS or iv_score is None:
+            elif config.IGNORE_IVS:
                 score = self.get_rareness_score(pokemon_id)
             else:
                 rareness = self.get_rareness_score(pokemon_id)
-                try:
-                    score = (iv_score + rareness) / 2
-                except TypeError:
-                    self.logger.warning('Failed to calculate score for {}.'.format(name))
-                    return False
+                score = (iv_score + rareness) / 2
         else:
-            score = None
+            score = 1
 
-        if score_required and score < score_required:
-            self.logger.info("{n}'s score was {s:.3f} (iv: {i:.3f}),"
-                             " but {r:.3f} was required.".format(
-                             n=name, s=score, i=iv_score, r=score_required))
+        if score < score_required:
+            try:
+                self.logger.info("{}'s score was {:.3f} (iv: {:.3f}),"
+                                 " but {:.3f} was required.".format(
+                                 name, score, iv_score, score_required))
+            except TypeError:
+                pass
             return False
 
-        if not time_till_hidden:
+        if 'time_till_hidden' not in pokemon:
             seen = pokemon['seen'] % 3600
             try:
                 with session_scope() as session:
-                    time_till_hidden = estimate_remaining_time(session, spawn_id, seen)
+                    tth = estimate_remaining_time(session, pokemon['spawn_id'], seen)
             except Exception:
                 self.logger.exception('An exception occurred while trying to estimate remaining time.')
                 return False
-
-            mean = sum(time_till_hidden) / 2
-
-            if mean < config.TIME_REQUIRED and pokemon_id not in self.always_notify:
-                self.logger.info('{n} has only around {s} seconds remaining.'.format(
-                    n=name, s=mean))
-                return False
+            if pokemon_id not in self.always_notify:
+                mean = sum(tth) / 2
+                if mean < config.TIME_REQUIRED:
+                    self.logger.info('{} has only around {} seconds remaining.'.format(
+                        name, mean))
+                    return False
+            pokemon['earliest_tth'], pokemon['latest_tth'] = tth
 
         whpushed = False
         if WEBHOOK:
-            whpushed = self.webhook(pokemon, time_till_hidden)
+            whpushed = self.webhook(pokemon)
 
         notified = False
         if NATIVE:
-            notified = Notification(pokemon_id, coordinates, time_till_hidden, iv, moves, iv_score, time_of_day).notify()
+            notified = Notification(pokemon, iv_score, time_of_day).notify()
 
         if notified or whpushed:
             self.last_notification = monotonic()
-            self.recent_notifications.append(encounter_id)
+            self.recent_notifications.append(pokemon['encounter_id'])
         return notified or whpushed
 
-    def webhook(self, pokemon, time_till_hidden):
+    def webhook(self, pokemon):
         """ Send a notification via webhook
         """
-        if isinstance(time_till_hidden, (tuple, list)):
-            time_till_hidden = time_till_hidden[0]
+        try:
+            tth = pokemon['time_till_hidden']
+            ts = pokemon['expire_timestamp']
+        except KeyError:
+            tth = pokemon['earliest_tth']
+            ts = pokemon['seen'] + tth
 
         data = {
             'type': "pokemon",
@@ -717,8 +729,8 @@ class Notifier:
                 "spawnpoint_id": pokemon['spawn_id'],
                 "latitude": pokemon['lat'],
                 "longitude": pokemon['lon'],
-                "disappear_time": pokemon['seen'] + time_till_hidden,
-                "time_until_hidden_ms": time_till_hidden * 1000
+                "disappear_time": ts,
+                "time_until_hidden_ms": tth * 1000
             }
         }
 

@@ -102,7 +102,7 @@ class Spawns:
         hour = get_current_hour(now=now)
         try:
             despawn_time = self.get_despawn_seconds(spawn_id) + hour
-            if now > despawn_time - 89:
+            if now > despawn_time:
                 despawn_time += 3600
             return despawn_time
         except TypeError:
@@ -167,12 +167,12 @@ class DatabaseProcessor(Thread):
                 item = self.queue.get()
 
                 if item['type'] == 'pokemon':
-                    if item['valid']:
-                        db.add_sighting(session, item)
-                        if item['valid'] == True:
-                            db.add_spawnpoint(session, item, SPAWNS)
-                    else:
-                        db.add_mystery(session, item, SPAWNS)
+                    db.add_sighting(session, item)
+                    self.count += 1
+                    if not item['inferred']:
+                        db.add_spawnpoint(session, item)
+                elif item['type'] == 'mystery':
+                    db.add_mystery(session, item)
                     self.count += 1
                 elif item['type'] == 'fort':
                     db.add_fort_sighting(session, item)

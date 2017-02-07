@@ -13,12 +13,11 @@ from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm.exc import NoResultFound
 
-from . import utils
+from . import utils, shared, config
 
 try:
-    from . import config
     DB_ENGINE = config.DB_ENGINE
-except (ImportError, AttributeError):
+except AttributeError:
     DB_ENGINE = 'sqlite:///db.sqlite'
 
 _optional = {
@@ -462,11 +461,11 @@ def add_sighting(session, pokemon):
     SIGHTING_CACHE.add(pokemon)
 
 
-def add_spawnpoint(session, pokemon, spawns):
+def add_spawnpoint(session, pokemon):
     # Check if the same entry already exists
     spawn_id = pokemon['spawn_id']
     new_time = pokemon['expire_timestamp'] % 3600
-    existing_time = spawns.get_despawn_seconds(spawn_id)
+    existing_time = shared.SPAWNS.get_despawn_seconds(spawn_id)
     point = (pokemon['lat'], pokemon['lon'])
     if new_time == existing_time:
         return
@@ -486,10 +485,10 @@ def add_spawnpoint(session, pokemon, spawns):
             return
 
         existing.despawn_time = new_time
-        spawns.add_despawn(spawn_id, new_time)
+        shared.SPAWNS.add_despawn(spawn_id, new_time)
     else:
-        altitude = spawns.get_altitude(point)
-        spawns.add_despawn(spawn_id, new_time)
+        altitude = shared.SPAWNS.get_altitude(point)
+        shared.SPAWNS.add_despawn(spawn_id, new_time)
         widest = get_widest_range(session, spawn_id)
 
         if widest and widest > 1710:
@@ -507,20 +506,20 @@ def add_spawnpoint(session, pokemon, spawns):
             duration=duration
         )
         session.add(obj)
-        spawns.add_known(point)
+        shared.SPAWNS.add_known(point)
 
 
-def add_mystery_spawnpoint(session, pokemon, spawns):
+def add_mystery_spawnpoint(session, pokemon):
     # Check if the same entry already exists
     spawn_id = pokemon['spawn_id']
     point = (pokemon['lat'], pokemon['lon'])
-    if spawns.db_has(point):
+    if shared.SPAWNS.db_has(point):
         return
     existing = session.query(exists().where(
         Spawnpoint.spawn_id == spawn_id)).scalar()
     if existing:
         return
-    altitude = spawns.get_altitude(point)
+    altitude = shared.SPAWNS.get_altitude(point)
 
     obj = Spawnpoint(
         spawn_id=spawn_id,
@@ -534,13 +533,13 @@ def add_mystery_spawnpoint(session, pokemon, spawns):
     session.add(obj)
 
     if Bounds.contain(point):
-        spawns.add_mystery(point)
+        shared.SPAWNS.add_mystery(point)
 
 
-def add_mystery(session, pokemon, spawns):
+def add_mystery(session, pokemon):
     if pokemon in MYSTERY_CACHE:
         return
-    add_mystery_spawnpoint(session, pokemon, spawns)
+    add_mystery_spawnpoint(session, pokemon)
     existing = session.query(Mystery) \
         .filter(Mystery.encounter_id == pokemon['encounter_id']) \
         .filter(Mystery.spawn_id == pokemon['spawn_id']) \

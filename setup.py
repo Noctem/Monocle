@@ -13,5 +13,5 @@ setup(
     packages=('monocle',),
     include_package_data=True,
     zip_safe=False,
-    scripts=('scan.py', 'web.py', 'gyms.py', 'solve_captchas.py')
+    scripts=('scan.py', 'web.py', 'web-sanic.py', 'gyms.py', 'solve_captchas.py')
 )

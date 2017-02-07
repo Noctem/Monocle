@@ -20,11 +20,10 @@ try:
 except ImportError:
     import _dummy_thread as _thread
 
-from .db import SIGHTING_CACHE, FORT_CACHE
+from .db import SIGHTING_CACHE, MYSTERY_CACHE, FORT_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points
 
-from . import config
-from . import shared
+from . import config, shared
 from .worker import Worker
 
 BAD_STATUSES = (
@@ -270,6 +269,10 @@ class Overseer:
                 self.count,
                 active_count(),
                 self.coroutines_count),
+            'DB queue: {}, sightings cache: {}, mystery cache: {}'.format(
+                shared.DB.queue.qsize(),
+                len(SIGHTING_CACHE.store),
+                len(MYSTERY_CACHE.store)),
             '',
             'Seen per worker: min {min}, max {max}, med {med:.0f}'.format(
                 **self.seen_stats),

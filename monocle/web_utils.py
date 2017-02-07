@@ -3,9 +3,7 @@ from datetime import datetime
 from multiprocessing.managers import BaseManager, RemoteError
 from contextlib import contextmanager
 
-from monocle import config
-from monocle import db
-from monocle import utils
+from monocle import config, db, utils
 from monocle.names import POKEMON_NAMES, MOVES, POKEMON_MOVES
 
 if config.BOUNDARIES:

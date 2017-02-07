@@ -13,8 +13,7 @@ from aiohttp import ClientSession, ProxyConnectionError
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
-from . import config
-from . import shared
+from . import config, shared
 
 if config.FORCED_KILL:
     try:
@@ -260,7 +259,7 @@ class Worker:
         # empty request
         request = self.api.create_request()
         await self.call(request, chain=False)
-        await random_sleep(.3, .5)
+        await sleep(.5)
 
         # request 1: get_player
         request = self.api.create_request()
@@ -755,32 +754,16 @@ class Worker:
             request_time_ms = map_cell['current_timestamp_ms']
             for pokemon in map_cell.get('wild_pokemons', []):
                 pokemon_seen += 1
-                # Accurate times only provided in the last 90 seconds
-                invalid_tth = (
-                    pokemon['time_till_hidden_ms'] < 0 or
-                    pokemon['time_till_hidden_ms'] > 90000
-                )
-                normalized = self.normalize_pokemon(
-                    pokemon,
-                    request_time_ms
-                )
-                if invalid_tth:
-                    despawn_time = shared.SPAWNS.get_despawn_time(
-                        normalized['spawn_id'], normalized['seen'])
-                    if despawn_time:
-                        normalized['expire_timestamp'] = despawn_time
-                        normalized['time_till_hidden_ms'] = (
-                            despawn_time * 1000) - request_time_ms
-                        normalized['valid'] = 'fixed'
-                    else:
-                        normalized['valid'] = False
-                else:
-                    normalized['valid'] = True
+
+                normalized = self.normalize_pokemon(pokemon)
 
                 if config.NOTIFY and self.notifier.eligible(normalized):
                     if config.ENCOUNTER:
-                        normalized.update(await self.encounter(pokemon))
-                    sent = self.notify(normalized, time_of_day)
+                        try:
+                            await self.encounter(normalized)
+                        except Exception:
+                            self.logger.exception('Exception during encounter.')
+                    sent = self.notify(normalized, time_of_day) or sent
 
                 if (normalized not in SIGHTING_CACHE and
                         normalized not in MYSTERY_CACHE):
@@ -788,10 +771,9 @@ class Worker:
                     if (config.ENCOUNTER == 'all' and
                             'individual_attack' not in normalized):
                         try:
-                            normalized.update(await self.encounter(pokemon))
+                            await self.encounter(normalized)
                         except Exception:
                             self.logger.exception('Exception during encounter.')
-
                 shared.DB.add(normalized)
 
             for fort in map_cell.get('forts', []):
@@ -804,7 +786,7 @@ class Worker:
                         pokemon_seen += 1
                         if norm not in SIGHTING_CACHE:
                             self.account_seen += 1
-                            shared.DB.add(norm)
+                        shared.DB.add(norm)
                     pokestop = self.normalize_pokestop(fort)
                     shared.DB.add(pokestop)
                     if self.pokestops and not self.bag_full() and time() > self.next_spin:
@@ -914,15 +896,14 @@ class Worker:
         return responses
 
     async def encounter(self, pokemon):
-        pokemon_point = pokemon['latitude'], pokemon['longitude']
-        distance_to_pokemon = get_distance(self.location, pokemon_point)
+        distance_to_pokemon = get_distance(self.location, (pokemon['lat'], pokemon['lon']))
 
         self.error_code = '~'
 
         if distance_to_pokemon > 47:
             percent = 1 - (46 / distance_to_pokemon)
-            lat_change = (self.location[0] - pokemon['latitude']) * percent
-            lon_change = (self.location[1] - pokemon['longitude']) * percent
+            lat_change = (self.location[0] - pokemon['lat']) * percent
+            lon_change = (self.location[1] - pokemon['lon']) * percent
             self.location = [
                 self.location[0] - lat_change,
                 self.location[1] - lon_change,
@@ -939,26 +920,29 @@ class Worker:
         if time() - self.last_request < delay_required:
             await sleep(delay_required)
 
+        try:
+            spawn_id = hex(pokemon['spawn_id'])[2:]
+        except TypeError:
+            spawn_id = pokemon['spawn_id']
+
         request = self.api.create_request()
         request = request.encounter(encounter_id=pokemon['encounter_id'],
-                                    spawn_point_id=pokemon['spawn_point_id'],
+                                    spawn_point_id=spawn_id,
                                     player_latitude=self.location[0],
                                     player_longitude=self.location[1])
 
         responses = await self.call(request, action=2.25)
 
-        response = responses.get('ENCOUNTER', {})
-        pokemon_data = response.get('wild_pokemon', {}).get('pokemon_data', {})
-        if 'cp' in pokemon_data:
-            for iv in ('individual_attack',
-                       'individual_defense',
-                       'individual_stamina'):
-                if iv not in pokemon_data:
-                    pokemon_data[iv] = 0
-            pokemon_data['probability'] = response.get(
-                'capture_probability', {}).get('capture_probability')
+        try:
+            pdata = responses['ENCOUNTER']['wild_pokemon']['pokemon_data']
+            pokemon['move_1'] = pdata['move_1']
+            pokemon['move_2'] = pdata['move_2']
+            pokemon['individual_attack'] = pdata.get('individual_attack', 0)
+            pokemon['individual_defense'] = pdata.get('individual_defense', 0)
+            pokemon['individual_stamina'] = pdata.get('individual_stamina', 0)
+        except KeyError:
+            self.logger.error('Missing Pokemon data in encounter response.')
         self.error_code = '!'
-        return pokemon_data
 
     def bag_full(self):
         return sum(self.items.values()) >= self.item_capacity
@@ -1209,32 +1193,50 @@ class Worker:
             pass
 
     @staticmethod
-    def normalize_pokemon(raw, now):
+    def normalize_pokemon(raw):
         """Normalizes data coming from API into something acceptable by db"""
-        return {
+        tsm = raw['last_modified_timestamp_ms']
+        tss = round(tsm / 1000)
+        tth = raw['time_till_hidden_ms']
+        norm = {
             'type': 'pokemon',
             'encounter_id': raw['encounter_id'],
             'pokemon_id': raw['pokemon_data']['pokemon_id'],
-            'expire_timestamp': round((now + raw['time_till_hidden_ms']) / 1000),
             'lat': raw['latitude'],
             'lon': raw['longitude'],
             'spawn_id': get_spawn_id(raw),
-            'time_till_hidden_ms': raw['time_till_hidden_ms'],
-            'seen': round(raw['last_modified_timestamp_ms'] / 1000)
+            'seen': tss
         }
+        if tth > 0 and tth <= 90:
+            norm['expire_timestamp'] = round((tsm + tth) / 1000)
+            norm['time_till_hidden'] = tth / 1000
+            norm['inferred'] = False
+        else:
+            despawn = shared.SPAWNS.get_despawn_time(norm['spawn_id'], tss)
+            if despawn:
+                norm['expire_timestamp'] = despawn
+                norm['time_till_hidden'] = despawn - tss
+                norm['inferred'] = True
+            else:
+                norm['type'] = 'mystery'
+        return norm
 
     @staticmethod
     def normalize_lured(raw, now):
+        if config.SPAWN_ID_INT:
+            spawn_id = -1
+        else:
+            spawn_id = 'LURED'
         return {
             'type': 'pokemon',
             'encounter_id': raw['lure_info']['encounter_id'],
             'pokemon_id': raw['lure_info']['active_pokemon_id'],
-            'expire_timestamp': raw['lure_info']['lure_expires_timestamp_ms'] / 1000,
+            'expire_timestamp': raw['lure_info']['lure_expires_timestamp_ms'] // 1000,
             'lat': raw['latitude'],
             'lon': raw['longitude'],
-            'spawn_id': -1,
-            'time_till_hidden_ms': raw['lure_info']['lure_expires_timestamp_ms'] - now,
-            'valid': 'pokestop'
+            'spawn_id': spawn_id,
+            'time_till_hidden': (raw['lure_info']['lure_expires_timestamp_ms'] - now) // 1000,
+            'inferred': 'pokestop'
         }
 
     @staticmethod
@@ -1247,7 +1249,7 @@ class Worker:
             'team': raw.get('owned_by_team', 0),
             'prestige': raw.get('gym_points', 0),
             'guard_pokemon_id': raw.get('guard_pokemon_id', 0),
-            'last_modified': round(raw['last_modified_timestamp_ms'] / 1000),
+            'last_modified': raw['last_modified_timestamp_ms'] // 1000,
         }
 
     @staticmethod

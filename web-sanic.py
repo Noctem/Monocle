@@ -13,9 +13,7 @@ from sanic.response import html, json
 from jinja2 import Environment, PackageLoader, Markup
 from asyncpg import create_pool
 
-from monocle import config
-from monocle import db
-from monocle import utils
+from monocle import config, db, utils
 from monocle.names import POKEMON_NAMES, MOVES, POKEMON_MOVES
 
 
