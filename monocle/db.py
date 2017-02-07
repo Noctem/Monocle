@@ -466,7 +466,6 @@ def add_spawnpoint(session, pokemon):
     spawn_id = pokemon['spawn_id']
     new_time = pokemon['expire_timestamp'] % 3600
     existing_time = shared.SPAWNS.get_despawn_seconds(spawn_id)
-    point = (pokemon['lat'], pokemon['lon'])
     if new_time == existing_time:
         return
     existing = session.query(Spawnpoint) \
@@ -487,6 +486,7 @@ def add_spawnpoint(session, pokemon):
         existing.despawn_time = new_time
         shared.SPAWNS.add_despawn(spawn_id, new_time)
     else:
+        point = (pokemon['lat'], pokemon['lon'])
         altitude = shared.SPAWNS.get_altitude(point)
         shared.SPAWNS.add_despawn(spawn_id, new_time)
         widest = get_widest_range(session, spawn_id)

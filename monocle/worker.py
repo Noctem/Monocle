@@ -1207,7 +1207,7 @@ class Worker:
             'spawn_id': get_spawn_id(raw),
             'seen': tss
         }
-        if tth > 0 and tth <= 90:
+        if tth > 0 and tth <= 90000:
             norm['expire_timestamp'] = round((tsm + tth) / 1000)
             norm['time_till_hidden'] = tth / 1000
             norm['inferred'] = False
