@@ -266,7 +266,6 @@ class Sighting(Base):
     spawn_id = Column(ID_TYPE)
     expire_timestamp = Column(Integer, index=True)
     encounter_id = Column(HUGE_TYPE, index=True)
-    normalized_timestamp = Column(Integer)
     lat = Column(Float)
     lon = Column(Float)
     atk_iv = Column(TINY_TYPE)
@@ -420,10 +419,6 @@ def get_spawns(session):
     return spawns, despawn_times, mysteries, altitudes, known_points
 
 
-def normalize_timestamp(timestamp):
-    return (timestamp // 120) * 120
-
-
 def get_since():
     """Returns 'since' timestamp that should be used for filtering"""
     return time.mktime(config.REPORT_SINCE.timetuple())
@@ -455,7 +450,6 @@ def add_sighting(session, pokemon):
         spawn_id=pokemon['spawn_id'],
         encounter_id=pokemon['encounter_id'],
         expire_timestamp=pokemon['expire_timestamp'],
-        normalized_timestamp=normalize_timestamp(pokemon['expire_timestamp']),
         lat=pokemon['lat'],
         lon=pokemon['lon'],
         atk_iv=pokemon.get('individual_attack'),
