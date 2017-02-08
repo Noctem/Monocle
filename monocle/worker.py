@@ -622,7 +622,7 @@ class Worker:
             await sleep(1)
             if not await self.login():
                 await self.swap_account(reason='login failed')
-            return self.visit(point, bootstrap)
+            return await self.visit(point, bootstrap)
         except ex.AuthException as e:
             self.log.warning('Auth error on {}: {}', self.username, e)
             self.error_code = 'NOT AUTHENTICATED'
