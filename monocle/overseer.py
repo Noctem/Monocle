@@ -8,7 +8,6 @@ from threading import active_count, Semaphore
 from os import system
 from sys import platform
 from random import uniform
-from logging import getLogger
 from collections import deque
 from pogo_async.hash_server import HashServer
 from sqlalchemy.exc import OperationalError
@@ -54,7 +53,7 @@ class Overseer:
     loop = asyncio.get_event_loop()
 
     def __init__(self, status_bar, manager):
-        self.logger = getLogger('overseer')
+        self.log = shared.get_logger('overseer')
         self.workers = []
         self.manager = manager
         self.count = config.GRID[0] * config.GRID[1]
@@ -71,7 +70,7 @@ class Overseer:
         self.redundant = 0
         self.all_seen = False
         self.idle_seconds = 0
-        self.logger.info('Overseer initialized')
+        self.log.info('Overseer initialized')
 
     def start(self):
         self.captcha_queue = self.manager.captcha_queue()
@@ -142,8 +141,8 @@ class Overseer:
                     time.sleep(15)
                 else:
                     time.sleep(.5)
-            except Exception:
-                self.logger.exception('A wild exception appeared in check.')
+            except Exception as e:
+                self.log.exception('A wild {} appeared in check!', e.__class__.__name__)
         # OK, now we're killed
         try:
             while (self.coroutines_count > 0 or
@@ -163,8 +162,8 @@ class Overseer:
                     end='\r'
                 )
                 time.sleep(.5)
-        except Exception:
-            self.logger.exception('A wild exception appeared during exit.')
+        except Exception as e:
+            self.log.exception('A wild {} appeared during exit!', e.__class__.__name__)
         finally:
             shared.DB.queue.put({'type': 'kill'})
             print('Done.                                          ')
@@ -389,13 +388,13 @@ class Overseer:
                 try:
                     shared.SPAWNS.update(loadpickle=pickle)
                 except OperationalError as e:
-                    self.logger.exception('Operational error while trying to update spawns.')
+                    self.log.exception('Operational error while trying to update spawns.')
                     if initial:
                         _thread.interrupt_main()
-                        raise OperationalError('Could not update spawns, ensure your DB is setup.') from e
+                        raise OperationalError('Could not update spawns, ensure your DB is set up.') from e
                     time.sleep(20)
-                except Exception:
-                    self.logger.exception('A wild exception occurred while updating spawns.')
+                except Exception as e:
+                    self.log.exception('A wild {} appeared while updating spawns!', e.__class__.__name__)
                     time.sleep(20)
                 else:
                     break
@@ -487,10 +486,10 @@ class Overseer:
                 except Exception:
                     exceptions += 1
                     if exceptions > 100:
-                        self.logger.exception('Over 100 errors occured in launcher loop, exiting.')
+                        self.log.exception('Over 100 errors occured in launcher loop, exiting.')
                         _thread.interrupt_main()
                     else:
-                        self.logger.exception('Error occured in launcher loop.')
+                        self.log.exception('Error occured in launcher loop.')
 
     def bootstrap(self):
         try:
@@ -499,15 +498,15 @@ class Overseer:
             while self.coroutine_semaphore._value < (self.count / 2) and not self.killed:
                 time.sleep(2)
         except Exception:
-            self.logger.exception('An exception occurred during bootstrap phase 1.')
+            self.log.exception('An exception occurred during bootstrap phase 1.')
 
         try:
-            self.logger.warning('Starting bootstrap phase 2.')
+            self.log.warning('Starting bootstrap phase 2.')
             self.bootstrap_two()
             time.sleep(1)
-            self.logger.warning('Finished bootstrapping.')
+            self.log.warning('Finished bootstrapping.')
         except Exception:
-            self.logger.exception('An exception occurred during bootstrap phase 2.')
+            self.log.exception('An exception occurred during bootstrap phase 2.')
 
     def bootstrap_one(self):
         async def visit_release(worker, point):
@@ -576,7 +575,7 @@ class Overseer:
                 except RuntimeError:
                     pass
         except Exception:
-            self.logger.exception('An exception occurred in try_point')
+            self.log.exception('An exception occurred in try_point')
         finally:
             self.coroutine_semaphore.release()
 

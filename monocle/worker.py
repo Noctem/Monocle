@@ -1,5 +1,4 @@
 from functools import partial
-from logging import getLogger
 from pogo_async import PGoApi, exceptions as ex
 from pogo_async.auth_ptc import AuthPtc
 from pogo_async.utilities import get_cell_ids
@@ -9,17 +8,18 @@ from random import choice, randint, uniform, triangular
 from time import time, monotonic
 from array import array
 from queue import Empty
-from aiohttp import ClientSession, ProxyConnectionError
+from aiohttp import ClientSession
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
 from . import config, shared
 
-if config.FORCED_KILL:
-    try:
-        import _thread
-    except ImportError as e:
+try:
+    import _thread
+except ImportError as e:
+    if config.FORCED_KILL:
         raise OSError('Your platform does not support _thread so FORCED_KILL will not work.') from e
+    import _dummy_thread as _thread
 
 if config.NOTIFY:
     from .notification import Notifier
@@ -66,7 +66,7 @@ class Worker:
 
     def __init__(self, worker_no):
         self.worker_no = worker_no
-        self.logger = getLogger('worker-{}'.format(worker_no))
+        self.log = shared.get_logger('worker-{}'.format(worker_no))
         # account information
         try:
             self.account = self.extra_queue.get_nowait()
@@ -120,16 +120,18 @@ class Worker:
         self.api.set_position(*self.location)
         if self.proxy:
             self.api.set_proxy(self.proxy)
-        self.api.set_logger(self.logger)
-        if self.account.get('provider') == 'ptc' and self.account.get('refresh'):
-            self.api._auth_provider = AuthPtc(username=self.username, password=self.account['password'], timeout=config.LOGIN_TIMEOUT)
-            self.api._auth_provider.set_refresh_token(self.account.get('refresh'))
-            self.api._auth_provider._access_token = self.account.get('auth')
-            self.api._auth_provider._access_token_expiry = self.account.get('expiry')
-            if self.api._auth_provider.check_access_token():
-                self.api._auth_provider._login = True
-                self.logged_in = True
-                self.ever_authenticated = True
+        try:
+            if self.account['provider'] == 'ptc' and 'auth' in self.account:
+                self.api._auth_provider = AuthPtc(username=self.username, password=self.account['password'], timeout=config.LOGIN_TIMEOUT)
+                self.api._auth_provider._access_token = self.account['auth']
+                self.api._auth_provider.set_refresh_token(self.account['refresh'])
+                self.api._auth_provider._access_token_expiry = self.account['expiry']
+                if self.api._auth_provider.check_access_token():
+                    self.api._auth_provider._login = True
+                    self.logged_in = True
+                    self.ever_authenticated = True
+        except KeyError:
+            pass
 
     def new_proxy(self, set_api=True):
         self.proxy = self.proxies.pop()
@@ -147,16 +149,14 @@ class Worker:
                 controller.signal(Signal.NEWNYM)
             CIRCUIT_TIME[self.proxy] = monotonic()
             CIRCUIT_FAILURES[self.proxy] = 0
-            self.logger.warning('Changed circuit on {p} due to {r}.'.format(
-                                p=self.proxy, r=reason))
+            self.log.warning('Changed circuit on {} due to {}.', self.proxy, reason)
         else:
-            self.logger.info('Skipped changing circuit on {p} because it was '
-                             'changed {s} seconds ago.'.format(
-                                 p=self.proxy, s=time_passed))
+            self.log.info('Skipped changing circuit on {} because it was '
+                          'changed {} seconds ago.', self.proxy, time_passed)
 
     async def login(self):
         """Logs worker in and prepares for scanning"""
-        self.logger.info('Trying to log in')
+        self.log.info('Trying to log in')
 
         for attempt in range(-1, config.MAX_RETRIES):
             try:
@@ -169,15 +169,14 @@ class Worker:
                         provider=self.account.get('provider', 'ptc'),
                         timeout=config.LOGIN_TIMEOUT
                     )
-            except ex.AuthException:
-                if attempt >= config.MAX_RETRIES - 1:
-                    self.logger.warning('Login attempts failed. Giving up')
-                    raise
-                else:
-                    self.logger.info('Login attempt failed.')
-                await sleep(1)
+            except (ex.AuthTimeoutException, ex.AuthConnectionException) as e:
+                err = e
+                await sleep(2)
             else:
+                err = None
                 break
+        if err:
+            raise err
 
         self.error_code = '°'
         version = 5500
@@ -253,7 +252,7 @@ class Worker:
         await self.call(request, action=1)
 
     async def app_simulation_login(self, version):
-        self.logger.info('Starting RPC login sequence (iOS app simulation)')
+        self.log.info('Starting RPC login sequence (iOS app simulation)')
         reset_avatar = False
 
         # empty request
@@ -281,7 +280,7 @@ class Worker:
                 self.account['created'] = player_data['creation_timestamp_ms'] / 1000
             avatar = player_data['avatar']
             if avatar['avatar'] == 1 and avatar['backpack'] > 2:
-                self.logger.warning('Invalid backpack for female, resetting avatar.')
+                self.log.warning('Invalid backpack for female, resetting avatar.')
                 reset_avatar = True
         except (KeyError, TypeError, AttributeError):
             pass
@@ -301,7 +300,7 @@ class Worker:
         if (config.COMPLETE_TUTORIAL and
                 tutorial_state is not None and
                 not all(x in tutorial_state for x in (0, 1, 3, 4, 7))):
-            self.logger.warning('{} is starting tutorial'.format(self.username))
+            self.log.warning('{} is starting tutorial', self.username)
             await self.complete_tutorial(tutorial_state)
         else:
             # request 4: get_player_profile
@@ -317,14 +316,14 @@ class Worker:
                 await self.call(request, settings=True)
                 await random_sleep(.45, .7)
             else:
-                self.logger.warning('No player level')
+                self.log.warning('No player level')
 
             # request 6: register_background_device
             request = self.api.create_request()
             request.register_background_device(device_type='apple_watch')
             await self.call(request, action=0.1)
 
-            self.logger.info('Finished RPC login sequence (iOS app simulation)')
+            self.log.info('Finished RPC login sequence (iOS app simulation)')
             if reset_avatar:
                 await self.set_avatar()
 
@@ -493,7 +492,7 @@ class Worker:
                 else:
                     raise ex.MalformedResponseException('empty response')
             except (ex.NotLoggedInException, ex.AuthException) as e:
-                self.logger.info('{} is not authenticated.'.format(self.username))
+                self.log.info('Auth error on {}: {}', self.username, e)
                 err = e
                 self.logged_in = False
                 await self.login()
@@ -501,19 +500,19 @@ class Worker:
             except ex.HashingOfflineException as e:
                 if err != e:
                     err = e
-                    self.logger.warning('Hashing server busy or offline.')
+                    self.log.warning('{}', e)
                 self.error_code = 'HASHING OFFLINE'
                 await sleep(7.5)
             except ex.NianticOfflineException as e:
                 if err != e:
                     err = e
-                    self.logger.warning('Niantic busy or offline.')
+                    self.log.warning('{}', e)
                 self.error_code = 'NIANTIC OFFLINE'
                 await random_sleep()
             except ex.HashingQuotaExceededException as e:
                 if err != e:
                     err = e
-                    self.logger.warning('Exceeded your hashing quota, sleeping.')
+                    self.log.warning('Exceeded your hashing quota, sleeping.')
                 self.error_code = 'QUOTA EXCEEDED'
                 refresh = HashServer.status.get('period')
                 now = time()
@@ -527,26 +526,26 @@ class Worker:
             except ex.NianticThrottlingException as e:
                 if err != e:
                     err = e
-                    self.logger.warning('Server throttling - sleeping for a bit')
+                    self.log.warning('{}', e)
                 self.error_code = 'THROTTLE'
                 await random_sleep(11, 22, 12)
-            except ProxyConnectionError as e:
+            except ex.ProxyException as e:
                 if err != e:
                     err = e
                 self.error_code = 'PROXY ERROR'
 
                 if self.proxies:
-                    self.logger.error('Proxy connection error, swapping proxy.')
+                    self.log.error('{}, swapping proxy.', e)
                     proxy = self.proxy
                     while proxy == self.proxy:
                         self.new_proxy()
                 else:
                     if err != e:
-                        self.logger.error('Proxy connection error')
+                        self.log.error('{}', e)
                     await sleep(5)
             except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
                 if err != e:
-                    self.logger.warning(e)
+                    self.log.warning('{}', e)
                 self.error_code = 'MALFORMED RESPONSE'
                 await random_sleep(10, 14, 11)
         if err is not None:
@@ -563,7 +562,7 @@ class Worker:
                 if (settings and config.FORCED_KILL and
                         responses['DOWNLOAD_SETTINGS']['settings']['minimum_client_version'] not in config.FORCED_KILL):
                     err = 'A new version is being forced, exiting.'
-                    self.logger.error(err)
+                    self.log.error(err)
                     print(err)
                     _thread.interrupt_main()
                     self.kill()
@@ -578,7 +577,7 @@ class Worker:
             d_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
             self.download_hash = d_hash or self.download_hash
             if self.check_captcha(responses):
-                self.logger.warning('{} has encountered a CAPTCHA, trying to solve'.format(self.username))
+                self.log.warning('{} has encountered a CAPTCHA, trying to solve', self.username)
                 self.g['captchas'] += 1
                 await self.handle_captcha(responses)
         return responses
@@ -618,8 +617,14 @@ class Worker:
                 if not await self.login():
                     return False
             return await self.visit_point(point, bootstrap=bootstrap)
-        except (ex.AuthException, ex.NotLoggedInException):
-            self.logger.info('{} is not authenticated.'.format(self.username))
+        except ex.NotLoggedInException:
+            self.error_code = 'NOT AUTHENTICATED'
+            await sleep(1)
+            if not await self.login():
+                await self.swap_account(reason='login failed')
+            return self.visit(point, bootstrap)
+        except ex.AuthException as e:
+            self.log.warning('Auth error on {}: {}', self.username, e)
             self.error_code = 'NOT AUTHENTICATED'
             await sleep(3)
             await self.swap_account(reason='login failed')
@@ -634,23 +639,23 @@ class Worker:
             await self.swap_account(reason='solving CAPTCHA failed')
         except ex.TempHashingBanException:
             self.error_code = 'HASHING BAN'
-            self.logger.error('Temporarily banned from hashing server for using invalid keys.')
+            self.log.error('Temporarily banned from hashing server for using invalid keys.')
             await sleep(185)
         except ex.BannedAccountException:
             self.error_code = 'BANNED'
-            self.logger.warning('{} is banned'.format(self.username))
+            self.log.warning('{} is banned', self.username)
             await sleep(1)
             await self.remove_account()
-        except ProxyConnectionError:
+        except ex.ProxyException as e:
             self.error_code = 'PROXY ERROR'
 
             if self.proxies:
-                self.logger.error('Proxy connection error, swapping proxy.')
+                self.log.error('{} Swapping proxy.', e)
                 proxy = self.proxy
                 while proxy == self.proxy:
                     self.new_proxy()
             else:
-                self.logger.error('Proxy connection error')
+                self.log.error('{}', e)
             await sleep(5)
         except ex.NianticIPBannedException:
             self.error_code = 'IP BANNED'
@@ -659,36 +664,33 @@ class Worker:
                 self.swap_circuit('IP ban')
                 await random_sleep(minimum=25, maximum=35)
             elif self.proxies:
-                self.logger.warning('Swapping out {} due to IP ban.'.format(
-                                    self.proxy))
+                self.log.warning('Swapping out {} due to IP ban.', self.proxy)
                 proxy = self.proxy
                 while proxy == self.proxy:
                     self.new_proxy()
                 await random_sleep(minimum=12, maximum=20)
             else:
-                self.logger.error('IP banned.')
+                self.log.error('IP banned.')
                 self.kill()
-        except ex.HashingOfflineException:
-            self.logger.warning('Hashing server busy or offline. Giving up.')
-        except ex.NianticOfflineException:
-            self.logger.warning('Niantic busy or offline. Giving up.')
-        except ex.NianticThrottlingException:
-            self.logger.warning('Throttled by Niantic. Giving up.')
+        except ex.ServerBusyOrOfflineException as e:
+            self.log.warning('{}. Giving up.', e)
+        except ex.NianticThrottlingException as e:
+            self.log.warning('{}. Giving up.', e)
         except ex.ExpiredHashKeyException:
             self.error_code = 'KEY EXPIRED'
             err = 'Hash key has expired: {}'.format(config.HASH_KEY)
-            self.logger.error(err)
+            self.log.error(err)
             print(err)
             _thread.interrupt_main()
             self.kill()
         except ex.HashServerException as e:
-            self.logger.warning(e)
+            self.log.warning('{}', e)
             self.error_code = 'HASHING ERROR'
         except ex.PgoapiError as e:
-            self.logger.exception('pgoapi error')
+            self.log.exception(e.__class__.__name__)
             self.error_code = 'PGOAPI ERROR'
-        except Exception:
-            self.logger.exception('A wild exception appeared!')
+        except Exception as e:
+            self.log.exception('A wild {} appeared!', e.__class__.__name__)
             self.error_code = 'EXCEPTION'
         await sleep(1)
         return False
@@ -699,7 +701,7 @@ class Worker:
         else:
             self.error_code = '!'
         latitude, longitude = point
-        self.logger.info('Visiting {0[0]:.4f},{0[1]:.4f}'.format(point))
+        self.log.info('Visiting {0[0]:.4f},{0[1]:.4f}', point)
         start = time()
 
         rounded = round_coords(point, 4)
@@ -727,23 +729,27 @@ class Worker:
         responses = await self.call(request)
         self.last_gmo = time()
 
-        map_objects = responses.get('GET_MAP_OBJECTS', {})
+        try:
+            map_objects = responses['GET_MAP_OBJECTS']
+
+            map_status = map_objects['status']
+            if map_status == 3:
+                raise ex.BannedAccountException('GMO code 3')
+            elif map_status != 1:
+                error = 'GetMapObjects code: {}'.format(map_status)
+                self.log.warning(error)
+                self.empty_visits += 1
+                if self.empty_visits > 3:
+                    reason = '{} empty visits'.format(self.empty_visits)
+                    await self.swap_account(reason)
+                raise ex.UnexpectedResponseException(error)
+        except KeyError:
+            raise ex.UnexpectedResponseException('Bad MapObjects response.')
 
         sent = False
         pokemon_seen = 0
         forts_seen = 0
         points_seen = 0
-
-        if map_objects.get('status') == 3:
-            raise ex.BannedAccountException('GMO code 3')
-        elif map_objects.get('status') != 1:
-            self.logger.warning(
-                'MapObjects code: {}'.format(map_objects.get('status')))
-            self.empty_visits += 1
-            if self.empty_visits > 3:
-                reason = '{} empty visits'.format(self.empty_visits)
-                await self.swap_account(reason)
-            raise ex.UnexpectedResponseException
 
         time_of_day = map_objects.get('time_of_day', 0)
 
@@ -762,7 +768,7 @@ class Worker:
                         try:
                             await self.encounter(normalized)
                         except Exception:
-                            self.logger.exception('Exception during encounter.')
+                            self.log.exception('Exception during encounter.')
                     sent = self.notify(normalized, time_of_day) or sent
 
                 if (normalized not in SIGHTING_CACHE and
@@ -773,7 +779,7 @@ class Worker:
                         try:
                             await self.encounter(normalized)
                         except Exception:
-                            self.logger.exception('Exception during encounter.')
+                            self.log.exception('Exception during encounter.')
                 shared.DB.add(normalized)
 
             for fort in map_cell.get('forts', []):
@@ -805,7 +811,7 @@ class Worker:
                             continue
                         shared.SPAWNS.add_cell_point(p)
                     except (KeyError, TypeError):
-                        self.logger.warning('Spawn point exception ignored. {}'.format(point))
+                        self.log.warning('Spawn point exception ignored. {}', point)
                         pass
 
         if config.INCUBATE_EGGS and len(self.unused_incubators) > 0 and len(self.eggs) > 0:
@@ -839,8 +845,8 @@ class Worker:
             self.worker_dict.update([(self.worker_no,
                 ((latitude, longitude), start, self.speed, self.total_seen,
                 self.visits, pokemon_seen, sent))])
-        self.logger.info(
-            'Point processed, %d Pokemon and %d forts seen!',
+        self.log.info(
+            'Point processed, {} Pokemon and {} forts seen!',
             pokemon_seen,
             forts_seen,
         )
@@ -876,20 +882,20 @@ class Worker:
 
         result = responses.get('FORT_SEARCH', {}).get('result', 0)
         if result == 1:
-            self.logger.info('Spun {}.'.format(name))
+            self.log.info('Spun {}.', name)
         elif result == 2:
-            self.logger.info('The server said {n} was out of spinning range. {d:.1f}m {s:.1f}MPH'.format(
-                n=name, d=distance, s=self.speed))
+            self.log.info('The server said {} was out of spinning range. {:.1f}m {:.1f}MPH',
+                name, distance, self.speed)
         elif result == 3:
-            self.logger.warning('{} was in the cooldown period.'.format(name))
+            self.log.warning('{} was in the cooldown period.', name)
         elif result == 4:
-            self.logger.warning('Could not spin {n} because inventory was full. {s}'.format(
-                n=name, s=sum(self.items.values())))
+            self.log.warning('Could not spin {} because inventory was full. {}',
+                name, sum(self.items.values()))
         elif result == 5:
-            self.logger.warning('Could not spin {} because the daily limit was reached.'.format(name))
+            self.log.warning('Could not spin {} because the daily limit was reached.', name)
             self.pokestops = False
         else:
-            self.logger.warning('Failed spinning {n}: {r}'.format(n=name, r=result))
+            self.log.warning('Failed spinning {}: {}', name, result)
 
         self.next_spin = time() + config.SPIN_COOLDOWN
         self.error_code = '!'
@@ -941,7 +947,7 @@ class Worker:
             pokemon['individual_defense'] = pdata.get('individual_defense', 0)
             pokemon['individual_stamina'] = pdata.get('individual_stamina', 0)
         except KeyError:
-            self.logger.error('Missing Pokemon data in encounter response.')
+            self.log.error('Missing Pokemon data in encounter response.')
         self.error_code = '!'
 
     def bag_full(self):
@@ -966,10 +972,10 @@ class Worker:
             responses = await self.call(request, action=2)
 
             if responses.get('RECYCLE_INVENTORY_ITEM', {}).get('result', 0) != 1:
-                self.logger.warning("Failed to remove item %d", item)
+                self.log.warning("Failed to remove item {}", item)
             else:
                 removed += count
-        self.logger.info("Removed %d items", removed)
+        self.log.info("Removed {} items", removed)
         self.error_code = '!'
 
     async def incubate_eggs(self):
@@ -990,14 +996,14 @@ class Worker:
 
                 ret = responses.get('USE_ITEM_EGG_INCUBATOR', {}).get('result', 0)
                 if ret == 4:
-                    self.logger.warning("Failed to use incubator because it was already in use.")
+                    self.log.warning("Failed to use incubator because it was already in use.")
                 elif ret != 1:
-                    self.logger.warning("Failed to apply incubator {} on {}, code: {}".format(
-                        inc.get('id', 0), egg.get('id', 0), ret))
+                    self.log.warning("Failed to apply incubator {} on {}, code: {}",
+                        inc.get('id', 0), egg.get('id', 0), ret)
 
     async def handle_captcha(self, responses):
         if self.num_captchas >= config.CAPTCHAS_ALLOWED:
-            self.logger.error("{} encountered too many CAPTCHAs, removing.".format(self.username))
+            self.log.error("{} encountered too many CAPTCHAs, removing.", self.username)
             raise CaptchaException
 
         self.error_code = 'C'
@@ -1015,17 +1021,17 @@ class Worker:
             async with self.session.post('http://2captcha.com/in.php', params=params, timeout=10) as resp:
                 response = await resp.json()
         except Exception as e:
-            self.logger.error('Got an error while trying to solve CAPTCHA. '
-                              'Check your API Key and account balance.')
+            self.log.error('Got an error while trying to solve CAPTCHA. '
+                           'Check your API Key and account balance.')
             raise CaptchaSolveException from e
 
         code = response.get('request')
         if response.get('status') != 1:
             if code in ('ERROR_WRONG_USER_KEY', 'ERROR_KEY_DOES_NOT_EXIST', 'ERROR_ZERO_BALANCE'):
                 config.CAPTCHA_KEY = None
-                self.logger.error('2Captcha reported: {}, disabling CAPTCHA solving'.format(code))
+                self.log.error('2Captcha reported: {}, disabling CAPTCHA solving', code)
             else:
-                self.logger.error("Failed to submit CAPTCHA for solving: {}".format(code))
+                self.log.error("Failed to submit CAPTCHA for solving: {}", code)
             raise CaptchaSolveException
 
         try:
@@ -1043,13 +1049,13 @@ class Worker:
                     break
                 await sleep(5)
         except Exception as e:
-            self.logger.error('Got an error while trying to solve CAPTCHA. '
+            self.log.error('Got an error while trying to solve CAPTCHA. '
                               'Check your API Key and account balance.')
             raise CaptchaSolveException from e
 
         token = response.get('request')
         if not response.get('status') == 1:
-            self.logger.error("Failed to get CAPTCHA response: {}".format(token))
+            self.log.error("Failed to get CAPTCHA response: {}", token)
             raise CaptchaSolveException
 
         request = self.api.create_request()
@@ -1057,10 +1063,10 @@ class Worker:
         try:
             responses = await self.call(request, action=4)
             self.update_accounts_dict()
-            self.logger.warning("Successfully solved CAPTCHA")
+            self.log.warning("Successfully solved CAPTCHA")
         except CaptchaException:
-            self.logger.warning("CAPTCHA #{} for {} was not solved correctly, trying again".format(
-                    captcha_id, self.username))
+            self.log.warning("CAPTCHA #{} for {} was not solved correctly, trying again",
+                captcha_id, self.username)
             # try again
             await self.handle_captcha(responses)
 
@@ -1093,33 +1099,35 @@ class Worker:
         self.account['items'] = self.items
         self.account['level'] = self.player_level
 
-        if auth and self.api._auth_provider:
-            self.account['refresh'] = self.api._auth_provider._refresh_token
-            if self.api._auth_provider.check_access_token():
-                self.account['auth'] = self.api._auth_provider._access_token
-                self.account['expiry'] = self.api._auth_provider._access_token_expiry
-            else:
-                self.account['auth'] = self.account['expiry'] = None
+        try:
+            if auth:
+                self.account['refresh'] = self.api._auth_provider._refresh_token
+                if self.api._auth_provider.check_access_token():
+                    self.account['auth'] = self.api._auth_provider._access_token
+                    self.account['expiry'] = self.api._auth_provider._access_token_expiry
+                else:
+                    self.account['auth'] = self.account['expiry'] = None
+        except AttributeError:
+            pass
 
         self.accounts[self.username] = self.account
 
     async def remove_account(self):
         self.error_code = 'REMOVING'
-        self.logger.warning('Removing {} due to ban.'.format(self.username))
+        self.log.warning('Removing {} due to ban.', self.username)
         self.update_accounts_dict(banned=True)
         await self.new_account()
 
     async def bench_account(self):
         self.error_code = 'BENCHING'
-        self.logger.warning('Swapping {} due to CAPTCHA.'.format(self.username))
+        self.log.warning('Swapping {} due to CAPTCHA.', self.username)
         self.update_accounts_dict(captcha=True)
         self.captcha_queue.put(self.account)
         await self.new_account()
 
     async def swap_account(self, reason='', lock=False):
         self.error_code = 'SWAPPING'
-        self.logger.warning('Swapping out {u} because {r}.'.format(
-                            u=self.username, r=reason))
+        self.log.warning('Swapping out {} because {}.', self.username, reason)
         if lock:
             await self.busy.acquire()
         self.update_accounts_dict()

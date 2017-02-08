@@ -205,34 +205,32 @@ def parse_args():
 def configure_logger(filename='scan.log'):
     basicConfig(
         filename=filename,
-        format=(
-            '[%(asctime)s][%(levelname)8s][%(name)s] '
-            '%(message)s'
-        ),
-        style='%',
-        level=INFO,
+        format='[{asctime}][{levelname:>8s}][{name}] {message}',
+        datefmt='%Y-%m-%d %X',
+        style='{',
+        level=INFO
     )
 
 
 def exception_handler(loop, context):
     try:
-        logger = getLogger('eventloop')
-        logger.error('A wild exception appeared!')
-        logger.error(context)
+        log = getLogger('eventloop')
+        log.error('A wild exception appeared!')
+        log.error(context)
     except Exception:
         print('Exception in exception handler.')
 
 
 def main():
     args = parse_args()
-    logger = getLogger()
+    log = shared.get_logger()
     if args.status_bar:
         configure_logger(filename=join(config.DIRECTORY, 'scan.log'))
-        logger.info('-' * 30)
-        logger.info('Starting up!')
+        log.info('-' * 37)
+        log.info('Starting up!')
     else:
         configure_logger(filename=None)
-    logger.setLevel(args.log_level)
+    log.setLevel(args.log_level)
 
     AccountManager.register('captcha_queue', callable=get_captchas)
     AccountManager.register('extra_queue', callable=get_extras)
@@ -265,7 +263,7 @@ def main():
             try:
                 loop.run_forever()
             except Exception:
-                logger.exception('Caught error on run_forever, restarting loop')
+                log.exception('Caught error on run_forever, restarting loop')
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
         overseer.kill()
@@ -277,8 +275,8 @@ def main():
         pending = asyncio.Task.all_tasks(loop=loop)
         try:
             loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        except Exception:
-            logger.exception('A wild exception appeared during exit!')
+        except Exception as e:
+            log.exception('A wild {} appeared during exit!', e.__class__.__name__)
 
         shared.DB.stop()
 

@@ -2,13 +2,14 @@ from datetime import datetime, timedelta, timezone
 from collections import deque
 from math import sqrt
 from time import monotonic
-from logging import getLogger
 from pkg_resources import resource_stream
 from tempfile import NamedTemporaryFile
 
 from .utils import load_pickle, dump_pickle
 from .db import session_scope, get_pokemon_ranking, estimate_remaining_time
 from .names import POKEMON_NAMES, POKEMON_MOVES
+from .shared import get_logger
+
 from . import config
 
 import requests
@@ -234,7 +235,7 @@ class Notification:
         self.coordinates = pokemon['lat'], pokemon['lon']
         self.score = score
         self.time_of_day = time_of_day
-        self.logger = getLogger('notifier')
+        self.log = get_logger('notifier')
         self.description = 'wild'
         try:
             _m1 = pokemon['move_1']
@@ -356,13 +357,13 @@ class Notification:
 
             r = requests.get(TELEGRAM_BASE_URL, params=payload, timeout=5)
             if r.status_code == 200:
-                self.logger.info('Sent a Telegram notification about {}.'.format(self.name))
+                self.log.info('Sent a Telegram notification about {}.', self.name)
                 return True
             else:
-                self.logger.info('Failed to send a Telegram notification about {}.'.format(self.name))
+                self.log.info('Failed to send a Telegram notification about {}.', self.name)
                 return False
         except Exception:
-            self.logger.exception('Exception caught in Telegram notification.')
+            self.log.exception('Exception caught in Telegram notification.')
             return False
 
     def pbpush(self):
@@ -373,7 +374,7 @@ class Notification:
         try:
             pb = Pushbullet(config.PB_API_KEY)
         except Exception:
-            self.logger.exception('Failed to create a PushBullet object.')
+            self.log.exception('Failed to create a PushBullet object.')
             return False
 
         description = self.description
@@ -417,10 +418,10 @@ class Notification:
             except (IndexError, KeyError):
                 pb.push_link(title, self.map_link, body)
         except Exception:
-            self.logger.exception('Failed to send a PushBullet notification about {}.'.format(self.name))
+            self.log.exception('Failed to send a PushBullet notification about {}.', self.name)
             return False
         else:
-            self.logger.info('Sent a PushBullet notification about {}.'.format(self.name))
+            self.log.info('Sent a PushBullet notification about {}.', self.name)
             return True
 
     def tweet(self):
@@ -442,7 +443,7 @@ class Notification:
                               access_token_key=config.TWITTER_ACCESS_KEY,
                               access_token_secret=config.TWITTER_ACCESS_SECRET)
         except Exception:
-            self.logger.exception('Failed to create a Twitter API object.')
+            self.log.exception('Failed to create a Twitter API object.')
 
         tag_string = generate_tag_string(self.hashtags)
 
@@ -514,7 +515,7 @@ class Notification:
             try:
                 image = PokeImage(self.pokemon, self.move1, self.move2, self.time_of_day).create()
             except Exception:
-                self.logger.exception('Failed to create a Tweet image.')
+                self.log.exception('Failed to create a Tweet image.')
 
         try:
             api.PostUpdate(tweet_text,
@@ -523,10 +524,10 @@ class Notification:
                            longitude=self.coordinates[1],
                            display_coordinates=True)
         except Exception:
-            self.logger.exception('Failed to tweet about {}.'.format(self.name))
+            self.log.exception('Failed to tweet about {}.', self.name)
             return False
         else:
-            self.logger.info('Sent a tweet about {}.'.format(self.name))
+            self.log.info('Sent a tweet about {}.', self.name)
             return True
         finally:
             try:
@@ -555,7 +556,7 @@ class Notifier:
         self.minimum_score = config.MINIMUM_SCORE
         self.last_notification = monotonic() - (config.FULL_TIME / 2)
         self.always_notify = []
-        self.logger = getLogger('notifier')
+        self.log = get_logger('notifier')
         self.never_notify = config.NEVER_NOTIFY_IDS or tuple()
         self.rarity_override = config.RARITY_OVERRIDE or {}
         if self.notify_ranking:
@@ -585,7 +586,7 @@ class Notifier:
             with session_scope() as session:
                 self.pokemon_ranking = get_pokemon_ranking(session)
         except Exception:
-            self.logger.exception('An exception occurred while trying to update rankings.')
+            self.log.exception('An exception occurred while trying to update rankings.')
         else:
             dump_pickle('ranking', self.pokemon_ranking)
 
@@ -658,7 +659,7 @@ class Notifier:
             if config.IGNORE_IVS:
                 iv_score = None
             else:
-                self.logger.warning('IVs are supposed to be considered but were not found.')
+                self.log.warning('IVs are supposed to be considered but were not found.')
                 return False
 
         if score_required:
@@ -674,9 +675,9 @@ class Notifier:
 
         if score < score_required:
             try:
-                self.logger.info("{}'s score was {:.3f} (iv: {:.3f}),"
-                                 " but {:.3f} was required.".format(
-                                 name, score, iv_score, score_required))
+                self.log.info("{}'s score was {:.3f} (iv: {:.3f}),"
+                                 " but {:.3f} was required.",
+                                 name, score, iv_score, score_required)
             except TypeError:
                 pass
             return False
@@ -687,13 +688,12 @@ class Notifier:
                 with session_scope() as session:
                     tth = estimate_remaining_time(session, pokemon['spawn_id'], seen)
             except Exception:
-                self.logger.exception('An exception occurred while trying to estimate remaining time.')
+                self.log.exception('An exception occurred while trying to estimate remaining time.')
                 return False
             if pokemon_id not in self.always_notify:
                 mean = sum(tth) / 2
                 if mean < config.TIME_REQUIRED:
-                    self.logger.info('{} has only around {} seconds remaining.'.format(
-                        name, mean))
+                    self.log.info('{} has only around {} seconds remaining.', name, mean)
                     return False
             pokemon['earliest_tth'], pokemon['latest_tth'] = tth
 
@@ -749,7 +749,7 @@ class Notifier:
                 self.wh_session.post(w, json=data, timeout=(1, 1))
                 ret = True
             except requests.exceptions.Timeout:
-                self.logger.warning('Response timeout on webhook endpoint {}'.format(w))
+                self.log.warning('Response timeout on webhook endpoint {}', w)
             except requests.exceptions.RequestException as e:
-                self.logger.warning('Request Error: {}'.format(e))
+                self.log.warning('Request Error: {}', e)
         return ret

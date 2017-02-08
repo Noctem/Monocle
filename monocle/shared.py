@@ -1,6 +1,6 @@
 from queue import Queue
 from collections import deque, OrderedDict
-from logging import getLogger
+from logging import getLogger, LoggerAdapter
 from threading import Thread
 from sqlalchemy.exc import DBAPIError
 from time import time
@@ -135,7 +135,7 @@ class DatabaseProcessor(Thread):
     def __init__(self):
         super().__init__()
         self.queue = Queue()
-        self.logger = getLogger('dbprocessor')
+        self.log = get_logger('dbprocessor')
         self.running = True
         self._clean_cache = False
         self.count = 0
@@ -155,14 +155,14 @@ class DatabaseProcessor(Thread):
                 try:
                     db.SIGHTING_CACHE.clean_expired()
                 except Exception:
-                    self.logger.exception('Failed to clean sightings cache.')
+                    self.log.exception('Failed to clean sightings cache.')
                 else:
                     self._clean_cache = False
                 try:
                     db.MYSTERY_CACHE.clean_expired(session)
                 except Exception:
                     session.rollback()
-                    self.logger.exception('Failed to clean mystery cache.')
+                    self.log.exception('Failed to clean mystery cache.')
             try:
                 item = self.queue.get()
 
@@ -180,23 +180,20 @@ class DatabaseProcessor(Thread):
                     db.add_pokestop(session, item)
                 elif item['type'] == 'kill':
                     break
-                self.logger.debug('Item saved to db')
+                self.log.debug('Item saved to db')
                 if self._commit:
                     session.commit()
                     self._commit = False
-            except DBAPIError as e:
+            except Exception as e:
                 session.rollback()
-                self.logger.exception('A wild DB exception appeared!')
-            except Exception:
-                session.rollback()
-                self.logger.exception('A wild exception appeared!')
+                self.log.exception('A wild {} appeared in the DB processor!', e.__class__.__name__)
 
         try:
             db.MYSTERY_CACHE.clean_expired(session)
             session.commit()
-        except DBAPIError:
+        except Exception as e:
             session.rollback()
-            self.logger.exception('A wild DB exception appeared!')
+            self.log.exception('A wild {} appeared while cleaning the mystery cache!', e.__class__.__name__)
         session.close()
 
     def clean_cache(self):
@@ -204,6 +201,29 @@ class DatabaseProcessor(Thread):
 
     def commit(self):
         self._commit = True
+
+
+class Message:
+    def __init__(self, fmt, args):
+        self.fmt = fmt
+        self.args = args
+
+    def __str__(self):
+        return self.fmt.format(*self.args)
+
+
+class StyleAdapter(LoggerAdapter):
+    def __init__(self, logger, extra=None):
+        super(StyleAdapter, self).__init__(logger, extra or {})
+
+    def log(self, level, msg, *args, **kwargs):
+        if self.isEnabledFor(level):
+            msg, kwargs = self.process(msg, kwargs)
+            self.logger._log(level, Message(msg, args), (), **kwargs)
+
+
+def get_logger(name=None):
+    return StyleAdapter(getLogger(name))
 
 
 SPAWNS = Spawns()

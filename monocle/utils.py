@@ -221,12 +221,11 @@ def get_device_info(account):
     device_info = {'brand': 'Apple',
                    'device': 'iPhone',
                    'manufacturer': 'Apple',
-                   'product': 'iPhone OS'
-                   }
-    device_info['hardware'] = account.get('model')
-    device_info['model'] = IPHONES[account.get('model')]
-    device_info['version'] = account.get('iOS')
-    device_info['device_id'] = account.get('id')
+                   'product': 'iPhone OS'}
+    device_info['hardware'] = account['model']
+    device_info['model'] = IPHONES[account['model']]
+    device_info['version'] = account['iOS']
+    device_info['device_id'] = account['id']
     return device_info
 
 
@@ -235,7 +234,7 @@ def generate_device_info():
     devices = tuple(IPHONES.keys())
     ios8 = ('8.0', '8.0.1', '8.0.2', '8.1', '8.1.1', '8.1.2', '8.1.3', '8.2', '8.3', '8.4', '8.4.1')
     ios9 = ('9.0', '9.0.1', '9.0.2', '9.1', '9.2', '9.2.1', '9.3', '9.3.1', '9.3.2', '9.3.3', '9.3.4', '9.3.5')
-    ios10 = ('10.0', '10.0.1', '10.0.2', '10.0.3', '10.1', '10.1.1')
+    ios10 = ('10.0', '10.0.1', '10.0.2', '10.0.3', '10.1', '10.1.1', '10.2', '10.2.1')
 
     account['model'] = random.choice(devices)
     account['id'] = uuid4().hex
