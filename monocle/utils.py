@@ -286,6 +286,9 @@ def create_accounts_dict(old_accounts=None):
         username = account[0]
         if old_accounts and username in old_accounts:
             accounts[username] = old_accounts[username]
+            if len(account) == 3 or len(account) == 6:
+                accounts[username]['password'] = account[1]
+                accounts[username]['provider'] = account[2]
         else:
             accounts[username] = create_account_dict(account)
     return accounts
