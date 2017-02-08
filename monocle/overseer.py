@@ -105,7 +105,7 @@ class Overseer:
                 if now - last_commit > 5:
                     shared.DB.commit()
                     last_commit = now
-                if not self.paused and now - last_swap > 600:
+                if not self.paused and now - last_swap > config.SWAP_WORST:
                     if not self.extra_queue.empty():
                         worst, per_minute = self.least_productive()
                         if worst:
@@ -133,9 +133,9 @@ class Overseer:
                     print(self.get_status_message())
 
                 if self.paused:
-                    time.sleep(15)
+                    time.sleep(max(15, config.REFRESH_RATE))
                 else:
-                    time.sleep(.5)
+                    time.sleep(config.REFRESH_RATE)
             except Exception as e:
                 self.log.exception('A wild {} appeared in check!', e.__class__.__name__)
         # OK, now we're killed

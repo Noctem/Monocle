@@ -110,6 +110,12 @@ ITEM_LIMITS = {
 }
 '''
 
+# Swap the worker that has seen the fewest Pokémon every x seconds
+SWAP_WORST = 600  # 10 minutes
+
+# Update the console output every x seconds
+REFRESH_RATE = 0.5  # 500ms
+
 # sent with GET_PLAYER requests, should match your region
 PLAYER_LOCALE = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'}
 

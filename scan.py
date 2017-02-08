@@ -66,7 +66,9 @@ _optional = {
     'CAPTCHA_KEY': None,
     'CAPTCHAS_ALLOWED': 3,
     'DIRECTORY': None,
-    'FORCED_KILL': None
+    'FORCED_KILL': None,
+    'SWAP_WORST': 600,
+    'REFRESH_RATE': 0.5
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
