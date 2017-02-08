@@ -618,8 +618,6 @@ class Overseer:
         for worker in self.workers:
             worker.kill()
 
-        SIGHTING_CACHE.running = False
-        MYSTERY_CACHE.running = False
         FORT_CACHE.pickle()
 
         while not self.extra_queue.empty():

@@ -210,5 +210,24 @@ def get_logger(name=None):
     return StyleAdapter(getLogger(name))
 
 
+class Scheduler:
+    def __init__(self):
+        self.loop = asyncio.get_event_loop()
+
+    def call_later(self, delay, cb, *args):
+        """Thread-safe wrapper for call_later"""
+        try:
+            self.loop.call_soon_threadsafe(self.loop.call_later, delay, cb, *args)
+        except RuntimeError:
+            if self.loop.is_closed():
+                return
+            raise
+
+    def call_at(self, when, cb, *args):
+        """Run call back at the unix time given"""
+        delay = when - time()
+        self.call_later(delay, cb, *args)
+
 SPAWNS = Spawns()
 DB = DatabaseProcessor()
+SCHED = Scheduler()

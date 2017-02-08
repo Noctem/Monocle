@@ -1,7 +1,5 @@
 from datetime import datetime
 from collections import OrderedDict
-from asyncio import get_event_loop
-from functools import partial
 from contextlib import contextmanager
 
 import enum
@@ -144,20 +142,14 @@ class SightingCache(object):
     """Simple cache for storing actual sightings
 
     It's used in order not to make as many queries to the database.
-    It's also capable of purging old entries.
+    It schedules sightings to be removed as soon as they expire.
     """
     def __init__(self):
         self.store = {}
-        self.loop = get_event_loop()
-        self.running = True
 
     def add(self, sighting):
         self.store[sighting['spawn_id']] = sighting['expire_timestamp']
-        if self.running:
-            self.loop.call_later(
-                sighting['time_till_hidden_ms'] / 1000,
-                partial(self.remove, sighting['spawn_id'])
-            )
+        shared.SCHED.call_at(sighting['expire_timestamp'], self.remove, sighting['spawn_id'])
 
     def remove(self, spawn_id):
         try:
@@ -181,21 +173,15 @@ class MysteryCache(object):
     """Simple cache for storing Pokemon with unknown expiration times
 
     It's used in order not to make as many queries to the database.
-    It's also capable of purging old entries.
+    It schedules sightings to be removed an hour after being seen.
     """
     def __init__(self):
         self.store = {}
-        self.loop = get_event_loop()
-        self.running = True
 
     def add(self, sighting):
         key = combine_key(sighting)
         self.store[combine_key(sighting)] = [sighting['seen']] * 2
-        if self.running:
-            self.loop.call_later(
-                sighting['seen'] + 3510 - time.time(),
-                partial(self.remove, key)
-            )
+        shared.SCHED.call_at(sighting['seen'] + 3510, self.remove, key)
 
     def __contains__(self, raw_sighting):
         key = combine_key(raw_sighting)
