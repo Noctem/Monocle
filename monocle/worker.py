@@ -111,8 +111,6 @@ class Worker:
 
     def initialize_api(self):
         device_info = get_device_info(self.account)
-        self.logged_in = False
-        self.ever_authenticated = False
         self.empty_visits = 0
         self.account_seen = 0
 
@@ -130,8 +128,6 @@ class Worker:
                 self.api._auth_provider._access_token_expiry = self.account['expiry']
                 if self.api._auth_provider.check_access_token():
                     self.api._auth_provider._login = True
-                    self.logged_in = True
-                    self.ever_authenticated = True
         except KeyError:
             pass
 
@@ -156,7 +152,7 @@ class Worker:
             self.log.info('Skipped changing circuit on {} because it was '
                           'changed {} seconds ago.', self.proxy, time_passed)
 
-    async def login(self):
+    async def login(self, reauth=False):
         """Logs worker in and prepares for scanning"""
         self.log.info('Trying to log in')
 
@@ -177,6 +173,13 @@ class Worker:
             else:
                 err = None
                 break
+        if reauth:
+            if err:
+                self.error_code = 'NOT AUTHENTICATED'
+                self.log.info('Re-auth error on {}: {}', self.username, e)
+                return False
+            self.error_code = None
+            return True
         if err:
             raise err
 
@@ -185,14 +188,13 @@ class Worker:
         async with self.sim_semaphore:
             if self.killed:
                 return False
+
             self.error_code = 'APP SIMULATION'
-            if config.APP_SIMULATION and not self.ever_authenticated:
+            if config.APP_SIMULATION:
                 await self.app_simulation_login(version)
             else:
                 await self.download_remote_config(version)
 
-        self.ever_authenticated = True
-        self.logged_in = True
         self.error_code = None
         self.account_start = time()
         return True
@@ -496,15 +498,20 @@ class Worker:
             except (ex.NotLoggedInException, ex.AuthException) as e:
                 self.log.info('Auth error on {}: {}', self.username, e)
                 err = e
-                self.logged_in = False
-                await self.login()
+                await self.login(reauth=True)
                 await sleep(2)
+            except ex.TimeoutException as e:
+                self.error_code = 'TIMEOUT'
+                if err != e:
+                    err = e
+                    self.log.warning('{}', e)
+                await sleep(10)
             except ex.HashingOfflineException as e:
                 if err != e:
                     err = e
                     self.log.warning('{}', e)
                 self.error_code = 'HASHING OFFLINE'
-                await sleep(7.5)
+                await sleep(5)
             except ex.NianticOfflineException as e:
                 if err != e:
                     err = e
@@ -615,15 +622,14 @@ class Worker:
             altitude = uniform(altitude - 1, altitude + 1)
             self.location = point + [altitude]
             self.api.set_position(*self.location)
-            if not self.logged_in:
-                if not await self.login():
-                    return False
+            if not self.authenticated:
+                await self.login()
             return await self.visit_point(point, bootstrap=bootstrap)
         except ex.NotLoggedInException:
             self.error_code = 'NOT AUTHENTICATED'
             await sleep(1)
-            if not await self.login():
-                await self.swap_account(reason='login failed')
+            if not await self.login(reauth=True):
+                await self.swap_account(reason='reauth failed')
             return await self.visit(point, bootstrap)
         except ex.AuthException as e:
             self.log.warning('Auth error on {}: {}', self.username, e)
@@ -659,6 +665,8 @@ class Worker:
             else:
                 self.log.error('{}', e)
             await sleep(5)
+        except ex.TimeoutException as e:
+            self.log.warning('{} Giving up.', e)
         except ex.NianticIPBannedException:
             self.error_code = 'IP BANNED'
 
@@ -1184,7 +1192,7 @@ class Worker:
         """
         self.error_code = 'KILLED'
         self.killed = True
-        if self.ever_authenticated:
+        if self.authenticated:
             self.update_accounts_dict()
 
     @classmethod
@@ -1296,6 +1304,13 @@ class Worker:
             worker_no=self.worker_no,
             msg=msg
         )
+
+    @property
+    def authenticated(self):
+        try:
+            return self.api._auth_provider.is_login()
+        except AttributeError:
+            return False
 
 
 class BusyLock(Lock):

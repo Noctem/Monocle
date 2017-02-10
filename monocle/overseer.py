@@ -42,7 +42,8 @@ BAD_STATUSES = (
     'PGOAPI ERROR',
     'MAX RETRIES',
     'HASHING ERROR',
-    'PROXY ERROR'
+    'PROXY ERROR',
+    'TIMEOUT'
 )
 
 START_TIME = time.monotonic()
