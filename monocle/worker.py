@@ -6,7 +6,7 @@ from pogo_async.hash_server import HashServer
 from asyncio import sleep, Lock, Semaphore, get_event_loop
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
-from array import array
+from array import typecodes
 from queue import Empty
 from aiohttp import ClientSession
 
@@ -48,6 +48,8 @@ class Worker:
     accounts = load_accounts()
     if config.CACHE_CELLS:
         cell_ids = load_pickle('cells') or {}
+        COMPACT = 'Q' in typecodes
+
     loop = get_event_loop()
     login_semaphore = Semaphore(config.SIMULTANEOUS_LOGINS)
     sim_semaphore = Semaphore(config.SIMULTANEOUS_SIMULATION)
@@ -285,7 +287,7 @@ class Worker:
         except (KeyError, TypeError, AttributeError):
             pass
 
-        await random_sleep(.7, 1.2)
+        await random_sleep(.9, 1.2)
 
         # request 2: download_remote_config_version
         await self.download_remote_config(version)
@@ -704,18 +706,17 @@ class Worker:
         self.log.info('Visiting {0[0]:.4f},{0[1]:.4f}', point)
         start = time()
 
-        rounded = round_coords(point, 4)
-        if config.CACHE_CELLS and rounded in self.cell_ids:
-            cell_ids = list(self.cell_ids[rounded])
+        if config.CACHE_CELLS:
+            rounded = round_coords(point, 4)
+            try:
+                cell_ids = self.cell_ids[rounded]
+            except KeyError:
+                cell_ids = get_cell_ids(*rounded, compact=self.COMPACT)
+                self.cell_ids[rounded] = cell_ids
         else:
-            cell_ids = get_cell_ids(*rounded, radius=500)
-            if config.CACHE_CELLS:
-                try:
-                    self.cell_ids[rounded] = array('L', cell_ids)
-                except OverflowError:
-                    self.cell_ids[rounded] = tuple(cell_ids)
+            cell_ids = get_cell_ids(latitude, longitude)
 
-        since_timestamp_ms = [0] * len(cell_ids)
+        since_timestamp_ms = (0,) * len(cell_ids)
 
         request = self.api.create_request()
         request.get_map_objects(cell_id=cell_ids,
