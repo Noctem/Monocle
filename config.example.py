@@ -325,3 +325,7 @@ FB_PAGE_ID = None
 TWITTER_SCREEN_NAME = None  # Username withouth '@' char
 DISCORD_INVITE_ID = None
 TELEGRAM_USERNAME = None  # Username withouth '@' char
+
+## Variables below will be used as default values on frontend
+FIXED_OPACITY = False  # Make marker opacity not depending on remaining time
+SHOW_TIMER = False  # Show remaining time on a label under each pokemon marker

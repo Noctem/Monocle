@@ -1,9 +1,25 @@
+var _WorkerIconUrl = 'static/monocle-icons/assets/ball.png';
+var _NotificationIconUrl = 'static/monocle-icons/assets/ultra.png';
+var _PokestopIconUrl = 'static/monocle-icons/assets/stop.png';
+
 var PokemonIcon = L.Icon.extend({
     options: {
-        iconSize: [30, 30],
+        //iconSize: [30, 30],
         popupAnchor: [0, -15]
+    },
+    createIcon: function() {
+        var div = document.createElement('div');
+        div.innerHTML =
+            '<div class="pokemarker">' +
+              '<div class="pokeimg">' +
+                   '<img class="leaflet-marker-icon" src="' + this.options.iconUrl + '" />' +
+              '</div>' +
+              '<div class="remaining_text" data-expire="' + this.options.expires_at + '">' + calculateRemainingTime(this.options.expires_at) + '</div>' +
+            '</div>';
+        return div;
     }
 });
+
 var FortIcon = L.Icon.extend({
     options: {
         iconSize: [20, 20],
@@ -82,19 +98,28 @@ function getPopupContent (item) {
 }
 
 function getOpacity (diff) {
-    if (diff > 300) {
+    if (diff > 300 || getPreference('FIXED_OPACITY') === "1") {
         return 1;
     }
     return 0.5 + diff / 600;
 }
 
 function PokemonMarker (raw) {
-    var icon = new PokemonIcon({iconUrl: '/static/monocle-icons/icons/' + raw.pokemon_id + '.png'});
+    var icon = new PokemonIcon({iconUrl: '/static/monocle-icons/icons/' + raw.pokemon_id + '.png', expires_at: raw.expires_at});
     var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: 1});
+
     if (raw.trash) {
         marker.overlay = 'Trash';
     } else {
         marker.overlay = 'Pokemon';
+    }
+    var userPreference = getPreference('filter-'+raw.pokemon_id);
+    if (userPreference === 'pokemon'){
+        marker.overlay = 'Pokemon';
+    }else if (userPreference === 'trash'){
+        marker.overlay = 'Trash';
+    }else if (userPreference === 'hidden'){
+        marker.overlay = 'Hidden';
     }
     marker.raw = raw;
     markers[raw.id] = marker;
@@ -109,7 +134,7 @@ function PokemonMarker (raw) {
     });
     marker.setOpacity(getOpacity(marker.raw));
     marker.opacityInterval = setInterval(function () {
-        if (overlays[marker.overlay].hidden) {
+        if (marker.overlay === "Hidden" || overlays[marker.overlay].hidden) {
             return;
         }
         var diff = marker.raw.expires_at - new Date().getTime() / 1000;
@@ -162,8 +187,14 @@ function addPokemonToMap (data, map) {
             return;
         }
         var marker = PokemonMarker(item);
-        marker.addTo(overlays[marker.overlay])
+        if (marker.overlay !== "Hidden"){
+            marker.addTo(overlays[marker.overlay])
+        }
     });
+    updateTime();
+    if (_updateTimeInterval === null){
+        _updateTimeInterval = setInterval(updateTime, 1000);
+    }
 }
 
 function addGymsToMap (data, map) {
@@ -328,3 +359,156 @@ map.whenReady(function () {
     setInterval(getPokemon, 30000);
     setInterval(getGyms, 110000)
 });
+
+$("#settings>ul.nav>li>a").on('click', function(){
+    // Click handler for each tab button.
+    $(this).parent().parent().children("li").removeClass('active');
+    $(this).parent().addClass('active');
+    var panel = $(this).data('panel');
+    var item = $("#settings>.settings-panel").removeClass('active')
+        .filter("[data-panel='"+panel+"']").addClass('active');
+});
+
+$("#settings_close_btn").on('click', function(){
+    // 'X' button on Settings panel
+    $("#settings").animate({
+        opacity: 0
+    }, 250, function(){ $(this).hide(); });
+});
+
+$('.my-settings').on('click', function () {
+    // Settings button on bottom-left corner
+    $("#settings").show().animate({
+        opacity: 1
+    }, 250);
+});
+
+$('#reset_btn').on('click', function () {
+    // Reset button in Settings>More
+    if (confirm("This will reset all your preferences. Are you sure?")){
+        localStorage.clear();
+        location.reload();
+    }
+});
+
+$('#settings').on('click', '.settings-panel button', function () {
+    //Handler for each button in every settings-panel.
+    var item = $(this);
+    if (item.hasClass('active')){
+        return;
+    }
+    var id = item.data('id');
+    var key = item.parent().data('group');
+    var value = item.data('value');
+
+    setPreference(key, value);
+    item.parent().children("button").removeClass("active");
+    item.addClass("active");
+
+    if (key.indexOf('filter-') > -1){
+        // This is a pokemon's filter button
+        for(var k in markers) {
+            var m = markers[k];
+            if ((k.indexOf("pokemon-") > -1) && (m !== undefined) && (m.raw.pokemon_id === id)){
+                m.removeFrom(overlays[m.overlay]);
+                if (value === 'pokemon'){
+                    m.overlay = "Pokemon";
+                    m.addTo(overlays.Pokemon);
+                }else if (value === 'trash') {
+                    m.overlay = "Trash";
+                    m.addTo(overlays.Trash);
+                }
+            }
+        }
+    }
+});
+
+function populateSettingsPanels(){
+    var container = $('.settings-panel[data-panel="filters"]').children('.panel-body');
+    var newHtml = '';
+    for (var i = 1; i <= 151; i++){
+        var partHtml = `<div class="text-center">
+                <img src="static/monocle-icons/icons/`+i+`.png">
+                <div class="btn-group" role="group" data-group="filter-`+i+`">
+                  <button type="button" class="btn btn-default" data-id="`+i+`" data-value="pokemon">Pokémon</button>
+                  <button type="button" class="btn btn-default" data-id="`+i+`" data-value="trash">Trash</button>
+                  <button type="button" class="btn btn-default" data-id="`+i+`" data-value="hidden">Hide</button>
+                </div>
+            </div>
+        `;
+
+        newHtml += partHtml
+    }
+    newHtml += '</div>';
+    container.html(newHtml);
+}
+
+function setSettingsDefaults(){
+    for (var i = 1; i <= 151; i++){
+        _defaultSettings['filter-'+i] = (_defaultSettings['TRASH_IDS'].indexOf(i) > -1) ? "trash" : "pokemon";
+    };
+
+    $("#settings div.btn-group").each(function(){
+        var item = $(this);
+        var key = item.data('group');
+        var value = getPreference(key);
+        if (value === false)
+            value = "0";
+        else if (value === true)
+            value = "1";
+        item.children("button").removeClass("active").filter("[data-value='"+value+"']").addClass("active");
+    });
+}
+populateSettingsPanels();
+setSettingsDefaults();
+
+function getPreference(key, ret){
+    return localStorage.getItem(key) ? localStorage.getItem(key) : (key in _defaultSettings ? _defaultSettings[key] : ret);
+}
+
+function setPreference(key, val){
+    localStorage.setItem(key, val);
+}
+
+$(window).scroll(function () {
+    if ($(this).scrollTop() > 100) {
+        $('.scroll-up').fadeIn();
+    } else {
+        $('.scroll-up').fadeOut();
+    }
+});
+
+$("#settings").scroll(function () {
+    if ($(this).scrollTop() > 100) {
+        $('.scroll-up').fadeIn();
+    } else {
+        $('.scroll-up').fadeOut();
+    }
+});
+
+$('.scroll-up').click(function () {
+    $("html, body, #settings").animate({
+        scrollTop: 0
+    }, 500);
+    return false;
+});
+
+function calculateRemainingTime(expire_at_timestamp) {
+  var diff = (expire_at_timestamp - new Date().getTime() / 1000);
+        var minutes = parseInt(diff / 60);
+        var seconds = parseInt(diff - (minutes * 60));
+        return minutes + ':' + (seconds > 9 ? "" + seconds: "0" + seconds);
+}
+
+function updateTime() {
+    if (getPreference("SHOW_TIMER") === "1"){
+        $(".remaining_text").each(function() {
+            $(this).css('visibility', 'visible');
+            this.innerHTML = calculateRemainingTime($(this).data('expire'));
+        });
+    }else{
+        $(".remaining_text").each(function() {
+            $(this).css('visibility', 'hidden');
+        });
+    }
+}
