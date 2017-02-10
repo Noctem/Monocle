@@ -331,7 +331,7 @@ class Worker:
             if reset_avatar:
                 await self.set_avatar()
 
-            await random_sleep(.2, .462)
+            await random_sleep(.3, .462)
         self.error_code = None
         return True
 
@@ -683,9 +683,9 @@ class Worker:
                 self.log.error('IP banned.')
                 self.kill()
         except ex.ServerBusyOrOfflineException as e:
-            self.log.warning('{}. Giving up.', e)
+            self.log.warning('{} Giving up.', e)
         except ex.NianticThrottlingException as e:
-            self.log.warning('{}. Giving up.', e)
+            self.log.warning('{} Giving up.', e)
         except ex.ExpiredHashKeyException:
             self.error_code = 'KEY EXPIRED'
             err = 'Hash key has expired: {}'.format(config.HASH_KEY)
