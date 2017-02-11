@@ -176,7 +176,7 @@ class Worker:
         if reauth:
             if err:
                 self.error_code = 'NOT AUTHENTICATED'
-                self.log.info('Re-auth error on {}: {}', self.username, e)
+                self.log.info('Re-auth error on {}: {}', self.username, err)
                 return False
             self.error_code = None
             return True
@@ -331,7 +331,7 @@ class Worker:
             if reset_avatar:
                 await self.set_avatar()
 
-            await random_sleep(.3, .462)
+            await sleep(.462)
         self.error_code = None
         return True
 
@@ -498,8 +498,8 @@ class Worker:
             except (ex.NotLoggedInException, ex.AuthException) as e:
                 self.log.info('Auth error on {}: {}', self.username, e)
                 err = e
+                await sleep(3)
                 await self.login(reauth=True)
-                await sleep(2)
             except ex.TimeoutException as e:
                 self.error_code = 'TIMEOUT'
                 if err != e:
@@ -776,8 +776,8 @@ class Worker:
                     if config.ENCOUNTER:
                         try:
                             await self.encounter(normalized)
-                        except Exception:
-                            self.log.exception('Exception during encounter.')
+                        except Exception as e:
+                            self.log.warning('{} during encounter', e.__class__.__name__)
                     sent = self.notify(normalized, time_of_day) or sent
 
                 if (normalized not in SIGHTING_CACHE and
@@ -787,8 +787,8 @@ class Worker:
                             'individual_attack' not in normalized):
                         try:
                             await self.encounter(normalized)
-                        except Exception:
-                            self.log.exception('Exception during encounter.')
+                        except Exception as e:
+                            self.log.warning('{} during encounter', e.__class__.__name__)
                 shared.DB.add(normalized)
 
             for fort in map_cell.get('forts', []):
@@ -927,10 +927,10 @@ class Worker:
             self.api.set_position(*self.location)
             delay_required = (distance_to_pokemon * percent) / 8
             if delay_required < 1.5:
-                delay_required = triangular(1.25, 4, 2)
+                delay_required = triangular(1.5, 4, 2.25)
         else:
             self.simulate_jitter()
-            delay_required = triangular(1.25, 4, 2)
+            delay_required = triangular(1.5, 4, 2.25)
 
         if time() - self.last_request < delay_required:
             await sleep(delay_required)
