@@ -60,7 +60,6 @@ _optional = {
     'GIVE_UP_KNOWN': 75,
     'GIVE_UP_UNKNOWN': 60,
     'SKIP_SPAWN': 90,
-    'CACHE_CELLS': True,
     'LOGIN_TIMEOUT': 2.5,
     'PLAYER_LOCALE': {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'},
     'CAPTCHA_KEY': None,

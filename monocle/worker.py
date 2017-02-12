@@ -1,7 +1,7 @@
 from functools import partial
 from pogo_async import PGoApi, exceptions as ex
 from pogo_async.auth_ptc import AuthPtc
-from pogo_async.utilities import get_cell_ids
+from pogo_async.utilities import get_cell_ids, HAVE_POGEO
 from pogo_async.hash_server import HashServer
 from asyncio import sleep, Lock, Semaphore, get_event_loop
 from random import choice, randint, uniform, triangular
@@ -37,6 +37,9 @@ if config.CONTROL_SOCKS:
 else:
     CIRCUIT_TIME = None
     CIRCUIT_FAILURES = None
+
+if not hasattr(config, 'CACHE_CELLS'):
+    config.CACHE_CELLS = not HAVE_POGEO
 
 
 class Worker:
