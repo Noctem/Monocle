@@ -9,7 +9,6 @@ from os import mkdir
 from os.path import join, exists
 from sys import platform
 from asyncio import sleep
-from functools import lru_cache
 from math import ceil, sqrt, hypot, pi, cos
 from uuid import uuid4
 
@@ -78,7 +77,6 @@ LON_MULT = cos(pi * LAT_MEAN / 180)
 METER_MULT = 111132.92 + (-559.82 * cos(2 * LAT_RAD)) + (1.175 * cos(4 * LAT_RAD)) + (-0.0023 * cos(6 * LAT_RAD))
 
 
-@lru_cache(maxsize=1)
 def get_scan_area():
     """Returns the square kilometers for configured scan area"""
     width = get_distance(config.MAP_START, (config.MAP_START[0], config.MAP_END[1])) / 1000
