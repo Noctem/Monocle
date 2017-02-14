@@ -14,3 +14,5 @@ aiosocks>=0.1.7
 numba>=0.30
 sanic>=0.3
 asyncpg>=0.8
+pycrypt>=0.1
+git+https://github.com/Noctem/pogeo.git#egg=pogeo
