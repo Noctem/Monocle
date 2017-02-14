@@ -11,12 +11,12 @@ if config.BOUNDARIES:
 
 if config.MAP_WORKERS:
     try:
-        UNIT = getattr(Units, config.SPEED_UNIT.lower())
-        if UNIT is Units.miles:
+        UNIT = getattr(utils.Units, config.SPEED_UNIT.lower())
+        if UNIT is utils.Units.miles:
             UNIT_STRING = "MPH"
-        elif UNIT is Units.kilometers:
+        elif UNIT is utils.Units.kilometers:
             UNIT_STRING = "KMH"
-        elif UNIT is Units.meters:
+        elif UNIT is utils.Units.meters:
             UNIT_STRING = "m/h"
     except AttributeError:
         UNIT_STRING = "MPH"
