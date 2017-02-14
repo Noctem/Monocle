@@ -207,23 +207,8 @@ class MysteryCache(object):
                 'last': last
             })
 
-    def update_db(self, session):
-        for key, times in self.store.items():
-            first, last = times
-            if last != first:
-                encounter_id, spawn_id = key
-                mystery = {
-                    'spawn': spawn_id,
-                    'encounter': encounter_id,
-                    'first': first,
-                    'last': last
-                }
-                try:
-                    update_mystery(session, mystery)
-                except Exception:
-                    session.rollback()
-                else:
-                    session.commit()
+    def items(self):
+        return self.store.items()
 
 
 class FortCache(object):
@@ -388,7 +373,7 @@ def get_spawns(session):
     altitudes = {}
     known_points = set()
     for spawn in spawns:
-        point = (spawn.lat, spawn.lon)
+        point = spawn.lat, spawn.lon
 
         # skip if point is not within boundaries (if applicable)
         if not Bounds.contain(point):

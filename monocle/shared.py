@@ -141,6 +141,7 @@ class DatabaseProcessor(Thread):
         self._commit = False
 
     def stop(self):
+        self.update_mysteries()
         self.running = False
 
     def add(self, obj):
@@ -177,14 +178,24 @@ class DatabaseProcessor(Thread):
                 session.rollback()
                 self.log.exception('A wild {} appeared in the DB processor!', e.__class__.__name__)
 
-        db.MYSTERY_CACHE.update_db(session)
         session.close()
-
-    def clean_cache(self):
-        self._clean_cache = True
 
     def commit(self):
         self._commit = True
+
+    def update_mysteries(self):
+       for key, times in db.MYSTERY_CACHE.items():
+           first, last = times
+           if last != first:
+               encounter_id, spawn_id = key
+               mystery = {
+                   'type': 'mystery-update',
+                   'spawn': spawn_id,
+                   'encounter': encounter_id,
+                   'first': first,
+                   'last': last
+               }
+               self.add(mystery)
 
 
 class Message:
