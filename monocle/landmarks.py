@@ -114,7 +114,7 @@ class Landmark:
         else:
             point = Point(*coordinates)
             nearest = self.nearest_point(point)
-        return get_distance(coordinates[0], coordinates[1]).meters
+        return get_distance(coordinates, nearest.coords[0])
 
     def nearest_point(self, point):
         '''Find nearest point in geometry, measured from given point.'''
