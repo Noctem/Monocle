@@ -20,7 +20,7 @@ except ImportError:
     import _dummy_thread as _thread
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, FORT_CACHE
-from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points
+from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point
 
 from . import config, shared
 from .worker import Worker
@@ -404,7 +404,7 @@ class Overseer:
 
             while len(shared.SPAWNS) < 10 and not self.killed:
                 try:
-                    mystery_point = list(self.mysteries.popleft())
+                    mystery_point = self.mysteries.popleft()
                     self.coroutine_semaphore.acquire()
                     asyncio.run_coroutine_threadsafe(
                         self.try_point(mystery_point), loop=self.loop
@@ -443,7 +443,7 @@ class Overseer:
                     except (EOFError, BrokenPipeError, FileNotFoundError):
                         continue
 
-                    point = list(spawn[0])
+                    point = spawn[0]
                     spawn_time = spawn[1] + current_hour
 
                     # negative = hasn't happened yet
@@ -452,7 +452,7 @@ class Overseer:
 
                     while time_diff < 0 and not self.killed:
                         try:
-                            mystery_point = list(self.mysteries.popleft())
+                            mystery_point = self.mysteries.popleft()
 
                             self.coroutine_semaphore.acquire()
                             asyncio.run_coroutine_threadsafe(
@@ -520,7 +520,7 @@ class Overseer:
         for worker in self.workers:
             number = worker.worker_no
             worker.bootstrap = True
-            point = list(get_start_coords(number))
+            point = get_start_coords(number)
             time.sleep(.25)
             self.coroutine_semaphore.acquire()
             asyncio.run_coroutine_threadsafe(visit_release(worker, point),
@@ -545,9 +545,7 @@ class Overseer:
 
     async def try_point(self, point, spawn_time=None):
         try:
-            point[0] = uniform(point[0] - 0.00033, point[0] + 0.00033)
-            point[1] = uniform(point[1] - 0.00033, point[1] + 0.00033)
-
+            point = randomize_point(point)
             worker = await self.best_worker(point, spawn_time)
 
             if not worker:

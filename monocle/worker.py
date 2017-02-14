@@ -11,7 +11,7 @@ from queue import Empty
 from aiohttp import ClientSession
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
-from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords
+from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords, Units, randomize_point
 from . import config, shared
 
 try:
@@ -40,6 +40,18 @@ else:
 
 if not hasattr(config, 'CACHE_CELLS'):
     config.CACHE_CELLS = not HAVE_POGEO
+
+_unit = getattr(Units, config.SPEED_UNIT.lower())
+if _unit is Units.miles:
+    SPINNING_SPEED_LIMIT = 21
+    UNIT_STRING = "MPH"
+elif _unit is Units.kilometers:
+    SPINNING_SPEED_LIMIT = 34
+    UNIT_STRING = "KMH"
+elif _unit is Units.meters:
+    SPINNING_SPEED_LIMIT = 34000
+    UNIT_STRING = "m/h"
+_UNIT = _unit.value
 
 
 class Worker:
@@ -81,7 +93,11 @@ class Worker:
             except Empty as e:
                 raise ValueError("You don't have enough accounts for the number of workers specified in GRID.") from e
         self.username = self.account['username']
-        self.location = self.account.get('location', get_start_coords(worker_no))
+        try:
+            self.location = self.account['location'][:2]
+        except KeyError:
+            self.location = get_start_coords(worker_no)
+        self.altitude = None
         self.inventory_timestamp = self.account.get('inventory_timestamp')
         # last time of any request
         self.last_request = self.account.get('time', 0)
@@ -120,7 +136,7 @@ class Worker:
         self.api = PGoApi(device_info=device_info)
         if config.HASH_KEY:
             self.api.activate_hash_server(config.HASH_KEY)
-        self.api.set_position(*self.location)
+        self.api.set_position(*self.location, self.altitude)
         if self.proxy:
             self.api.set_proxy(self.proxy)
         try:
@@ -601,9 +617,9 @@ class Worker:
         time_diff = max(time() - self.last_request, config.SCAN_DELAY)
         if time_diff > 60:
             self.error_code = None
-        distance = get_distance(self.location, point)
-        # conversion from meters/second to miles/hour
-        speed = (distance / time_diff) * 2.236936
+        distance = get_distance(self.location, point, _UNIT)
+        # conversion from seconds to hours
+        speed = (distance / time_diff) * 3600
         return speed
 
     async def bootstrap_visit(self, point):
@@ -621,10 +637,10 @@ class Worker:
         """
         visited = False
         try:
-            altitude = shared.SPAWNS.get_altitude(point)
-            altitude = uniform(altitude - 1, altitude + 1)
-            self.location = point + [altitude]
-            self.api.set_position(*self.location)
+            self.altitude = shared.SPAWNS.get_altitude(point)
+            self.altitude = uniform(self.altitude - 1, self.altitude + 1)
+            self.location = point
+            self.api.set_position(*self.location, self.altitude)
             if not self.authenticated:
                 await self.login()
             return await self.visit_point(point, bootstrap=bootstrap)
@@ -871,10 +887,10 @@ class Worker:
         distance = get_distance(self.location, pokestop_location)
         # permitted interaction distance - 2 (for some jitter leeway)
         # estimation of spinning speed limit
-        if distance > 38 or self.speed > 22:
+        if distance > 38 or self.speed > SPINNING_SPEED_LIMIT:
             return False
 
-        # randomize location up to ~1.4 meters
+        # randomize location up to ~1.5 meters
         self.simulate_jitter(amount=0.00001)
 
         request = self.api.create_request()
@@ -896,8 +912,8 @@ class Worker:
         if result == 1:
             self.log.info('Spun {}.', name)
         elif result == 2:
-            self.log.info('The server said {} was out of spinning range. {:.1f}m {:.1f}MPH',
-                name, distance, self.speed)
+            self.log.info('The server said {} was out of spinning range. {:.1f}m {:.1f}{}',
+                name, distance, self.speed, UNIT_STRING)
         elif result == 3:
             self.log.warning('{} was in the cooldown period.', name)
         elif result == 4:
@@ -918,16 +934,16 @@ class Worker:
 
         self.error_code = '~'
 
-        if distance_to_pokemon > 47:
-            percent = 1 - (46 / distance_to_pokemon)
+        if distance_to_pokemon > 48:
+            percent = 1 - (47 / distance_to_pokemon)
             lat_change = (self.location[0] - pokemon['lat']) * percent
             lon_change = (self.location[1] - pokemon['lon']) * percent
-            self.location = [
+            self.location = (
                 self.location[0] - lat_change,
                 self.location[1] - lon_change,
-                uniform(self.location[2] - 3, self.location[2] + 3)
-            ]
-            self.api.set_position(*self.location)
+            )
+            self.altitude = uniform(self.altitude - 3, self.altitude + 3)
+            self.api.set_position(*self.location, self.altitude)
             delay_required = (distance_to_pokemon * percent) / 8
             if delay_required < 1.5:
                 delay_required = triangular(1.5, 4, 2.25)
@@ -1083,16 +1099,10 @@ class Worker:
             await self.handle_captcha(responses)
 
     def simulate_jitter(self, amount=0.00002):
-        '''Slightly randomize location, by up to ~2.8 meters by default.'''
-        self.location = [
-            uniform(self.location[0] - amount,
-                    self.location[0] + amount),
-            uniform(self.location[1] - amount,
-                    self.location[1] + amount),
-            uniform(self.location[2] - 1,
-                    self.location[2] + 1)
-        ]
-        self.api.set_position(*self.location)
+        '''Slightly randomize location, by up to ~3 meters by default.'''
+        self.location = randomize_point(self.location)
+        self.altitude = uniform(self.altitude - 1, self.altitude + 1)
+        self.api.set_position(*self.location, self.altitude)
 
     def notify(self, norm, time_of_day):
         self.error_code = '*'
@@ -1163,8 +1173,11 @@ class Worker:
             self.account = self.captcha_queue.get()
         else:
             self.account = self.extra_queue.get()
-        self.username = self.account.get('username')
-        self.location = self.account.get('location', get_start_coords(self.worker_no))
+        self.username = self.account['username']
+        try:
+            self.location = self.account['location'][:2]
+        except KeyError:
+            self.location = get_start_coords(worker_no)
         self.inventory_timestamp = self.account.get('inventory_timestamp')
         self.player_level = self.account.get('player_level')
         self.last_request = self.account.get('time', 0)

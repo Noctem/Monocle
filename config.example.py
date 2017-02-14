@@ -4,11 +4,12 @@ DB_ENGINE = 'sqlite:///db.sqlite'
 #DB_ENGINE = 'mysql://user:pass@localhost/monocle'
 #DB_ENGINE = 'postgresql://user:pass@localhost/monocle
 
-AREA_NAME = 'SLC'   # the city or region you are scanning
-LANGUAGE = 'EN'     # ISO 639-1 codes EN, DE, FR, and ZH for Pokémon names.
-MAX_CAPTCHAS = 100  # stop launching new visits if this many CAPTCHAs are pending
-SCAN_DELAY = 10     # wait at least this many seconds before scanning with the same account
-SPEED_LIMIT = 19    # don't travel over this many miles per hour (sorry non-Americans)
+AREA_NAME = 'SLC'     # the city or region you are scanning
+LANGUAGE = 'EN'       # ISO 639-1 codes EN, DE, FR, and ZH for Pokémon names.
+MAX_CAPTCHAS = 100    # stop launching new visits if this many CAPTCHAs are pending
+SCAN_DELAY = 10       # wait at least this many seconds before scanning with the same account
+SPEED_UNIT = 'miles'  # valid options are 'miles', 'kilometers', 'meters'
+SPEED_LIMIT = 19.5    # limit worker speed to this many SPEED_UNITs per hour
 
 # The number of simultaneous workers will be these two numbers multiplied.
 # On the initial run, workers will arrange themselves in a grid across the
@@ -114,7 +115,7 @@ ITEM_LIMITS = {
 SWAP_WORST = 600  # 10 minutes
 
 # Update the console output every x seconds
-REFRESH_RATE = 0.5  # 500ms
+REFRESH_RATE = 0.6  # 600ms
 
 # sent with GET_PLAYER requests, should match your region
 PLAYER_LOCALE = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'}

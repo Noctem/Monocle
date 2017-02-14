@@ -9,8 +9,9 @@ from os import mkdir
 from os.path import join, exists
 from sys import platform
 from asyncio import sleep
-from math import ceil, sqrt, hypot, pi, cos
+from math import sqrt
 from uuid import uuid4
+from enum import Enum
 
 from geopy import Point
 from geopy.distance import distance
@@ -35,7 +36,8 @@ _optional = {
     'PROVIDER': None,
     'MANAGER_ADDRESS': None,
     'BOOTSTRAP_RADIUS': 450,
-    'DIRECTORY': None
+    'DIRECTORY': None,
+    'SPEED_UNIT': 'miles'
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -72,15 +74,36 @@ else:
     LON_MEAN = (config.MAP_END[1] + config.MAP_START[1]) / 2
     MAP_CENTER = LAT_MEAN, LON_MEAN
 
-LAT_RAD = LAT_MEAN * pi / 180
-LON_MULT = cos(pi * LAT_MEAN / 180)
-METER_MULT = 111132.92 + (-559.82 * cos(2 * LAT_RAD)) + (1.175 * cos(4 * LAT_RAD)) + (-0.0023 * cos(6 * LAT_RAD))
+try:
+    from pogeo import get_distance
+
+    class Units(Enum):
+        miles = 1
+        kilometers = 2
+        meters = 3
+except ImportError:
+    from math import hypot, pi, cos
+
+    LON_MULT = cos(pi * LAT_MEAN / 180)
+    _lat_rad = LAT_MEAN * pi / 180
+    _mult = 111132.92 + (-559.82 * cos(2 * _lat_rad)) + (1.175 * cos(4 * _lat_rad)) + (-0.0023 * cos(6 * _lat_rad))
+
+    class Units(Enum):
+        miles = _mult * 0.000621371
+        kilometers = _mult / 1000
+        meters = _mult
+
+    del _lat_rad, _mult
+
+    @jit
+    def get_distance(p1, p2, mult=Units.meters.value):
+        return hypot(p1[0] - p2[0], (p1[1] - p2[1]) * LON_MULT) * mult
 
 
 def get_scan_area():
     """Returns the square kilometers for configured scan area"""
-    width = get_distance(config.MAP_START, (config.MAP_START[0], config.MAP_END[1])) / 1000
-    height = get_distance(config.MAP_START, (config.MAP_END[0], config.MAP_START[1])) / 1000
+    width = get_distance(config.MAP_START, (config.MAP_START[0], config.MAP_END[1]), Units.kilometers.value)
+    height = get_distance(config.MAP_START, (config.MAP_END[0], config.MAP_START[1]), Units.kilometers.value)
     area = round(width * height)
     return area
 
@@ -305,11 +328,6 @@ def get_current_hour(now=None):
     return round(now - (now % 3600))
 
 
-@jit
-def get_distance(p1, p2):
-    return hypot(p1[0] - p2[0], (p1[1] - p2[1]) * LON_MULT) * METER_MULT
-
-
 def time_until_time(seconds, seen=None):
     current_seconds = seen or time.time() % 3600
     if current_seconds > seconds:
@@ -371,6 +389,16 @@ def load_accounts():
         accounts = create_accounts_dict()
         dump_pickle('accounts', accounts)
     return accounts
+
+
+@jit
+def randomize_point(point, amount=0.0003):
+    '''Randomize point, by up to ~47 meters by default.'''
+    lat, lon = point
+    return (
+        random.uniform(lat - amount, lat + amount),
+        random.uniform(lon - amount, lon + amount)
+    )
 
 
 async def random_sleep(minimum=10, maximum=13, mode=None):

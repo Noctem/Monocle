@@ -67,7 +67,8 @@ _optional = {
     'DIRECTORY': None,
     'FORCED_KILL': None,
     'SWAP_WORST': 600,
-    'REFRESH_RATE': 0.5
+    'REFRESH_RATE': 0.6,
+    'SPEED_LIMIT': 19.5
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -98,11 +99,6 @@ try:
         raise ValueError('SCAN_DELAY must be at least 10.')
 except (TypeError, AttributeError):
     config.SCAN_DELAY = 10
-try:
-    if 1 > config.SPEED_LIMIT > 25:
-        raise ValueError('Speed limit should be between 1 and 25 MPH.')
-except (TypeError, AttributeError):
-    config.SPEED_LIMIT = 19
 try:
     if config.SIMULTANEOUS_LOGINS < 1:
         raise ValueError('SIMULTANEOUS_LOGINS must be at least 1.')
@@ -265,6 +261,7 @@ def main():
                 loop.run_forever()
             except Exception:
                 log.exception('Caught error on run_forever, restarting loop')
+                time.sleep(5)
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')
         overseer.kill()

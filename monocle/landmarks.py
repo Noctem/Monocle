@@ -1,6 +1,12 @@
 from shapely.geometry import Point, Polygon, shape, box, LineString
 from geopy import Nominatim
-from geopy.distance import great_circle, distance
+
+try:
+    from pogeo import get_distance
+except ImportError:
+    from geopy.distance import great_circle
+    def get_distance(p1, p2):
+        return great_circle(p1, p2).meters
 
 
 class FailedQuery(Exception):
@@ -48,7 +54,7 @@ class Landmark:
                                       n=self.name, t=self.location.type))
 
         # very imprecise conversion to square meters
-        self.size = round(self.location.area * 12100000000)
+        self.size = self.location.area * 12100000000
 
         if phrase:
             self.phrase = phrase
@@ -90,28 +96,25 @@ class Landmark:
     def generate_string(self, coordinates):
         if self.contains(coordinates):
             return '{p} {n}'.format(p=self.phrase, n=self.name)
-        distance = round(self.distance_from_point(coordinates, accurate=True))
+        distance = self.distance_from_point(coordinates)
         if (self.is_area and distance < 100) or distance < 40:
-            return '{p} {s}'.format(p=self.phrase, s=self.name)
+            return '{} {}'.format(self.phrase, self.name)
         else:
-            return '{d} meters from {n}'.format(d=distance, n=self.name)
+            return '{:.0f} meters from {}'.format(distance, self.name)
 
     def contains(self, coordinates):
         """determine if a point is within this object range"""
         return self.location.contains(Point(*coordinates))
 
-    def distance_from_point(self, coordinates, accurate=False):
+    def distance_from_point(self, coordinates):
         if self.contains(coordinates):
             return 0
-        point = Point(*coordinates)
         if isinstance(self.location, Point):
             nearest = self.location
         else:
+            point = Point(*coordinates)
             nearest = self.nearest_point(point)
-        if accurate:
-            return distance(point.coords[0], nearest.coords[0]).meters
-        else:
-            return great_circle(point.coords[0], nearest.coords[0]).meters
+        return get_distance(coordinates[0], coordinates[1]).meters
 
     def nearest_point(self, point):
         '''Find nearest point in geometry, measured from given point.'''

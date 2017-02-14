@@ -9,6 +9,17 @@ from monocle.names import POKEMON_NAMES, MOVES, POKEMON_MOVES
 if config.BOUNDARIES:
     from shapely.geometry import mapping
 
+if config.MAP_WORKERS:
+    try:
+        UNIT = getattr(Units, config.SPEED_UNIT.lower())
+        if UNIT is Units.miles:
+            UNIT_STRING = "MPH"
+        elif UNIT is Units.kilometers:
+            UNIT_STRING = "KMH"
+        elif UNIT is Units.meters:
+            UNIT_STRING = "m/h"
+    except AttributeError:
+        UNIT_STRING = "MPH"
 
 def get_args():
     parser = ArgumentParser()
@@ -68,7 +79,7 @@ def get_worker_markers(workers):
     for worker_no, data in workers.data:
         coords = data[0]
         unix_time = data[1]
-        speed = '{:.1f}mph'.format(data[2])
+        speed = '{:.1f}{}'.format(data[2], UNIT_STRING)
         total_seen = data[3]
         visits = data[4]
         seen_here = data[5]
