@@ -9,7 +9,7 @@ from itertools import chain
 
 import asyncio
 
-from .utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_point_altitudes
+from .utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_point_altitudes, random_altitude
 
 from . import db
 
@@ -23,6 +23,7 @@ class Spawns:
         self.cell_points = set()
         self.altitudes = {}
         self.known_points = set()
+        self.log = get_logger('spawns')
 
     def __len__(self):
         return len(self.despawn_times)
@@ -47,10 +48,21 @@ class Spawns:
 
     def get_altitude(self, point):
         point = round_coords(point, 3)
-        alt = self.altitudes.get(point)
-        if not alt:
-            alt = get_altitude(point)
-            self.altitudes[point] = alt
+        try:
+            alt = self.altitudes[point]
+        except KeyError:
+            try:
+                alt = get_altitude(point)
+                self.altitudes[point] = alt
+            except IndexError as e:
+                self.log.warning('Empty altitude response for {}, falling back to random.', point)
+                alt = random_altitude()
+            except KeyError as e:
+                self.log.error('Invalid altitude response for {}, falling back to random.', point)
+                alt = random_altitude()
+            except Exception as e:
+                self.log.error('{} while fetching altitude for {}, falling back to random.', e.__class__.__name__, point)
+                alt = random_altitude()
         return alt
 
     def items(self):

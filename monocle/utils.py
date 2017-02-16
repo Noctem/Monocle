@@ -12,6 +12,7 @@ from asyncio import sleep
 from math import sqrt
 from uuid import uuid4
 from enum import Enum
+from logging import getLogger
 
 from geopy import Point
 from geopy.distance import distance
@@ -99,6 +100,8 @@ except ImportError:
     def get_distance(p1, p2, mult=Units.meters.value):
         return hypot(p1[0] - p2[0], (p1[1] - p2[1]) * LON_MULT) * mult
 
+log = getLogger(__name__)
+
 
 def get_scan_area():
     """Returns the square kilometers for configured scan area"""
@@ -163,15 +166,12 @@ def random_altitude():
 
 
 def get_altitude(point):
-    try:
-        params = {'locations': 'enc:' + polyline.encode((point,))}
-        if config.GOOGLE_MAPS_KEY:
-            params['key'] = config.GOOGLE_MAPS_KEY
-        r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
-                         params=params).json()
-        altitude = r['results'][0]['elevation']
-    except Exception:
-        altitude = random_altitude()
+    params = {'locations': 'enc:' + polyline.encode((point,))}
+    if config.GOOGLE_MAPS_KEY:
+        params['key'] = config.GOOGLE_MAPS_KEY
+    r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
+                     params=params).json()
+    altitude = r['results'][0]['elevation']
     return altitude
 
 
@@ -198,7 +198,7 @@ def get_altitudes(coords, precision=3):
                 key = round_coords(point, precision)
                 altitudes[key] = result['elevation']
         except Exception:
-            pass
+            log.exception('Error fetching altitudes.')
     return altitudes
 
 
