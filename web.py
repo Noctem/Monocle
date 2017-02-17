@@ -140,7 +140,7 @@ def report_main():
         top_pokemon = list(counts_tuple[-30:])
         top_pokemon.reverse()
         bottom_pokemon = counts_tuple[:30]
-        nonexistent = [(x, POKEMON_NAMES[x]) for x in range(1, 152) if x not in counts]
+        nonexistent = [(x, POKEMON_NAMES[x]) for x in range(1, 249) if x not in counts]
         rare_pokemon = [r for r in counts_tuple if r[0] in config.RARE_IDS]
         if rare_pokemon:
             rare_sightings = db.get_all_sightings(

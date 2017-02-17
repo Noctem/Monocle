@@ -768,7 +768,7 @@ def get_pokemon_ranking(session):
         query = query.filter(Sighting.expire_timestamp > get_since())
     query = query.order_by(asc('how_many'))
     db_ids = [r[0] for r in query]
-    for pokemon_id in range(1, 152):
+    for pokemon_id in range(1, 249):
         if pokemon_id not in db_ids:
             ranking.append(pokemon_id)
     ranking.extend(db_ids)
@@ -805,7 +805,7 @@ def get_nonexistent_pokemon(session):
         {report_since}
     '''.format(report_since=get_since_query_part()))
     db_ids = [r[0] for r in query.fetchall()]
-    for pokemon_id in range(1, 152):
+    for pokemon_id in range(1, 249):
         if pokemon_id not in db_ids:
             result.append(pokemon_id)
     return result
