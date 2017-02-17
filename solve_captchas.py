@@ -113,7 +113,7 @@ async def main():
                                                  provider=account.get('provider', 'ptc'))
 
                 request = api.create_request()
-                request.download_remote_config_version(platform=1, app_version=5500)
+                request.download_remote_config_version(platform=1, app_version=5702)
                 request.check_challenge()
                 request.get_hatched_eggs()
                 request.get_inventory()

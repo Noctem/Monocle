@@ -57,7 +57,7 @@ _UNIT = _unit.value
 class Worker:
     """Single worker walking on the map"""
 
-    download_hash = "1de302dba2e542b8db8250455fa3e340d78c86f3"
+    download_hash = "7b9c5056799a2c5c7d48a62c497736cbcf8c4acb"
     g = {'seen': 0, 'captchas': 0}
 
     accounts = load_accounts()
@@ -203,7 +203,7 @@ class Worker:
             raise err
 
         self.error_code = '°'
-        version = 5500
+        version = 5702
         async with self.sim_semaphore:
             if self.killed:
                 return False
