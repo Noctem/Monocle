@@ -784,6 +784,25 @@ def get_sightings_per_pokemon(session):
     return OrderedDict(query.all())
 
 
+def sightings_to_csv(since=None, output='sightings.csv'):
+    import csv
+
+    if since:
+        config.REPORT_SINCE = since
+    with session_scope() as session:
+        sightings = get_sightings_per_pokemon(session)
+    od = OrderedDict()
+    for pokemon_id in range(1, 249):
+        if pokemon_id not in sightings:
+            od[pokemon_id] = 0
+    od.update(sightings)
+    with open(output, 'wt') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(('pokemon_id', 'count'))
+        for item in od.items():
+            writer.writerow(item)
+
+
 def get_rare_pokemon(session):
     result = []
 
