@@ -426,7 +426,7 @@ $('#settings').on('click', '.settings-panel button', function () {
 function populateSettingsPanels(){
     var container = $('.settings-panel[data-panel="filters"]').children('.panel-body');
     var newHtml = '';
-    for (var i = 1; i <= 151; i++){
+    for (var i = 1; i <= 251; i++){
         var partHtml = `<div class="text-center">
                 <img src="static/monocle-icons/icons/`+i+`.png">
                 <div class="btn-group" role="group" data-group="filter-`+i+`">
@@ -444,7 +444,7 @@ function populateSettingsPanels(){
 }
 
 function setSettingsDefaults(){
-    for (var i = 1; i <= 151; i++){
+    for (var i = 1; i <= 251; i++){
         _defaultSettings['filter-'+i] = (_defaultSettings['TRASH_IDS'].indexOf(i) > -1) ? "trash" : "pokemon";
     };
 
