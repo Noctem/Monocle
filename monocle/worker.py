@@ -1177,7 +1177,7 @@ class Worker:
         try:
             self.location = self.account['location'][:2]
         except KeyError:
-            self.location = get_start_coords(worker_no)
+            self.location = get_start_coords(self.worker_no)
         self.inventory_timestamp = self.account.get('inventory_timestamp')
         self.player_level = self.account.get('player_level')
         self.last_request = self.account.get('time', 0)
