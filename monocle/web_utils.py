@@ -118,8 +118,8 @@ def get_pokemarkers():
                     'atk': pokemon.atk_iv,
                     'def': pokemon.def_iv,
                     'sta': pokemon.sta_iv,
-                    'move1': POKEMON_MOVES[pokemon.move_1],
-                    'move2': POKEMON_MOVES[pokemon.move_2],
+                    'move1': POKEMON_MOVES.get(pokemon.move_1, pokemon.move_1),
+                    'move2': POKEMON_MOVES.get(pokemon.move_2, pokemon.move_2),
                     'damage1': MOVES.get(pokemon.move_1, {}).get('damage'),
                     'damage2': MOVES.get(pokemon.move_2, {}).get('damage'),
                 }
