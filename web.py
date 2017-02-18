@@ -94,7 +94,8 @@ def fullmap():
 
 @app.route('/data')
 def pokemon_data():
-    return jsonify(get_pokemarkers())
+    last_id = request.args.get('last_id', 0)
+    return jsonify(get_pokemarkers(last_id))
 
 
 @app.route('/gym_data')

@@ -119,6 +119,11 @@ function PokemonMarker (raw) {
     var icon = new PokemonIcon({iconUrl: '/static/monocle-icons/icons/' + raw.pokemon_id + '.png', expires_at: raw.expires_at});
     var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: 1});
 
+    var intId = parseInt(raw.id.split('-')[1]);
+    if (_last_pokemon_id < intId){
+        _last_pokemon_id = intId;
+    }
+
     if (raw.trash) {
         marker.overlay = 'Trash';
     } else {
@@ -275,7 +280,7 @@ function getPokemon () {
         return;
     }
     new Promise(function (resolve, reject) {
-        $.get('/data', function (response) {
+        $.get('/data?last_id='+_last_pokemon_id, function (response) {
             resolve(response);
         });
     }).then(function (data) {
