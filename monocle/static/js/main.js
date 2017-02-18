@@ -1,3 +1,5 @@
+var _last_pokemon_id = 0;
+var _pokemon_count = 251;
 var _WorkerIconUrl = 'static/monocle-icons/assets/ball.png';
 var _NotificationIconUrl = 'static/monocle-icons/assets/ultra.png';
 var _PokestopIconUrl = 'static/monocle-icons/assets/stop.png';
@@ -90,9 +92,18 @@ function getPopupContent (item) {
         content += ' - <b>' + totaliv.toFixed(2) + '%</b></br>';
         content += 'Disappears in: ' + expires_at + '<br>';
         content += 'Move 1: ' + item.move1 + ' ( ' + item.damage1 + ' dps )</br>';
-        content += 'Move 2: ' + item.move2 + ' ( ' + item.damage2 + ' dps )';
+        content += 'Move 2: ' + item.move2 + ' ( ' + item.damage2 + ' dps )<br>';
     } else {
         content += '<br>Disappears in: ' + expires_at + '<br>';
+    }
+    content += '<a href="#" data-pokeid="'+item.pokemon_id+'" data-newlayer="Hidden" class="popup_filter_link">Hide</a>';
+    content += '&nbsp; | &nbsp;';
+
+    var userPref = getPreference('filter-'+item.pokemon_id);
+    if (userPref == 'trash'){
+        content += '<a href="#" data-pokeid="'+item.pokemon_id+'" data-newlayer="Pokemon" class="popup_filter_link">Move to Pokemon</a>';
+    }else{
+        content += '<a href="#" data-pokeid="'+item.pokemon_id+'" data-newlayer="Trash" class="popup_filter_link">Move to Trash</a>';
     }
     return content;
 }
@@ -391,6 +402,14 @@ $('#reset_btn').on('click', function () {
     }
 });
 
+$('body').on('click', '.popup_filter_link', function () {
+    var id = $(this).data("pokeid");
+    var layer = $(this).data("newlayer").toLowerCase();
+    moveToLayer(id, layer);
+    var item = $("#settings button[data-id='"+id+"']");
+    item.removeClass("active").filter("[data-value='"+layer+"']").addClass("active");
+});
+
 $('#settings').on('click', '.settings-panel button', function () {
     //Handler for each button in every settings-panel.
     var item = $(this);
@@ -401,32 +420,39 @@ $('#settings').on('click', '.settings-panel button', function () {
     var key = item.parent().data('group');
     var value = item.data('value');
 
-    setPreference(key, value);
     item.parent().children("button").removeClass("active");
     item.addClass("active");
 
     if (key.indexOf('filter-') > -1){
         // This is a pokemon's filter button
-        for(var k in markers) {
-            var m = markers[k];
-            if ((k.indexOf("pokemon-") > -1) && (m !== undefined) && (m.raw.pokemon_id === id)){
-                m.removeFrom(overlays[m.overlay]);
-                if (value === 'pokemon'){
-                    m.overlay = "Pokemon";
-                    m.addTo(overlays.Pokemon);
-                }else if (value === 'trash') {
-                    m.overlay = "Trash";
-                    m.addTo(overlays.Trash);
-                }
+        moveToLayer(id, value);
+    }else{
+        setPreference(key, value);
+    }
+});
+
+function moveToLayer(id, layer){
+    setPreference("filter-"+id, layer);
+    layer = layer.toLowerCase();
+    for(var k in markers) {
+        var m = markers[k];
+        if ((k.indexOf("pokemon-") > -1) && (m !== undefined) && (m.raw.pokemon_id === id)){
+            m.removeFrom(overlays[m.overlay]);
+            if (layer === 'pokemon'){
+                m.overlay = "Pokemon";
+                m.addTo(overlays.Pokemon);
+            }else if (layer === 'trash') {
+                m.overlay = "Trash";
+                m.addTo(overlays.Trash);
             }
         }
     }
-});
+}
 
 function populateSettingsPanels(){
     var container = $('.settings-panel[data-panel="filters"]').children('.panel-body');
     var newHtml = '';
-    for (var i = 1; i <= 251; i++){
+    for (var i = 1; i <= _pokemon_count; i++){
         var partHtml = `<div class="text-center">
                 <img src="static/monocle-icons/icons/`+i+`.png">
                 <div class="btn-group" role="group" data-group="filter-`+i+`">
@@ -444,7 +470,7 @@ function populateSettingsPanels(){
 }
 
 function setSettingsDefaults(){
-    for (var i = 1; i <= 251; i++){
+    for (var i = 1; i <= _pokemon_count; i++){
         _defaultSettings['filter-'+i] = (_defaultSettings['TRASH_IDS'].indexOf(i) > -1) ? "trash" : "pokemon";
     };
 
