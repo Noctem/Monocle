@@ -713,7 +713,7 @@ FR_NAMES = {
     201: 'Zarbi',
     202: 'Qulbutoké',
     203: 'Girafarig',
-    204: 'Pomdepic',
+    204: 'Pomdepik',
     205: 'Foretress',
     206: 'Insolourdo',
     207: 'Scorplane',
