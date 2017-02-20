@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 
 from multiprocessing.managers import BaseManager
-from pogo_async import PGoApi, exceptions as ex
+from pogo_async import PGoApi, close_sessions, exceptions as ex
 from pogo_async.auth_ptc import AuthPtc
-from pogo_async.session import Session
 from asyncio import get_event_loop, sleep
 from random import uniform
 from selenium import webdriver
@@ -170,7 +169,7 @@ async def main():
     finally:
         try:
             driver.close()
-            Session.close()
+            close_sessions()
         except Exception:
             pass
 
