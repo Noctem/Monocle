@@ -615,10 +615,12 @@ def update_mystery(session, mystery):
     encounter.seen_range = mystery['last'] - mystery['first']
 
 
-def get_sightings(session):
+def get_sightings(session, after_id=0):
     return session.query(Sighting) \
-        .filter(Sighting.expire_timestamp > time.time()) \
-        .all()
+        .filter(and_( \
+            Sighting.expire_timestamp > time.time(), \
+            Sighting.id > after_id \
+        )).all()
 
 
 def get_spawn_points(session):

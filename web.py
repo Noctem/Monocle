@@ -28,7 +28,9 @@ _optional = {
     'TWITTER_SCREEN_NAME': None,
     'DISCORD_INVITE_ID': None,
     'TELEGRAM_USERNAME': None,
-    'BOUNDARIES': None
+    'BOUNDARIES': None,
+    'FIXED_OPACITY': False,
+    'SHOW_TIMER': False
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -48,6 +50,11 @@ app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'),
 def fullmap():
     extra_css_js = ''
     social_links = ''
+    init_js_vars = ''
+
+    init_js_vars += "_defaultSettings['FIXED_OPACITY'] = '{}'; ".format(int(config.FIXED_OPACITY))
+    init_js_vars += "_defaultSettings['SHOW_TIMER'] = '{}'; ".format(int(config.SHOW_TIMER))
+    init_js_vars += "_defaultSettings['TRASH_IDS'] = [{}]; ".format(', '.join(str(p_id) for p_id in config.TRASH_IDS))
 
     if config.LOAD_CUSTOM_HTML_FILE:
         mapfile = 'custom.html'
@@ -80,13 +87,15 @@ def fullmap():
         map_provider_url=config.MAP_PROVIDER_URL,
         map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION,
         social_links=Markup(social_links),
+        init_js_vars=Markup(init_js_vars),
         extra_css_js=Markup(extra_css_js)
     )
 
 
 @app.route('/data')
 def pokemon_data():
-    return jsonify(get_pokemarkers())
+    last_id = request.args.get('last_id', 0)
+    return jsonify(get_pokemarkers(last_id))
 
 
 @app.route('/gym_data')

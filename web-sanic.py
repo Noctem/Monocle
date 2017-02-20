@@ -35,7 +35,9 @@ _optional = {
     'TWITTER_SCREEN_NAME': None,
     'DISCORD_INVITE_ID': None,
     'TELEGRAM_USERNAME': None,
-    'BOUNDARIES': None
+    'BOUNDARIES': None,
+    'FIXED_OPACITY': False,
+    'SHOW_TIMER': False
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -66,6 +68,11 @@ def jsonify(records):
 async def fullmap(request):
     extra_css_js = ''
     social_links = ''
+    init_js_vars = ''
+
+    init_js_vars += "_defaultSettings['FIXED_OPACITY'] = '{}'; ".format(int(config.FIXED_OPACITY))
+    init_js_vars += "_defaultSettings['SHOW_TIMER'] = '{}'; ".format(int(config.SHOW_TIMER))
+    init_js_vars += "_defaultSettings['TRASH_IDS'] = [{}]; ".format(', '.join(str(p_id) for p_id in config.TRASH_IDS))
 
     if config.LOAD_CUSTOM_HTML_FILE:
         mapfile = 'custom.html'
@@ -97,6 +104,7 @@ async def fullmap(request):
         map_provider_url=config.MAP_PROVIDER_URL,
         map_provider_attribution=config.MAP_PROVIDER_ATTRIBUTION,
         social_links=Markup(social_links),
+        init_js_vars=Markup(init_js_vars),
         extra_css_js=Markup(extra_css_js)
     )
     return html(html_content)
@@ -104,7 +112,8 @@ async def fullmap(request):
 
 @app.route('/data')
 async def pokemon_data(request):
-    return json(await get_pokemarkers_async())
+    last_id = request.args.get('last_id', 0)
+    return json(await get_pokemarkers_async(last_id))
 
 
 @app.route('/gym_data')
@@ -149,7 +158,7 @@ if config.MAP_WORKERS:
         return html(html_content)
 
 
-async def get_pokemarkers_async():
+async def get_pokemarkers_async(after_id):
     markers = []
 
     async with create_pool(**config.DB) as pool:
@@ -158,8 +167,8 @@ async def get_pokemarkers_async():
                 results = await conn.fetch('''
                     SELECT id, pokemon_id, expire_timestamp, lat, lon, atk_iv, def_iv, sta_iv, move_1, move_2
                     FROM sightings
-                    WHERE expire_timestamp > {}
-                '''.format(time.time()))
+                    WHERE expire_timestamp > {ts} AND id > {poke_id}
+                '''.format(ts=time.time(), poke_id=after_id))
 
                 for row in results:
                     content = {

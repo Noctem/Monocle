@@ -135,7 +135,8 @@ MORE_POINTS = True
 
 # exclude these Pokémon from the map by default (only visible in trash layer)
 TRASH_IDS = (
-    16, 19, 21, 29, 32, 41, 46, 48, 50, 52, 56, 74, 77, 96, 111, 133
+    16, 19, 21, 29, 32, 41, 46, 48, 50, 52, 56, 74, 77, 96, 111, 133,
+    161, 163, 167, 177, 183, 191, 194
 )
 
 # include these Pokémon on the "rare" report
@@ -191,6 +192,20 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 
 # Disable to use Python's event loop even if uvloop is installed
 #UVLOOP = True
+
+### FRONTEND CONFIGURATION
+LOAD_CUSTOM_HTML_FILE = False # File path MUST be 'templates/custom.html'
+LOAD_CUSTOM_CSS_FILE = False  # File path MUST be 'static/css/custom.css'
+LOAD_CUSTOM_JS_FILE = False  # File path MUST be 'static/js/custom.js'
+
+FB_PAGE_ID = None
+TWITTER_SCREEN_NAME = None  # Username withouth '@' char
+DISCORD_INVITE_ID = None
+TELEGRAM_USERNAME = None  # Username withouth '@' char
+
+## Variables below will be used as default values on frontend
+FIXED_OPACITY = False  # Make marker opacity independent of remaining time
+SHOW_TIMER = False  # Show remaining time on a label under each pokemon marker
 
 ### OPTIONS BELOW THIS POINT ARE ONLY NECESSARY FOR NOTIFICATIONS ###
 NOTIFY = False  # enable notifications
@@ -315,13 +330,3 @@ NOTIFICATION_CACHE = 100
 #LANDMARKS.add('the University of Utah', shortname='the U of U', hashtags={'Utes'}, phrase='at', is_area=True)
 ## provide corner points to create a polygon of the area since OpenStreetMap does not have a shape for it
 #LANDMARKS.add('Yalecrest', points=((40.750263, -111.836502), (40.750377, -111.851108), (40.751515, -111.853833), (40.741212, -111.853909), (40.741188, -111.836519)), is_area=True)
-
-### FRONTEND CONFIGURATION
-LOAD_CUSTOM_HTML_FILE = False # File path MUST be 'templates/custom.html'
-LOAD_CUSTOM_CSS_FILE = False  # File path MUST be 'static/css/custom.css'
-LOAD_CUSTOM_JS_FILE = False  # File path MUST be 'static/js/custom.js'
-
-FB_PAGE_ID = None
-TWITTER_SCREEN_NAME = None  # Username withouth '@' char
-DISCORD_INVITE_ID = None
-TELEGRAM_USERNAME = None  # Username withouth '@' char

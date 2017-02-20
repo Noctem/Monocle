@@ -99,10 +99,10 @@ def get_worker_markers(workers):
     return markers
 
 
-def get_pokemarkers():
+def get_pokemarkers(after_id=0):
     markers = []
     with db.session_scope() as session:
-        pokemons = db.get_sightings(session)
+        pokemons = db.get_sightings(session, after_id)
         for pokemon in pokemons:
             content = {
                 'id': 'pokemon-{}'.format(pokemon.id),
