@@ -18,7 +18,7 @@ from queue import Queue, Full
 from argparse import ArgumentParser
 from signal import signal, SIGINT, SIG_IGN
 from logging import getLogger, basicConfig, WARNING, INFO
-from pogo_async.session import Session
+from pogo_async import close_sessions
 from os.path import exists, join
 from threading import Thread
 from sys import platform
@@ -282,8 +282,9 @@ def main():
             shared.spawns.update()
         except Exception:
             pass
+    finally:
         manager.shutdown()
-        Session.close()
+        close_sessions()
 
         try:
             loop.close()
