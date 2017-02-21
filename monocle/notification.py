@@ -8,7 +8,7 @@ from tempfile import NamedTemporaryFile
 from .utils import load_pickle, dump_pickle
 from .db import session_scope, get_pokemon_ranking, estimate_remaining_time
 from .names import POKEMON_NAMES, POKEMON_MOVES
-from .shared import get_logger
+from .shared import get_logger, SCHED
 
 from . import config
 
@@ -32,8 +32,7 @@ _optional = {
     'FULL_TIME': 1800,
     'TIME_REQUIRED': 300,
     'NOTIFY_RANKING': 90,
-    'ALWAYS_NOTIFY_IDS': set(),
-    'NOTIFICATION_CACHE': 100
+    'ALWAYS_NOTIFY_IDS': set()
 }
 # set defaults for unset config options
 for setting_name, default in _optional.items():
@@ -98,6 +97,21 @@ if config.NOTIFY:
         raise ValueError('Only set NOTIFY_RANKING or NOTIFY_IDS, not both.')
     elif not any((config.NOTIFY_RANKING, config.NOTIFY_IDS, config.ALWAYS_NOTIFY_IDS)):
         raise ValueError('Must set either NOTIFY_RANKING, NOTIFY_IDS, or ALWAYS_NOTIFY_IDS.')
+
+
+class NotificationCache:
+    def __init__(self):
+        self.store = set()
+
+    def __contains__(self, item):
+        return item in self.store
+
+    def add(self, item, expires):
+        self.store.add(item)
+        SCHED.call_at(expires, self.remove, item)
+
+    def remove(self, item):
+        self.store.discard(item)
 
 
 class PokeImage:
@@ -550,7 +564,7 @@ class Notification:
 class Notifier:
 
     def __init__(self):
-        self.recent_notifications = deque(maxlen=config.NOTIFICATION_CACHE)
+        self.cache = deque(maxlen=config.NOTIFICATION_CACHE)
         self.notify_ranking = config.NOTIFY_RANKING
         self.initial_score = config.INITIAL_SCORE
         self.minimum_score = config.MINIMUM_SCORE
@@ -616,17 +630,17 @@ class Notifier:
         if pokemon_id in self.never_notify:
             return False
         if pokemon_id in self.always_notify:
-            return encounter_id not in self.recent_notifications
+            return encounter_id not in self.cache
         if pokemon_id not in self.notify_ids:
             return False
         if config.IGNORE_RARITY:
-            return encounter_id not in self.recent_notifications
+            return encounter_id not in self.cache
         try:
             if pokemon['time_till_hidden'] < config.TIME_REQUIRED:
                 return False
         except KeyError:
             pass
-        if encounter_id in self.recent_notifications:
+        if encounter_id in self.cache:
             return False
 
         rareness = self.get_rareness_score(pokemon_id)
@@ -696,6 +710,9 @@ class Notifier:
                     self.log.info('{} has only around {} seconds remaining.', name, mean)
                     return False
             pokemon['earliest_tth'], pokemon['latest_tth'] = tth
+            latest = pokemon['latest_tth']
+        else:
+            latest = pokemon['expire_timestamp']
 
         whpushed = False
         if WEBHOOK:
@@ -707,7 +724,7 @@ class Notifier:
 
         if notified or whpushed:
             self.last_notification = monotonic()
-            self.recent_notifications.append(pokemon['encounter_id'])
+            self.cache.add(pokemon['encounter_id'], latest)
         return notified or whpushed
 
     def webhook(self, pokemon):

@@ -276,10 +276,6 @@ FULL_TIME = 1800  # the number of seconds after a notification when only MINIMUM
 INITIAL_SCORE = 0.7  # the required score immediately after a notification
 MINIMUM_SCORE = 0.4  # the required score after FULL_TIME seconds have passed
 
-# the number of encounter_ids to retain for duplicate checking. Should be at
-# least as high as the highest number of notifications you'd send in an hour.
-NOTIFICATION_CACHE = 100
-
 ### The following values are fake, replace them with your own keys to enable
 ### notifications, otherwise leave them out of your config or set them to None.
 ### You must provide keys for at least one service to use notifications.

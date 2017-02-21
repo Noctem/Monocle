@@ -732,7 +732,7 @@ class Worker:
 
         diff = self.last_gmo + config.SCAN_DELAY - time()
         if diff > 0:
-            await sleep(diff + .25)
+            await sleep(diff + .1)
         responses = await self.call(request)
         self.last_gmo = time()
 
@@ -758,7 +758,12 @@ class Worker:
         forts_seen = 0
         points_seen = 0
 
-        time_of_day = map_objects.get('time_of_day', 0)
+        if config.NOTIFY:
+            try:
+                time_of_day = map_objects['time_of_day']
+            except KeyError:
+                self.log.warning('No day/night in response, defaulting to day.')
+                time_of_day = 0
 
         if config.ITEM_LIMITS and self.bag_full():
             await self.clean_bag()
