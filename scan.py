@@ -43,6 +43,7 @@ _optional = {
     'NOTIFY_RANKING': None,
     'CONTROL_SOCKS': None,
     'HASH_KEY': None,
+    'SMART_THROTTLE': False,
     'MAX_CAPTCHAS': 0,
     'ACCOUNTS': (),
     'ENCOUNTER': None,
