@@ -3,16 +3,18 @@ from pogo_async import PGoApi, exceptions as ex
 from pogo_async.auth_ptc import AuthPtc
 from pogo_async.utilities import get_cell_ids, HAVE_POGEO
 from pogo_async.hash_server import HashServer
-from asyncio import sleep, Lock, Semaphore, get_event_loop
+from asyncio import sleep, Lock, Semaphore, ensure_future, gather
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
 from array import typecodes
 from queue import Empty
-from aiohttp import ClientSession
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords, Units, randomize_point
-from . import config, shared, avatar
+from .shared import get_logger, LOOP, SessionManager
+from .spawns import SPAWNS
+from .db_proc import DB_PROC
+from . import config, avatar
 
 try:
     import _thread
@@ -65,7 +67,6 @@ class Worker:
         cell_ids = load_pickle('cells') or {}
         COMPACT = 'Q' in typecodes
 
-    loop = get_event_loop()
     login_semaphore = Semaphore(config.SIMULTANEOUS_LOGINS)
     sim_semaphore = Semaphore(config.SIMULTANEOUS_SIMULATION)
 
@@ -83,7 +84,7 @@ class Worker:
 
     def __init__(self, worker_no):
         self.worker_no = worker_no
-        self.log = shared.get_logger('worker-{}'.format(worker_no))
+        self.log = get_logger('worker-{}'.format(worker_no))
         # account information
         try:
             self.account = self.extra_queue.get_nowait()
@@ -616,7 +617,7 @@ class Worker:
         """
         visited = False
         try:
-            self.altitude = shared.SPAWNS.get_altitude(point)
+            self.altitude = SPAWNS.get_altitude(point)
             self.altitude = uniform(self.altitude - 1, self.altitude + 1)
             self.location = point
             self.api.set_position(*self.location, self.altitude)
@@ -764,6 +765,9 @@ class Worker:
             except KeyError:
                 self.log.warning('No day/night in response, defaulting to day.')
                 time_of_day = 0
+            notifying = []
+        else:
+            notifying = False
 
         if config.ITEM_LIMITS and self.bag_full():
             await self.clean_bag()
@@ -781,7 +785,7 @@ class Worker:
                             await self.encounter(normalized)
                         except Exception as e:
                             self.log.warning('{} during encounter', e.__class__.__name__)
-                    sent = self.notify(normalized, time_of_day) or sent
+                    notifying.append(ensure_future(self.notifier.notify(normalized, time_of_day)))
 
                 if (normalized not in SIGHTING_CACHE and
                         normalized not in MYSTERY_CACHE):
@@ -792,8 +796,9 @@ class Worker:
                             await self.encounter(normalized)
                         except Exception as e:
                             self.log.warning('{} during encounter', e.__class__.__name__)
-                shared.DB.add(normalized)
+                DB_PROC.add(normalized)
 
+            spinning = None
             for fort in map_cell.get('forts', []):
                 if not fort.get('enabled'):
                     continue
@@ -804,25 +809,29 @@ class Worker:
                         pokemon_seen += 1
                         if norm not in SIGHTING_CACHE:
                             self.account_seen += 1
-                            shared.DB.add(norm)
+                            DB_PROC.add(norm)
                     pokestop = self.normalize_pokestop(fort)
-                    shared.DB.add(pokestop)
+                    DB_PROC.add(pokestop)
                     if (self.pokestops and not self.bag_full()
                             and time() > self.next_spin and self.smart_throttle(2)):
                         cooldown = fort.get('cooldown_complete_timestamp_ms')
                         if not cooldown or time() > cooldown / 1000:
-                            await self.spin_pokestop(pokestop)
+                            if spinning:
+                                if config.SPIN_COOLDOWN > 5:
+                                    continue
+                                await spinning
+                            spinning = ensure_future(self.spin_pokestop(pokestop))
                 else:
-                    shared.DB.add(self.normalize_gym(fort))
+                    DB_PROC.add(self.normalize_gym(fort))
 
             if config.MORE_POINTS or bootstrap:
                 for point in map_cell.get('spawn_points', []):
                     points_seen += 1
                     try:
                         p = (point['latitude'], point['longitude'])
-                        if shared.SPAWNS.have_point(p) or not Bounds.contain(p):
+                        if SPAWNS.have_point(p) or not Bounds.contain(p):
                             continue
-                        shared.SPAWNS.add_cell_point(p)
+                        SPAWNS.add_cell_point(p)
                     except (KeyError, TypeError):
                         self.log.warning('Spawn point exception ignored. {}', point)
                         pass
@@ -830,6 +839,9 @@ class Worker:
         if (config.INCUBATE_EGGS and len(self.unused_incubators) > 0
                 and len(self.eggs) > 0 and self.smart_throttle()):
             await self.incubate_eggs()
+
+        if spinning:
+            await spinning
 
         if pokemon_seen > 0:
             self.error_code = ':'
@@ -853,8 +865,15 @@ class Worker:
                     reason = '{} empty visits'.format(
                         CIRCUIT_FAILURES[self.proxy])
                     self.swap_circuit(reason)
-
         self.visits += 1
+
+        if notifying:
+            results = await gather(*notifying, loop=LOOP)
+            num_sent = results.count(True)
+            if num_sent:
+                g['sent'] += num_sent
+                sent = True
+
         if config.MAP_WORKERS:
             self.worker_dict.update([(self.worker_no,
                 ((latitude, longitude), start, self.speed, self.total_seen,
@@ -864,6 +883,7 @@ class Worker:
             pokemon_seen,
             forts_seen,
         )
+
         self.update_accounts_dict(auth=False)
         return pokemon_seen + forts_seen + points_seen
 
@@ -898,7 +918,7 @@ class Worker:
         request.fort_details(fort_id = pokestop['external_id'],
                              latitude = pokestop['lat'],
                              longitude = pokestop['lon'])
-        responses = await self.call(request, action=1.5)
+        responses = await self.call(request, action=1.2)
         name = responses.get('FORT_DETAILS', {}).get('name')
 
         request = self.api.create_request()
@@ -907,7 +927,7 @@ class Worker:
                             player_longitude = self.location[1],
                             fort_latitude = pokestop['lat'],
                             fort_longitude = pokestop['lon'])
-        responses = await self.call(request, action=1)
+        responses = await self.call(request, action=2)
 
         result = responses.get('FORT_SEARCH', {}).get('result', 0)
         if result == 1:
@@ -1038,7 +1058,7 @@ class Worker:
         self.error_code = 'C'
         self.num_captchas += 1
 
-        self.create_session()
+        session = SessionManager.get()
         try:
             params = {
                 'key': config.CAPTCHA_KEY,
@@ -1047,7 +1067,7 @@ class Worker:
                 'pageurl': responses.get('CHECK_CHALLENGE', {}).get('challenge_url'),
                 'json': 1
             }
-            async with self.session.post('http://2captcha.com/in.php', params=params, timeout=10) as resp:
+            async with session.post('http://2captcha.com/in.php', params=params, timeout=10) as resp:
                 response = await resp.json()
         except Exception as e:
             self.log.error('Got an error while trying to solve CAPTCHA. '
@@ -1072,7 +1092,7 @@ class Worker:
                 'json': 1
             }
             while True:
-                async with self.session.get("http://2captcha.com/res.php", params=params, timeout=20) as resp:
+                async with session.get("http://2captcha.com/res.php", params=params, timeout=20) as resp:
                     response = await resp.json()
                 if response.get('request') != 'CAPCHA_NOT_READY':
                     break
@@ -1104,14 +1124,6 @@ class Worker:
         self.location = randomize_point(self.location)
         self.altitude = uniform(self.altitude - 1, self.altitude + 1)
         self.api.set_position(*self.location, self.altitude)
-
-    def notify(self, norm, time_of_day):
-        self.error_code = '*'
-        notified = self.notifier.notify(norm, time_of_day)
-        if notified:
-            self.g['sent'] += 1
-        self.error_code = '!'
-        return notified
 
     def update_accounts_dict(self, captcha=False, banned=False, auth=True):
         self.account['captcha'] = captcha
@@ -1212,19 +1224,6 @@ class Worker:
         if self.authenticated:
             self.update_accounts_dict()
 
-    @classmethod
-    def create_session(cls):
-        try:
-            return cls.session
-        except AttributeError:
-            cls.session = ClientSession(loop=cls.loop)
-
-    @classmethod
-    def close_session(cls):
-        try:
-            cls.session.close()
-        except Exception:
-            pass
 
     @staticmethod
     def normalize_pokemon(raw):
@@ -1246,7 +1245,7 @@ class Worker:
             norm['time_till_hidden'] = tth / 1000
             norm['inferred'] = False
         else:
-            despawn = shared.SPAWNS.get_despawn_time(norm['spawn_id'], tss)
+            despawn = SPAWNS.get_despawn_time(norm['spawn_id'], tss)
             if despawn:
                 norm['expire_timestamp'] = despawn
                 norm['time_till_hidden'] = despawn - tss

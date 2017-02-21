@@ -1,5 +1,5 @@
-pushbullet.py>=0.10.0
-python-twitter>=3.0
+asyncpushbullet>=0.12
+peony-twitter[magic]>=0.9
 stem>=1.4.0
 shapely>=1.3.0
 selenium>=3.0
@@ -14,5 +14,3 @@ aiosocks>=0.1.7
 numba>=0.30
 sanic>=0.3
 asyncpg>=0.8
-pycrypt>=0.1.1
-pogeo>=0.2

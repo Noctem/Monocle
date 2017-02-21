@@ -21,8 +21,10 @@ except ImportError:
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, FORT_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point
-
-from . import config, shared
+from .shared import get_logger, LOOP
+from .db_proc import DB_PROC
+from .spawns import SPAWNS
+from . import config
 from .worker import Worker
 
 BAD_STATUSES = (
@@ -51,10 +53,9 @@ START_TIME = time.monotonic()
 
 class Overseer:
     accounts = Worker.accounts
-    loop = asyncio.get_event_loop()
 
     def __init__(self, status_bar, manager):
-        self.log = shared.get_logger('overseer')
+        self.log = get_logger('overseer')
         self.workers = []
         self.manager = manager
         self.count = config.GRID[0] * config.GRID[1]
@@ -91,7 +92,7 @@ class Overseer:
                 self.extra_queue.put(account)
 
         self.workers = tuple(Worker(worker_no=x) for x in range(self.count))
-        shared.DB.start()
+        DB_PROC.start()
 
     def check(self):
         now = time.monotonic()
@@ -104,7 +105,7 @@ class Overseer:
             try:
                 now = time.monotonic()
                 if now - last_commit > 5:
-                    shared.DB.commit()
+                    DB_PROC.commit()
                     last_commit = now
                 if not self.paused and now - last_swap > config.SWAP_WORST:
                     if not self.extra_queue.empty():
@@ -114,7 +115,7 @@ class Overseer:
                                 worst.swap_account(
                                     reason='only {:.1f} seen per minute'.format(per_minute),
                                     lock=True),
-                                loop=self.loop
+                                loop=LOOP
                             )
                     last_swap = now
                 # Record things found count
@@ -124,7 +125,7 @@ class Overseer:
                     last_stats_updated = now
                 if not self.paused and now - last_things_found_updated > 10:
                     self.things_count = self.things_count[-9:]
-                    self.things_count.append(str(shared.DB.count))
+                    self.things_count.append(str(DB_PROC.count))
                     last_things_found_updated = now
                 if self.status_bar:
                     if platform == 'win32':
@@ -143,13 +144,13 @@ class Overseer:
         try:
             while (self.coroutines_count > 0 or
                        self.coroutines_count == '?' or
-                       not shared.DB.queue.empty()):
+                       not DB_PROC.queue.empty()):
                 try:
                     self.coroutines_count = sum(not t.done()
-                                            for t in asyncio.Task.all_tasks(self.loop))
+                                            for t in asyncio.Task.all_tasks(LOOP))
                 except RuntimeError:
                     self.coroutines_count = 0
-                pending = shared.DB.queue.qsize()
+                pending = DB_PROC.queue.qsize()
                 # Spaces at the end are important, as they clear previously printed
                 # output - \r doesn't clean whole line
                 print(
@@ -161,7 +162,7 @@ class Overseer:
         except Exception as e:
             self.log.exception('A wild {} appeared during exit!', e.__class__.__name__)
         finally:
-            shared.DB.queue.put({'type': 'kill'})
+            DB_PROC.queue.put({'type': 'kill'})
             print('Done.                                          ')
 
     @staticmethod
@@ -242,7 +243,7 @@ class Overseer:
 
     def update_coroutines_count(self):
         try:
-            self.coroutines_count = len(asyncio.Task.all_tasks(self.loop))
+            self.coroutines_count = len(asyncio.Task.all_tasks(LOOP))
         except RuntimeError:
             # Set changed size during iteration
             self.coroutines_count = '?'
@@ -257,15 +258,15 @@ class Overseer:
         output = [
             'Monocle running for {}'.format(running_for),
             'Known spawns: {}, unknown: {}, more: {}'.format(
-                len(shared.SPAWNS),
-                shared.SPAWNS.mysteries_count,
-                shared.SPAWNS.cells_count),
+                len(SPAWNS),
+                SPAWNS.mysteries_count,
+                SPAWNS.cells_count),
             '{} workers, {} threads, {} coroutines'.format(
                 self.count,
                 active_count(),
                 self.coroutines_count),
             'DB queue: {}, sightings cache: {}, mystery cache: {}'.format(
-                shared.DB.queue.qsize(),
+                DB_PROC.queue.qsize(),
                 len(SIGHTING_CACHE.store),
                 len(MYSTERY_CACHE.store)),
             '',
@@ -363,7 +364,7 @@ class Overseer:
         now = time.time() % 3600
         closest = None
 
-        for spawn_id, spawn in shared.SPAWNS.items():
+        for spawn_id, spawn in SPAWNS.items():
             time_diff = now - spawn[1]
             if 0 < time_diff < smallest_diff:
                 smallest_diff = time_diff
@@ -382,7 +383,7 @@ class Overseer:
 
             while True:
                 try:
-                    shared.SPAWNS.update(loadpickle=pickle)
+                    SPAWNS.update(loadpickle=pickle)
                 except OperationalError as e:
                     self.log.exception('Operational error while trying to update spawns.')
                     if initial:
@@ -395,28 +396,28 @@ class Overseer:
                 else:
                     break
 
-            if not shared.SPAWNS or bootstrap:
+            if not SPAWNS or bootstrap:
                 bootstrap = True
                 pickle = False
 
             if bootstrap:
                 self.bootstrap()
 
-            while len(shared.SPAWNS) < 10 and not self.killed:
+            while len(SPAWNS) < 10 and not self.killed:
                 try:
                     mystery_point = self.mysteries.popleft()
                     self.coroutine_semaphore.acquire()
                     asyncio.run_coroutine_threadsafe(
-                        self.try_point(mystery_point), loop=self.loop
+                        self.try_point(mystery_point), loop=LOOP
                     )
                 except IndexError:
-                    self.mysteries = shared.SPAWNS.get_mysteries()
+                    self.mysteries = SPAWNS.get_mysteries()
                     if not self.mysteries:
                         config.MORE_POINTS = True
                         break
 
             current_hour = get_current_hour()
-            if shared.SPAWNS.after_last():
+            if SPAWNS.after_last():
                 current_hour += 3600
                 initial = False
 
@@ -427,7 +428,7 @@ class Overseer:
             else:
                 dump_pickle('accounts', self.accounts)
 
-            for spawn_id, spawn in shared.SPAWNS.items():
+            for spawn_id, spawn in SPAWNS.items():
                 try:
                     if initial:
                         if spawn_id == start_point:
@@ -456,10 +457,10 @@ class Overseer:
 
                             self.coroutine_semaphore.acquire()
                             asyncio.run_coroutine_threadsafe(
-                                self.try_point(mystery_point), loop=self.loop
+                                self.try_point(mystery_point), loop=LOOP
                             )
                         except IndexError:
-                            self.mysteries = shared.SPAWNS.get_mysteries()
+                            self.mysteries = SPAWNS.get_mysteries()
                             time_diff = time.time() - spawn_time
                             if not self.mysteries:
                                 break
@@ -477,7 +478,7 @@ class Overseer:
 
                     self.coroutine_semaphore.acquire()
                     asyncio.run_coroutine_threadsafe(
-                        self.try_point(point, spawn_time), loop=self.loop
+                        self.try_point(point, spawn_time), loop=LOOP
                     )
                 except Exception:
                     exceptions += 1
@@ -524,7 +525,7 @@ class Overseer:
             time.sleep(.25)
             self.coroutine_semaphore.acquire()
             asyncio.run_coroutine_threadsafe(visit_release(worker, point),
-                                             loop=self.loop)
+                                             loop=LOOP)
 
     def bootstrap_two(self):
         async def bootstrap_try(point):
@@ -541,7 +542,7 @@ class Overseer:
 
         for point in get_bootstrap_points():
             self.coroutine_semaphore.acquire()
-            asyncio.run_coroutine_threadsafe(bootstrap_try(point), loop=self.loop)
+            asyncio.run_coroutine_threadsafe(bootstrap_try(point), loop=LOOP)
 
     async def try_point(self, point, spawn_time=None):
         try:
@@ -621,4 +622,3 @@ class Overseer:
             account = self.extra_queue.get()
             username = account.get('username')
             self.accounts[username] = account
-        Worker.close_session()

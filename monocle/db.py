@@ -6,14 +6,14 @@ import enum
 import time
 
 from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, ForeignKey, UniqueConstraint, create_engine, cast, func, desc, asc, and_, exists
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.types import TypeDecorator, Numeric, Text
 from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm.exc import NoResultFound
 
-from . import utils, shared, config
+from . import utils, config, spawns, db_proc
+from .shared import call_at
 
 try:
     DB_ENGINE = config.DB_ENGINE
@@ -149,7 +149,7 @@ class SightingCache(object):
 
     def add(self, sighting):
         self.store[sighting['spawn_id']] = sighting['expire_timestamp']
-        shared.SCHED.call_at(sighting['expire_timestamp'], self.remove, sighting['spawn_id'])
+        call_at(sighting['expire_timestamp'], self.remove, sighting['spawn_id'])
 
     def remove(self, spawn_id):
         try:
@@ -181,7 +181,7 @@ class MysteryCache(object):
     def add(self, sighting):
         key = combine_key(sighting)
         self.store[combine_key(sighting)] = [sighting['seen']] * 2
-        shared.SCHED.call_at(sighting['seen'] + 3510, self.remove, key)
+        call_at(sighting['seen'] + 3510, self.remove, key)
 
     def __contains__(self, raw_sighting):
         key = combine_key(raw_sighting)
@@ -199,7 +199,7 @@ class MysteryCache(object):
         del self.store[key]
         if last != first:
             encounter_id, spawn_id = key
-            shared.DB.add({
+            db_proc.DB_PROC.add({
                 'type': 'mystery-update',
                 'spawn': spawn_id,
                 'encounter': encounter_id,
@@ -447,7 +447,7 @@ def add_spawnpoint(session, pokemon):
     # Check if the same entry already exists
     spawn_id = pokemon['spawn_id']
     new_time = pokemon['expire_timestamp'] % 3600
-    existing_time = shared.SPAWNS.get_despawn_seconds(spawn_id)
+    existing_time = spawns.SPAWNS.get_despawn_seconds(spawn_id)
     if new_time == existing_time:
         return
     existing = session.query(Spawnpoint) \
@@ -466,11 +466,11 @@ def add_spawnpoint(session, pokemon):
             return
 
         existing.despawn_time = new_time
-        shared.SPAWNS.add_despawn(spawn_id, new_time)
+        spawns.SPAWNS.add_despawn(spawn_id, new_time)
     else:
         point = (pokemon['lat'], pokemon['lon'])
-        altitude = shared.SPAWNS.get_altitude(point)
-        shared.SPAWNS.add_despawn(spawn_id, new_time)
+        altitude = spawns.SPAWNS.get_altitude(point)
+        spawns.SPAWNS.add_despawn(spawn_id, new_time)
         widest = get_widest_range(session, spawn_id)
 
         if widest and widest > 1710:
@@ -488,20 +488,20 @@ def add_spawnpoint(session, pokemon):
             duration=duration
         )
         session.add(obj)
-        shared.SPAWNS.add_known(point)
+        spawns.SPAWNS.add_known(point)
 
 
 def add_mystery_spawnpoint(session, pokemon):
     # Check if the same entry already exists
     spawn_id = pokemon['spawn_id']
     point = (pokemon['lat'], pokemon['lon'])
-    if shared.SPAWNS.db_has(point):
+    if spawns.SPAWNS.db_has(point):
         return
     existing = session.query(exists().where(
         Spawnpoint.spawn_id == spawn_id)).scalar()
     if existing:
         return
-    altitude = shared.SPAWNS.get_altitude(point)
+    altitude = spawns.SPAWNS.get_altitude(point)
 
     obj = Spawnpoint(
         spawn_id=spawn_id,
@@ -515,7 +515,7 @@ def add_mystery_spawnpoint(session, pokemon):
     session.add(obj)
 
     if Bounds.contain(point):
-        shared.SPAWNS.add_mystery(point)
+        spawns.SPAWNS.add_mystery(point)
 
 
 def add_mystery(session, pokemon):
