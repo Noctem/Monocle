@@ -296,7 +296,6 @@ class Overseer:
         try:
             seen = Worker.g['seen']
             captchas = Worker.g['captchas']
-            sent = Worker.g.get('sent')
             output.append('Seen per visit: {v:.2f}, per minute: {m:.0f}'.format(
                 v=seen / self.visits, m=seen / (seconds_since_start / 60)))
 
@@ -320,9 +319,11 @@ class Overseer:
             except TypeError:
                 pass
 
-        if sent:
-            output.append('Notifications sent: {n}, per hour {p:.1f}'.format(
-                n=sent, p=sent / hours_since_start))
+        try:
+            output.append('Notifications sent: {}, per hour {:.1f}'.format(
+                Worker.notifier.sent, Worker.notifier.sent / hours_since_start))
+        except AttributeError:
+            pass
 
         output.append('')
         if not self.all_seen:

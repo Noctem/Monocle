@@ -74,13 +74,21 @@ if config.NOTIFY:
         PUSHBULLET=True
 
     if config.WEBHOOKS:
-        if not isinstance(config.WEBHOOKS, (set, list, tuple)):
-            raise ValueError('WEBHOOKS must be a set of addresses.')
-        try:
-            import requests
-        except ImportError as e:
-            raise ImportError("You specified a WEBHOOKS address but you don't have requests installed.") from e
-        WEBHOOK = True
+        if isinstance(config.WEBHOOKS, (set, list, tuple)):
+            if len(config.WEBHOOKS) == 1:
+                try:
+                    HOOK_POINT = config.WEBHOOKS.pop()
+                except AttributeError:
+                    HOOK_POINT = config.WEBHOOKS[0]
+                WEBHOOK = 1
+            else:
+                HOOK_POINTS = config.WEBHOOKS
+                WEBHOOK = 2
+        elif isinstance(config.WEBHOOKS, str):
+            HOOK_POINT = config.WEBHOOKS
+            WEBHOOK = 1
+        else:
+            raise ValueError('WEBHOOKS must be a set or list of addresses, or a string with one address.')
     if config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID:
         TELEGRAM=True
 
@@ -441,7 +449,7 @@ class Notification:
             self.log.info('Sent a PushBullet notification about {}.', self.name)
             return True
 
-    def shorten_tweet(self):
+    def shorten_tweet(self, tweet_text):
         tweet_text = tweet_text.replace(' meters ', 'm ')
 
         # remove hashtags until length is short enough
@@ -607,6 +615,7 @@ class Notifier:
         self.log = get_logger('notifier')
         self.never_notify = config.NEVER_NOTIFY_IDS or tuple()
         self.rarity_override = config.RARITY_OVERRIDE or {}
+        self.sent = 0
         if self.notify_ranking:
             self.initialize_ranking()
             self.set_notify_ids()
@@ -708,7 +717,7 @@ class Notifier:
         now = monotonic()
         if self.auto:
             if now - self.ranking_time > 3600:
-                await loop.run_in_executor(None, self.set_ranking)
+                await LOOP.run_in_executor(None, self.set_ranking)
                 self.set_notify_ids()
 
         if pokemon_id in self.always_notify:
@@ -749,7 +758,7 @@ class Notifier:
             seen = pokemon['seen'] % 3600
             try:
                 with session_scope() as session:
-                    tth = await loop.run_in_executor(None, estimate_remaining_time, session, pokemon['spawn_id'], seen)
+                    tth = await LOOP.run_in_executor(None, estimate_remaining_time, session, pokemon['spawn_id'], seen)
             except Exception:
                 self.log.exception('An exception occurred while trying to estimate remaining time.')
                 return self.cleanup(encounter_id, cache_handle)
@@ -772,6 +781,7 @@ class Notifier:
 
         if notified or whpushed:
             self.last_notification = monotonic()
+            self.sent += 1
             return True
         else:
             return self.cleanup(encounter_id, cache_handle)
@@ -811,19 +821,31 @@ class Notifier:
 
         payload = json.dumps(data)
         session = SessionManager.get()
-        ret = False
-        for w in config.WEBHOOKS:
-            try:
-                async with session.post(w, data=payload, timeout=3) as resp:
-                    resp.raise_for_status()
-                    ret = True
-            except HttpProcessingError as e:
-                self.log.error('Error {} from webook {}: {}', e.code, w, e.message)
-            except TimeoutError:
-                self.log.error('Response timeout from webhook: {}', w)
-            except (ClientError, DisconnectedError) as e:
-                err = e.__cause__ or e
-                self.log.error('{} on webhook: {}', err.__class__.__name__, w)
-            except Exception:
-                self.log.exception('Error from webhook: {}', w)
-        return ret
+        return await self.wh_send(session)
+
+    if WEBHOOK > 1:
+        async def wh_send(self, session):
+            results = await gather(*tuple(self.hook_post(w, session) for w in HOOK_POINTS), loop=LOOP)
+            return True in results
+    else:
+        async def wh_send(self, session):
+            return await self.hook_post(HOOK_POINT, session)
+
+    async def hook_post(self, w):
+        try:
+            async with session.post(w, data=payload, timeout=3) as resp:
+                resp.raise_for_status()
+                return True
+        except HttpProcessingError as e:
+            self.log.error('Error {} from webook {}: {}', e.code, w, e.message)
+            return False
+        except TimeoutError:
+            self.log.error('Response timeout from webhook: {}', w)
+            return False
+        except (ClientError, DisconnectedError) as e:
+            err = e.__cause__ or e
+            self.log.error('{} on webhook: {}', err.__class__.__name__, w)
+            return False
+        except Exception:
+            self.log.exception('Error from webhook: {}', w)
+            return False

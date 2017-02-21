@@ -80,7 +80,6 @@ class Worker:
 
     if config.NOTIFY:
         notifier = Notifier()
-        g['sent'] = 0
 
     def __init__(self, worker_no):
         self.worker_no = worker_no
@@ -754,7 +753,6 @@ class Worker:
         except KeyError:
             raise ex.UnexpectedResponseException('Bad MapObjects response.')
 
-        sent = False
         pokemon_seen = 0
         forts_seen = 0
         points_seen = 0
@@ -765,9 +763,6 @@ class Worker:
             except KeyError:
                 self.log.warning('No day/night in response, defaulting to day.')
                 time_of_day = 0
-            notifying = []
-        else:
-            notifying = False
 
         if config.ITEM_LIMITS and self.bag_full():
             await self.clean_bag()
@@ -785,7 +780,7 @@ class Worker:
                             await self.encounter(normalized)
                         except Exception as e:
                             self.log.warning('{} during encounter', e.__class__.__name__)
-                    notifying.append(ensure_future(self.notifier.notify(normalized, time_of_day)))
+                    ensure_future(self.notifier.notify(normalized, time_of_day))
 
                 if (normalized not in SIGHTING_CACHE and
                         normalized not in MYSTERY_CACHE):
@@ -813,13 +808,10 @@ class Worker:
                     pokestop = self.normalize_pokestop(fort)
                     DB_PROC.add(pokestop)
                     if (self.pokestops and not self.bag_full()
-                            and time() > self.next_spin and self.smart_throttle(2)):
+                            and time() > self.next_spin and self.smart_throttle(2)
+                            and (not spinning or spinning.done())):
                         cooldown = fort.get('cooldown_complete_timestamp_ms')
                         if not cooldown or time() > cooldown / 1000:
-                            if spinning:
-                                if config.SPIN_COOLDOWN > 5:
-                                    continue
-                                await spinning
                             spinning = ensure_future(self.spin_pokestop(pokestop))
                 else:
                     DB_PROC.add(self.normalize_gym(fort))
@@ -867,17 +859,10 @@ class Worker:
                     self.swap_circuit(reason)
         self.visits += 1
 
-        if notifying:
-            results = await gather(*notifying, loop=LOOP)
-            num_sent = results.count(True)
-            if num_sent:
-                g['sent'] += num_sent
-                sent = True
-
         if config.MAP_WORKERS:
             self.worker_dict.update([(self.worker_no,
                 ((latitude, longitude), start, self.speed, self.total_seen,
-                self.visits, pokemon_seen, sent))])
+                self.visits, pokemon_seen))])
         self.log.info(
             'Point processed, {} Pokemon and {} forts seen!',
             pokemon_seen,
@@ -906,9 +891,10 @@ class Worker:
         self.error_code = '$'
         pokestop_location = pokestop['lat'], pokestop['lon']
         distance = get_distance(self.location, pokestop_location)
-        # permitted interaction distance - 2 (for some jitter leeway)
+        # permitted interaction distance - 4 (for some jitter leeway)
         # estimation of spinning speed limit
-        if distance > 38 or self.speed > SPINNING_SPEED_LIMIT:
+        if distance > 36 or self.speed > SPINNING_SPEED_LIMIT:
+            self.error_code = '!'
             return False
 
         # randomize location up to ~1.5 meters

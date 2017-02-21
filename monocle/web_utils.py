@@ -83,7 +83,6 @@ def get_worker_markers(workers):
         total_seen = data[3]
         visits = data[4]
         seen_here = data[5]
-        sent_notification = data[6]
         time = datetime.fromtimestamp(unix_time).strftime('%I:%M:%S %p').lstrip('0')
         markers.append({
             'lat': coords[0],
@@ -93,8 +92,7 @@ def get_worker_markers(workers):
             'speed': speed,
             'total_seen': total_seen,
             'visits': visits,
-            'seen_here': seen_here,
-            'sent_notification': sent_notification
+            'seen_here': seen_here
         })
     return markers
 

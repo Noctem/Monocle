@@ -80,11 +80,7 @@
 
 
         function WorkerMarker (raw) {
-            if (raw.sent_notification === true) {
-                var icon = new NotificationIcon();
-            } else {
-                var icon = new WorkerIcon();
-            }
+            var icon = new WorkerIcon();
             var marker = L.marker([raw.lat, raw.lon], {icon: icon});
             marker.raw = raw;
             markers[raw.worker_no] = marker;

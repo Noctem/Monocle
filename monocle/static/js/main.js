@@ -184,11 +184,7 @@ function FortMarker (raw) {
 }
 
 function WorkerMarker (raw) {
-    if (raw.sent_notification === true) {
-        var icon = new NotificationIcon();
-    } else {
-        var icon = new WorkerIcon();
-    }
+    var icon = new WorkerIcon();
     var marker = L.marker([raw.lat, raw.lon], {icon: icon});
     var circle = L.circle([raw.lat, raw.lon], 70, {weight: 2});
     var group = L.featureGroup([marker, circle])
