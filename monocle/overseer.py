@@ -67,7 +67,7 @@ class Overseer:
         self.skipped = 0
         self.visits = 0
         self.mysteries = deque()
-        self.coroutine_semaphore = Semaphore(self.count)
+        self.coroutine_semaphore = Semaphore(config.COROUTINES_LIMIT)
         self.redundant = 0
         self.all_seen = False
         self.idle_seconds = 0

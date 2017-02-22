@@ -201,6 +201,9 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 # Disable to use Python's event loop even if uvloop is installed
 #UVLOOP = True
 
+# The number of coroutines that are allowed to run simultaneously.
+#COROUTINES_LIMIT = GRID[0] * GRID[1]
+
 ### FRONTEND CONFIGURATION
 LOAD_CUSTOM_HTML_FILE = False # File path MUST be 'templates/custom.html'
 LOAD_CUSTOM_CSS_FILE = False  # File path MUST be 'static/css/custom.css'

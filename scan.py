@@ -69,7 +69,8 @@ _optional = {
     'FORCED_KILL': None,
     'SWAP_WORST': 600,
     'REFRESH_RATE': 0.6,
-    'SPEED_LIMIT': 19.5
+    'SPEED_LIMIT': 19.5,
+    'COROUTINES_LIMIT': None
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -122,6 +123,9 @@ if config.DIRECTORY is None:
 
 if config.FORCED_KILL is True:
     config.FORCED_KILL = ('0.57.2', '0.55.0', '0.53.0', '0.53.1', '0.53.2')
+
+if not config.COROUTINES_LIMIT:
+    config.COROUTINES_LIMIT = config.GRID[0] * config.GRID[1]
 
 from monocle.utils import get_address, dump_pickle
 from monocle.worker import Worker
