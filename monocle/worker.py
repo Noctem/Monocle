@@ -12,7 +12,7 @@ from aiohttp import ClientSession
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords, Units, randomize_point
-from . import config, shared
+from . import config, shared, avatar
 
 try:
     import _thread
@@ -232,43 +232,28 @@ class Worker:
         await random_sleep(.78, .95)
 
     async def set_avatar(self, tutorial=False):
-        await random_sleep(7, 14)
+        plater_avatar = avatar.new()
         request = self.api.create_request()
+        request.list_avatar_customizations(
+            avatar_type=plater_avatar['avatar'],
+            slot=tuple(),
+            filters=(2,)
+        )
+        await self.call(request, buddy=not tutorial, action=5)
+        await random_sleep(7, 14)
 
-        gender = randint(0, 1)
-        if gender == 1:
-            # female
-            shirt = randint(0, 8)
-            pants = randint(0, 5)
-            backpack = randint(0, 2)
-        else:
-            # male
-            shirt = randint(0, 3)
-            pants = randint(0, 2)
-            backpack = randint(0, 5)
-
-        request.set_avatar(player_avatar={
-                'skin': randint(0, 3),
-                'hair': randint(0, 5),
-                'shirt': shirt,
-                'pants': pants,
-                'hat': randint(0, 4),
-                'shoes': randint(0, 6),
-                'avatar': gender,
-                'eyes': randint(0, 4),
-                'backpack': backpack
-            })
-        await self.call(request, buddy=not tutorial, action=1)
+        request = self.api.create_request()
+        request.set_avatar(player_avatar=plater_avatar)
+        await self.call(request, buddy=not tutorial, action=2)
 
         if tutorial:
-            await random_sleep(.3, .5)
+            await random_sleep(.5, 4)
 
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=1)
             await self.call(request, buddy=False)
-            await random_sleep(2.5, 2.75)
-        else:
-            await random_sleep(1, 1.2)
+
+        await random_sleep(.5, 1)
 
         request = self.api.create_request()
         request.get_player_profile()
@@ -276,12 +261,11 @@ class Worker:
 
     async def app_simulation_login(self, version):
         self.log.info('Starting RPC login sequence (iOS app simulation)')
-        reset_avatar = False
 
         # empty request
         request = self.api.create_request()
         await self.call(request, chain=False)
-        await sleep(.5)
+        await random_sleep(.43, .97)
 
         # request 1: get_player
         request = self.api.create_request()
@@ -301,14 +285,10 @@ class Worker:
             self.item_capacity = player_data['max_item_storage']
             if 'created' not in self.account:
                 self.account['created'] = player_data['creation_timestamp_ms'] / 1000
-            avatar = player_data['avatar']
-            if avatar['avatar'] == 1 and avatar['backpack'] > 2:
-                self.log.warning('Invalid backpack for female, resetting avatar.')
-                reset_avatar = True
         except (KeyError, TypeError, AttributeError):
             pass
 
-        await random_sleep(.9, 1.2)
+        await random_sleep(.53, 1)
 
         # request 2: download_remote_config_version
         await self.download_remote_config(version)
@@ -316,21 +296,32 @@ class Worker:
         # request 3: get_asset_digest
         request = self.api.create_request()
         request.get_asset_digest(platform=1, app_version=version)
-        await self.call(request, buddy=False, settings=True)
+        responses = await self.call(request, buddy=False, settings=True)
 
-        await random_sleep(.9, 3.1)
+        await random_sleep(.87, 2)
 
         if (config.COMPLETE_TUTORIAL and
                 tutorial_state is not None and
                 not all(x in tutorial_state for x in (0, 1, 3, 4, 7))):
+            try:
+                asset_ids = []
+                for asset in responses['GET_ASSET_DIGEST']['digest']:
+                    if asset['bundle_name'] in ('pm0001', 'pm0004', 'pm0007'):
+                        asset_ids.append(asset['asset_id'])
+                        if len(asset_ids) == 3:
+                            break
+            except Exception:
+                asset_ids = ('1a3c2816-65fa-4b97-90eb-0b301c064b7a/1487275569649000',
+                             'aa8f7687-a022-4773-b900-3a8c170e9aea/1487275581132582',
+                             'e89109b0-9a54-40fe-8431-12f7826c8194/1487275593635524')
             self.log.warning('{} is starting tutorial', self.username)
-            await self.complete_tutorial(tutorial_state)
+            await self.complete_tutorial(tutorial_state, asset_ids)
         else:
             # request 4: get_player_profile
             request = self.api.create_request()
             request.get_player_profile()
             await self.call(request, settings=True)
-            await random_sleep(.3, .5)
+            await random_sleep(.2, .4)
 
             if self.player_level:
                 # request 5: level_up_rewards
@@ -347,14 +338,11 @@ class Worker:
             await self.call(request, action=0.1)
 
             self.log.info('Finished RPC login sequence (iOS app simulation)')
-            if reset_avatar:
-                await self.set_avatar()
-
-            await sleep(.462)
+            await random_sleep(.5, 1.3)
         self.error_code = None
         return True
 
-    async def complete_tutorial(self, tutorial_state):
+    async def complete_tutorial(self, tutorial_state, asset_ids):
         self.error_code = 'TUTORIAL'
         if 0 not in tutorial_state:
             # legal screen
@@ -362,7 +350,7 @@ class Worker:
             request.mark_tutorial_complete(tutorials_completed=[0])
             await self.call(request, buddy=False)
 
-            await random_sleep(.475, .525)
+            await random_sleep(.35, .525)
 
             request = self.api.create_request()
             request.get_player(player_locale=config.PLAYER_LOCALE)
@@ -373,56 +361,47 @@ class Worker:
             # avatar selection
             await self.set_avatar(tutorial=True)
 
-        await random_sleep(.5, .6)
-        request = self.api.create_request()
-        await self.call(request, chain=False)
-
-        await sleep(.05)
-
-        request = self.api.create_request()
-        request.register_background_device(device_type='apple_watch')
-        await self.call(request)
-
         starter_id = None
         if 3 not in tutorial_state:
             # encounter tutorial
-            await sleep(1)
+            await random_sleep(.7, .9)
             request = self.api.create_request()
-            request.get_download_urls(asset_id=['1a3c2816-65fa-4b97-90eb-0b301c064b7a/1477084786906000',
-                                                'aa8f7687-a022-4773-b900-3a8c170e9aea/1477084794890000',
-                                                'e89109b0-9a54-40fe-8431-12f7826c8194/1477084802881000'])
+            request.get_download_urls(asset_id=asset_ids)
             await self.call(request)
 
-            await random_sleep(5, 10)
+            await random_sleep(7, 10.3)
             request = self.api.create_request()
             starter = choice((1, 4, 7))
             request.encounter_tutorial_complete(pokemon_id=starter)
             await self.call(request, action=1)
 
-            await random_sleep(.4, .55)
+            await random_sleep(.4, .5)
             request = self.api.create_request()
             request.get_player(player_locale=config.PLAYER_LOCALE)
             responses = await self.call(request)
 
-            inventory = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('inventory_items', [])
-            for item in inventory:
-                pokemon = item.get('inventory_item_data', {}).get('pokemon_data')
-                if pokemon:
-                    starter_id = pokemon.get('id')
-
+            try:
+                inventory = responses['GET_INVENTORY']['inventory_delta']['inventory_items']
+                for item in inventory:
+                    pokemon = item['inventory_item_data'].get('pokemon_data')
+                    if pokemon:
+                        starter_id = pokemon['id']
+                        break
+            except (KeyError, TypeError):
+                starter_id = None
 
         if 4 not in tutorial_state:
             # name selection
-            await random_sleep(10, 16)
+            await random_sleep(12, 18)
             request = self.api.create_request()
             request.claim_codename(codename=self.username)
-            await self.call(request, action=1)
+            await self.call(request, action=2)
 
-            await random_sleep(1, 1.3)
+            await sleep(.7)
             request = self.api.create_request()
             request.get_player(player_locale=config.PLAYER_LOCALE)
             await self.call(request)
-            await sleep(.1)
+            await sleep(.13)
 
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=4)
@@ -430,16 +409,16 @@ class Worker:
 
         if 7 not in tutorial_state:
             # first time experience
-            await random_sleep(3.75, 4.5)
+            await random_sleep(3.9, 4.5)
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=7)
             await self.call(request)
 
         if starter_id:
-            await random_sleep(3, 5)
+            await random_sleep(4, 5)
             request = self.api.create_request()
             request.set_buddy_pokemon(pokemon_id=starter_id)
-            await self.call(request, action=1)
+            await self.call(request, action=2)
             await random_sleep(.8, 1.2)
 
         await sleep(.2)
