@@ -70,7 +70,8 @@ _optional = {
     'SWAP_WORST': 600,
     'REFRESH_RATE': 0.6,
     'SPEED_LIMIT': 19.5,
-    'COROUTINES_LIMIT': None
+    'COROUTINES_LIMIT': None,
+    'GOOD_ENOUGH': None
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):

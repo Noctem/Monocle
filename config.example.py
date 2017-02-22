@@ -47,6 +47,11 @@ SIMULTANEOUS_LOGINS = 4
 # Limit the number of workers simulating the app startup process simultaneously.
 SIMULTANEOUS_SIMULATION = 10
 
+# Immediately select workers whose speed are below (SPEED_UNIT)p/h instead of
+# continuing to try to find the worker with the lowest speed.
+# May increase clustering if you have a high density of workers.
+#GOOD_ENOUGH = 4
+
 ## alternatively define a Polygon to use as boundaries (requires shapely)
 ## if BOUNDARIES is set, STAY_WITHIN_MAP will be ignored
 ## more information available in the shapely manual:

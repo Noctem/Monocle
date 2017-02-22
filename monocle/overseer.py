@@ -586,19 +586,17 @@ class Overseer:
             lowest_speed = float('inf')
             for w in self.workers:
                 speed = w.travel_speed(point)
-                try:
-                    if speed < lowest_speed and speed < config.SPEED_LIMIT:
-                        if not w.busy.acquire_now():
-                            continue
-                        try:
-                            worker.busy.release()
-                        except (NameError, AttributeError, RuntimeError):
-                            pass
-                        lowest_speed = speed
-                        worker = w
-                except TypeError:
-                    pass
-
+                if speed and speed < lowest_speed and speed < config.SPEED_LIMIT:
+                    if not w.busy.acquire_now():
+                        continue
+                    try:
+                        worker.busy.release()
+                    except (NameError, AttributeError, RuntimeError):
+                        pass
+                    lowest_speed = speed
+                    worker = w
+                    if config.GOOD_ENOUGH and speed < config.GOOD_ENOUGH:
+                        break
             try:
                 worker.speed = lowest_speed
                 return worker
