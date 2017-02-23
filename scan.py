@@ -71,7 +71,8 @@ _optional = {
     'REFRESH_RATE': 0.6,
     'SPEED_LIMIT': 19.5,
     'COROUTINES_LIMIT': None,
-    'GOOD_ENOUGH': None
+    'GOOD_ENOUGH': None,
+    'SEARCH_SLEEP': 2.5
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -259,15 +260,12 @@ def main():
     overseer_thread = Thread(target=overseer.check, name='overseer', daemon=True)
     overseer_thread.start()
 
-    launcher_thread = Thread(target=overseer.launch, name='launcher', daemon=True, args=(args.bootstrap, args.pickle))
-    launcher_thread.start()
-
     try:
         while True:
             try:
-                loop.run_forever()
+                loop.run_until_complete(overseer.launch(args.bootstrap, args.pickle))
             except Exception:
-                log.exception('Caught error on run_forever, restarting loop')
+                log.exception('Caught error, restarting loop')
                 time.sleep(5)
     except KeyboardInterrupt:
         print('Exiting, please wait until all tasks finish')

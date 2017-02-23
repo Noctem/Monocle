@@ -52,6 +52,9 @@ SIMULTANEOUS_SIMULATION = 10
 # May increase clustering if you have a high density of workers.
 #GOOD_ENOUGH = 4
 
+# Seconds to sleep after failing to find an eligible worker before trying again.
+SEARCH_SLEEP = 2.5
+
 ## alternatively define a Polygon to use as boundaries (requires shapely)
 ## if BOUNDARIES is set, STAY_WITHIN_MAP will be ignored
 ## more information available in the shapely manual:

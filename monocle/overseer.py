@@ -1,10 +1,8 @@
-#!/usr/bin/env python3
-
 import asyncio
 
 from datetime import datetime
 from statistics import median
-from threading import active_count, Semaphore
+from threading import active_count
 from os import system
 from sys import platform
 from random import uniform
@@ -68,7 +66,7 @@ class Overseer:
         self.skipped = 0
         self.visits = 0
         self.mysteries = deque()
-        self.coroutine_semaphore = Semaphore(config.COROUTINES_LIMIT)
+        self.coroutine_semaphore = asyncio.Semaphore(config.COROUTINES_LIMIT)
         self.redundant = 0
         self.all_seen = False
         self.idle_seconds = 0
@@ -374,7 +372,7 @@ class Overseer:
                 break
         return closest
 
-    def launch(self, bootstrap, pickle):
+    async def launch(self, bootstrap, pickle):
         initial = True
         exceptions = 0
         while not self.killed:
@@ -384,38 +382,20 @@ class Overseer:
 
             while True:
                 try:
-                    SPAWNS.update(loadpickle=pickle)
+                    await LOOP.run_in_executor(None, SPAWNS.update, pickle)
                 except OperationalError as e:
                     self.log.exception('Operational error while trying to update spawns.')
                     if initial:
-                        _thread.interrupt_main()
                         raise OperationalError('Could not update spawns, ensure your DB is set up.') from e
-                    time.sleep(20)
+                    await asyncio.sleep(20)
                 except Exception as e:
                     self.log.exception('A wild {} appeared while updating spawns!', e.__class__.__name__)
-                    time.sleep(20)
+                    await asyncio.sleep(20)
                 else:
                     break
 
             if not SPAWNS or bootstrap:
-                bootstrap = True
-                pickle = False
-
-            if bootstrap:
                 self.bootstrap()
-
-            while len(SPAWNS) < 10 and not self.killed:
-                try:
-                    mystery_point = self.mysteries.popleft()
-                    self.coroutine_semaphore.acquire()
-                    asyncio.run_coroutine_threadsafe(
-                        self.try_point(mystery_point), loop=LOOP
-                    )
-                except IndexError:
-                    self.mysteries = SPAWNS.get_mysteries()
-                    if not self.mysteries:
-                        config.MORE_POINTS = True
-                        break
 
             current_hour = get_current_hour()
             if SPAWNS.after_last():
@@ -427,7 +407,9 @@ class Overseer:
                 if not start_point:
                     initial = False
             else:
-                dump_pickle('accounts', self.accounts)
+                asyncio.ensure_future(
+                    LOOP.run_in_executor(None, dump_pickle, 'accounts', self.accounts)
+                )
 
             for spawn_id, spawn in SPAWNS.items():
                 try:
@@ -440,7 +422,7 @@ class Overseer:
                     try:
                         if self.captcha_queue.qsize() > config.MAX_CAPTCHAS:
                             self.paused = True
-                            self.idle_seconds += self.captcha_queue.full_wait(maxsize=config.MAX_CAPTCHAS)
+                            self.idle_seconds += LOOP.run_in_executor(None, self.captcha_queue.full_wait, config.MAX_CAPTCHAS)
                             self.paused = False
                     except (EOFError, BrokenPipeError, FileNotFoundError):
                         continue
@@ -452,23 +434,20 @@ class Overseer:
                     # positive = already happened
                     time_diff = time.time() - spawn_time
 
-                    while time_diff < 0 and not self.killed:
+                    while time_diff < 0:
                         try:
                             mystery_point = self.mysteries.popleft()
 
-                            self.coroutine_semaphore.acquire()
-                            asyncio.run_coroutine_threadsafe(
+                            await self.coroutine_semaphore.acquire()
+                            asyncio.ensure_future(
                                 self.try_point(mystery_point), loop=LOOP
                             )
                         except IndexError:
                             self.mysteries = SPAWNS.get_mysteries()
-                            time_diff = time.time() - spawn_time
                             if not self.mysteries:
+                                time_diff = time.time() - spawn_time
                                 break
                         time_diff = time.time() - spawn_time
-
-                    if self.killed:
-                        return
 
                     if time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
                         self.redundant += 1
@@ -477,73 +456,59 @@ class Overseer:
                         self.skipped += 1
                         continue
 
-                    self.coroutine_semaphore.acquire()
-                    asyncio.run_coroutine_threadsafe(
+                    await self.coroutine_semaphore.acquire()
+                    asyncio.ensure_future(
                         self.try_point(point, spawn_time), loop=LOOP
                     )
                 except Exception:
                     exceptions += 1
                     if exceptions > 100:
                         self.log.exception('Over 100 errors occured in launcher loop, exiting.')
-                        _thread.interrupt_main()
+                        return False
                     else:
                         self.log.exception('Error occured in launcher loop.')
 
-    def bootstrap(self):
+    async def bootstrap(self):
         try:
-            self.bootstrap_one()
-            time.sleep(1)
-            while self.coroutine_semaphore._value < (self.count / 2) and not self.killed:
-                time.sleep(2)
+            await self.bootstrap_one()
+            await asyncio.sleep(10)
         except Exception:
             self.log.exception('An exception occurred during bootstrap phase 1.')
 
         try:
             self.log.warning('Starting bootstrap phase 2.')
-            self.bootstrap_two()
-            time.sleep(1)
+            await self.bootstrap_two()
+            await asyncio.sleep(1)
             self.log.warning('Finished bootstrapping.')
         except Exception:
             self.log.exception('An exception occurred during bootstrap phase 2.')
 
-    def bootstrap_one(self):
+    async def bootstrap_one(self):
         async def visit_release(worker, point):
-            try:
-                await worker.busy.acquire()
-                if await worker.bootstrap_visit(point):
-                    self.visits += 1
-            finally:
-                try:
-                    worker.busy.release()
-                except (NameError, AttributeError, RuntimeError):
-                    pass
-                self.coroutine_semaphore.release()
+            async with self.coroutine_semaphore:
+                async with worker.busy:
+                    if await worker.bootstrap_visit(point):
+                        self.visits += 1
 
         for worker in self.workers:
             number = worker.worker_no
             worker.bootstrap = True
             point = get_start_coords(number)
-            time.sleep(.25)
-            self.coroutine_semaphore.acquire()
-            asyncio.run_coroutine_threadsafe(visit_release(worker, point),
-                                             loop=LOOP)
+            await asyncio.sleep(.25)
+            asyncio.ensure_future(visit_release(worker, point), loop=LOOP)
 
     def bootstrap_two(self):
         async def bootstrap_try(point):
-            try:
+            async with self.coroutine_semaphore:
                 worker = await self.best_worker(point, must_visit=True)
-                if await worker.bootstrap_visit(point):
-                    self.visits += 1
-            finally:
                 try:
+                    if await worker.bootstrap_visit(point):
+                        self.visits += 1
+                finally:
                     worker.busy.release()
-                except (NameError, AttributeError, RuntimeError):
-                    pass
-                self.coroutine_semaphore.release()
 
         for point in get_bootstrap_points():
-            self.coroutine_semaphore.acquire()
-            asyncio.run_coroutine_threadsafe(bootstrap_try(point), loop=LOOP)
+            asyncio.ensure_future(bootstrap_try(point), loop=LOOP)
 
     async def try_point(self, point, spawn_time=None):
         try:
@@ -608,8 +573,7 @@ class Overseer:
                         return None
                 except TypeError:
                     pass
-                await asyncio.sleep(2)
-                worker = None
+                await asyncio.sleep(config.SEARCH_SLEEP)
 
     def kill(self):
         self.killed = True

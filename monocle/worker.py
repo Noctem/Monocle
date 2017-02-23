@@ -594,8 +594,6 @@ class Worker:
         if self.busy.locked():
             return None
         time_diff = max(time() - self.last_request, config.SCAN_DELAY)
-        if time_diff > 60:
-            self.error_code = None
         distance = get_distance(self.location, point, _UNIT)
         # conversion from seconds to hours
         speed = (distance / time_diff) * 3600
@@ -870,6 +868,7 @@ class Worker:
         )
 
         self.update_accounts_dict(auth=False)
+        LOOP.call_later(60, self.unset_code)
         return pokemon_seen + forts_seen + points_seen
 
     def smart_throttle(self, requests=1):
@@ -1210,6 +1209,8 @@ class Worker:
         if self.authenticated:
             self.update_accounts_dict()
 
+    def unset_code(self):
+        self.error_code = None
 
     @staticmethod
     def normalize_pokemon(raw):
