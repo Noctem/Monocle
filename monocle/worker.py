@@ -591,8 +591,6 @@ class Worker:
 
     def travel_speed(self, point):
         '''Fast calculation of travel speed to point'''
-        if self.busy.locked():
-            return None
         time_diff = max(time() - self.last_request, config.SCAN_DELAY)
         distance = get_distance(self.location, point, _UNIT)
         # conversion from seconds to hours

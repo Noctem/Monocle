@@ -7,6 +7,7 @@ from os import system
 from sys import platform
 from random import uniform
 from collections import deque
+
 from pogo_async.hash_server import HashServer
 from sqlalchemy.exc import OperationalError
 
@@ -501,11 +502,9 @@ class Overseer:
         async def bootstrap_try(point):
             async with self.coroutine_semaphore:
                 worker = await self.best_worker(point, must_visit=True)
-                try:
+                async with worker.busy:
                     if await worker.bootstrap_visit(point):
                         self.visits += 1
-                finally:
-                    worker.busy.release()
 
         for point in get_bootstrap_points():
             asyncio.ensure_future(bootstrap_try(point), loop=LOOP)
@@ -514,14 +513,13 @@ class Overseer:
         try:
             point = randomize_point(point)
             worker = await self.best_worker(point, spawn_time)
-
             if not worker:
                 if spawn_time:
                     self.skipped += 1
                 else:
                     self.mysteries.append(point)
                 return
-            try:
+            async with worker.busy:
                 if spawn_time:
                     time_diff = spawn_time - time.time() + 1
                     if time_diff > 0:
@@ -530,11 +528,6 @@ class Overseer:
 
                 if await worker.visit(point):
                     self.visits += 1
-            finally:
-                try:
-                    worker.busy.release()
-                except RuntimeError:
-                    pass
         except Exception:
             self.log.exception('An exception occurred in try_point')
         finally:
@@ -551,29 +544,20 @@ class Overseer:
         while True:
             speed = None
             lowest_speed = float('inf')
-            for w in self.workers:
+            for w in (x for x in self.workers if not x.busy.locked()):
                 speed = w.travel_speed(point)
-                if speed and speed < lowest_speed and speed < config.SPEED_LIMIT:
-                    if not w.busy.acquire_now():
-                        continue
-                    try:
-                        worker.busy.release()
-                    except (NameError, AttributeError, RuntimeError):
-                        pass
+                if speed < lowest_speed:
                     lowest_speed = speed
                     worker = w
                     if config.GOOD_ENOUGH and speed < config.GOOD_ENOUGH:
                         break
-            try:
+            if lowest_speed < config.SPEED_LIMIT:
                 worker.speed = lowest_speed
                 return worker
-            except (NameError, AttributeError):
-                try:
-                    if self.killed or time.monotonic() > skip_time:
-                        return None
-                except TypeError:
-                    pass
-                await asyncio.sleep(config.SEARCH_SLEEP)
+            if time.monotonic() > skip_time:
+                return None
+            worker = None
+            await asyncio.sleep(config.SEARCH_SLEEP)
 
     def kill(self):
         self.killed = True
