@@ -438,7 +438,6 @@ class Notification:
         try:
             try:
                 channel = pb.channels[config.PB_CHANNEL]
-                print(channel)
             except (IndexError, KeyError):
                 channel = None
             await pb.async_push_link(title, self.map_link, body, channel=channel)

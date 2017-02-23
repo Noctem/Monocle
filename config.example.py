@@ -132,6 +132,8 @@ SWAP_WORST = 600  # 10 minutes
 
 # Update the console output every x seconds
 REFRESH_RATE = 0.6  # 600ms
+# Update the seen/speed/visit/speed stats every x seconds
+STAT_REFRESH = 5
 
 # sent with GET_PLAYER requests, should match your region
 PLAYER_LOCALE = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'}

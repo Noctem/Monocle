@@ -92,7 +92,7 @@ class Overseer:
         self.workers = tuple(Worker(worker_no=x) for x in range(self.count))
         DB_PROC.start()
 
-    def check(self):
+    async def check(self):
         now = time.monotonic()
         last_commit = now
         last_things_found_updated = now
@@ -109,7 +109,7 @@ class Overseer:
                     if not self.extra_queue.empty():
                         worst, per_minute = self.least_productive()
                         if worst:
-                            asyncio.run_coroutine_threadsafe(
+                            asyncio.ensure_future(
                                 worst.swap_account(
                                     reason='only {:.1f} seen per minute'.format(per_minute),
                                     lock=True),
@@ -117,7 +117,7 @@ class Overseer:
                             )
                     last_swap = now
                 # Record things found count
-                if not self.paused and now - last_stats_updated > 5:
+                if not self.paused and now - last_stats_updated > config.STAT_REFRESH:
                     self.seen_stats, self.visit_stats, self.delay_stats, self.speed_stats = self.get_visit_stats()
                     self.update_coroutines_count()
                     last_stats_updated = now
@@ -133,9 +133,9 @@ class Overseer:
                     print(self.get_status_message())
 
                 if self.paused:
-                    time.sleep(max(15, config.REFRESH_RATE))
+                    await asyncio.sleep(max(15, config.REFRESH_RATE))
                 else:
-                    time.sleep(config.REFRESH_RATE)
+                    await asyncio.sleep(config.REFRESH_RATE)
             except Exception as e:
                 self.log.exception('A wild {} appeared in check!', e.__class__.__name__)
         # OK, now we're killed
@@ -156,7 +156,7 @@ class Overseer:
                         c=self.coroutines_count, d=pending),
                     end='\r'
                 )
-                time.sleep(.5)
+                await asyncio.sleep(.5)
         except Exception as e:
             self.log.exception('A wild {} appeared during exit!', e.__class__.__name__)
         finally:

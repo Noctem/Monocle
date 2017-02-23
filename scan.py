@@ -72,7 +72,8 @@ _optional = {
     'SPEED_LIMIT': 19.5,
     'COROUTINES_LIMIT': None,
     'GOOD_ENOUGH': None,
-    'SEARCH_SLEEP': 2.5
+    'SEARCH_SLEEP': 2.5,
+    'STAT_REFRESH': 5
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -257,8 +258,7 @@ def main():
 
     overseer = Overseer(status_bar=args.status_bar, manager=manager)
     overseer.start()
-    overseer_thread = Thread(target=overseer.check, name='overseer', daemon=True)
-    overseer_thread.start()
+    asyncio.ensure_future(overseer.check())
 
     try:
         while True:
