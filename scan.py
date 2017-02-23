@@ -16,13 +16,14 @@ except ImportError:
 from multiprocessing.managers import BaseManager, DictProxy
 from queue import Queue, Full
 from argparse import ArgumentParser
-from signal import signal, SIGINT, SIG_IGN
+from signal import signal, SIGINT, SIGTERM, SIG_IGN
 from logging import getLogger, basicConfig, WARNING, INFO
-from pogo_async import close_sessions
 from os.path import exists, join
-from threading import Thread
 from sys import platform
+from concurrent.futures import TimeoutError
+
 from sqlalchemy.exc import DBAPIError
+from pogo_async import close_sessions
 
 import time
 
@@ -130,11 +131,14 @@ if config.FORCED_KILL is True:
 if not config.COROUTINES_LIMIT:
     config.COROUTINES_LIMIT = config.GRID[0] * config.GRID[1]
 
+from monocle.shared import LOOP, get_logger, SessionManager
 from monocle.utils import get_address, dump_pickle
 from monocle.worker import Worker
 from monocle.overseer import Overseer
-from monocle.shared import get_logger, SessionManager
 from monocle.db_proc import DB_PROC
+from monocle.db import FORT_CACHE
+from monocle.spawns import SPAWNS
+
 
 class AccountManager(BaseManager):
     pass
@@ -227,6 +231,52 @@ def exception_handler(loop, context):
         print('Exception in exception handler.')
 
 
+def cleanup(overseer, manager, checker):
+    try:
+        checker.cancel()
+        print('Exiting, please wait until all tasks finish')
+
+        log = get_logger('cleanup')
+        print('Finishing tasks...')
+        pending = asyncio.Task.all_tasks(loop=LOOP)
+        gathered = asyncio.gather(*pending, return_exceptions=True)
+        try:
+            LOOP.run_until_complete(asyncio.wait_for(gathered, 30))
+        except TimeoutError as e:
+            print('Coroutine completion timed out, moving on.')
+        except Exception as e:
+            log = get_logger('cleanup')
+            log.exception('A wild {} appeared during exit!', e.__class__.__name__)
+
+        overseer.refresh_dict()
+
+        print('Dumping pickles...')
+        dump_pickle('accounts', Worker.accounts)
+        FORT_CACHE.pickle()
+        if config.CACHE_CELLS:
+            dump_pickle('cells', Worker.cell_ids)
+
+        DB_PROC.stop()
+        print("Updating spawns pickle...")
+        try:
+            SPAWNS.update()
+        except Exception as e:
+            log.warning('A wild {} appeared while updating spawns during exit!', e.__class__.__name__)
+        while not DB_PROC.queue.empty():
+            pending = DB_PROC.queue.qsize()
+            # Spaces at the end are important, as they clear previously printed
+            # output - \r doesn't clean whole line
+            print('{} DB items pending     '.format(pending), end='\r')
+            time.sleep(.5)
+    finally:
+        print('Closing pipes, sessions, and event loop...')
+        manager.shutdown()
+        SessionManager.close()
+        close_sessions()
+        LOOP.close()
+        print('Done.')
+
+
 def main():
     args = parse_args()
     log = get_logger()
@@ -253,49 +303,20 @@ def main():
         else:
             raise OSError('Another instance is running with the same socket. Stop that process or: rm {}'.format(address)) from e
 
-    loop = asyncio.get_event_loop()
-    loop.set_exception_handler(exception_handler)
+    LOOP.set_exception_handler(exception_handler)
 
     overseer = Overseer(status_bar=args.status_bar, manager=manager)
     overseer.start()
-    asyncio.ensure_future(overseer.check())
-
+    checker = asyncio.ensure_future(overseer.check())
+    launcher = asyncio.ensure_future(overseer.launch(args.bootstrap, args.pickle))
+    LOOP.add_signal_handler(SIGINT, launcher.cancel)
+    LOOP.add_signal_handler(SIGTERM, launcher.cancel)
     try:
-        while True:
-            try:
-                loop.run_until_complete(overseer.launch(args.bootstrap, args.pickle))
-            except Exception:
-                log.exception('Caught error, restarting loop')
-                time.sleep(5)
+        LOOP.run_until_complete(launcher)
     except KeyboardInterrupt:
-        print('Exiting, please wait until all tasks finish')
-        overseer.kill()
-
-        dump_pickle('accounts', Worker.accounts)
-        if config.CACHE_CELLS:
-            dump_pickle('cells', Worker.cell_ids)
-
-        pending = asyncio.Task.all_tasks(loop=loop)
-        try:
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        except Exception as e:
-            log.exception('A wild {} appeared during exit!', e.__class__.__name__)
-
-        DB_PROC.stop()
-
-        try:
-            SPAWNS.update()
-        except Exception:
-            pass
+        pass
     finally:
-        manager.shutdown()
-        SessionManager.close()
-        close_sessions()
-
-        try:
-            loop.close()
-        except RuntimeError:
-            pass
+        cleanup(overseer, manager, checker)
 
 
 if __name__ == '__main__':

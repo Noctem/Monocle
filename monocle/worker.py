@@ -115,8 +115,7 @@ class Worker:
             self.new_proxy(set_api=False)
         self.initialize_api()
         # State variables
-        self.busy = BusyLock()
-        self.killed = False
+        self.busy = Lock()
         # Other variables
         self.after_spawn = None
         self.speed = 0
@@ -205,9 +204,6 @@ class Worker:
         self.error_code = '°'
         version = 5702
         async with self.sim_semaphore:
-            if self.killed:
-                return False
-
             self.error_code = 'APP SIMULATION'
             if config.APP_SIMULATION:
                 await self.app_simulation_login(version)
@@ -488,11 +484,18 @@ class Worker:
         for attempt in range(-1, config.MAX_RETRIES):
             try:
                 response = await request.call()
-                if response:
+                try:
+                    responses = response['responses']
+                except KeyError:
+                    if chain:
+                        raise ex.MalformedResponseException('no responses')
+                    else:
+                        self.last_request = time()
+                        return response
+                else:
+                    self.last_request = time()
                     err = None
                     break
-                else:
-                    raise ex.MalformedResponseException('empty response')
             except (ex.NotLoggedInException, ex.AuthException) as e:
                 self.log.info('Auth error on {}: {}', self.username, e)
                 err = e
@@ -531,9 +534,18 @@ class Worker:
                 else:
                     await sleep(30)
             except ex.NianticThrottlingException as e:
+                old_time = self.last_request
+                self.last_request = time()
                 if err != e:
                     err = e
-                    self.log.warning('{}', e)
+                    message = repr(e)
+                    if 'GetMapObjects' in message:
+                        message = '{} {:.2f} seconds since last GMO.'.format(
+                            message, self.last_request - self.last_gmo)
+                    else:
+                        message = '{} {:.2f} seconds since last request.'.format(
+                            message, self.last_request - old_time)
+                    self.log.warning(message)
                 self.error_code = 'THROTTLE'
                 await random_sleep(11, 22, 12)
             except ex.ProxyException as e:
@@ -551,6 +563,7 @@ class Worker:
                         self.log.error('{}', e)
                     await sleep(5)
             except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
+                self.last_request = time()
                 if err != e:
                     self.log.warning('{}', e)
                 self.error_code = 'MALFORMED RESPONSE'
@@ -558,32 +571,38 @@ class Worker:
         if err is not None:
             raise err
 
-        self.last_request = time()
         if action:
             # pad for time that action would require
             self.last_action = self.last_request + action
 
-        responses = response.get('responses')
-        if chain:
+        try:
+            delta = responses['GET_INVENTORY']['inventory_delta']
+            self.inventory_timestamp = delta['new_timestamp_ms']
+        except KeyError:
+            pass
+        else:
             try:
-                if (settings and config.FORCED_KILL and
-                        responses['DOWNLOAD_SETTINGS']['settings']['minimum_client_version'] not in config.FORCED_KILL):
-                    err = 'A new version is being forced, exiting.'
-                    self.log.error(err)
-                    print(err)
-                    _thread.interrupt_main()
-                    self.kill()
+                self.update_inventory(delta['inventory_items'])
             except KeyError:
                 pass
-            delta = responses.get('GET_INVENTORY', {}).get('inventory_delta', {})
-            timestamp = delta.get('new_timestamp_ms')
-            inventory_items = delta.get('inventory_items', [])
-            if inventory_items:
-                self.update_inventory(inventory_items)
-            self.inventory_timestamp = timestamp or self.inventory_timestamp
-            d_hash = responses.get('DOWNLOAD_SETTINGS', {}).get('hash')
-            self.download_hash = d_hash or self.download_hash
-            if self.check_captcha(responses):
+        if settings:
+            try:
+                dl_settings = responses['DOWNLOAD_SETTINGS']
+                self.download_hash = dl_settings['hash']
+            except KeyError:
+                self.log.info('Missing DOWNLOAD_SETTINGS response.')
+            else:
+                try:
+                    if (not dl_hash
+                            and config.FORCED_KILL
+                            and dl_settings['settings']['minimum_client_version'] not in config.FORCED_KILL):
+                        err = 'A new version is being forced, exiting.'
+                        self.log.error(err)
+                        print(err)
+                        _thread.interrupt_main()
+                except KeyError:
+                    pass
+        if self.check_captcha(responses):
                 self.log.warning('{} has encountered a CAPTCHA, trying to solve', self.username)
                 self.g['captchas'] += 1
                 await self.handle_captcha(responses)
@@ -598,7 +617,7 @@ class Worker:
         return speed
 
     async def bootstrap_visit(self, point):
-        for _ in range(0,3):
+        for _ in range(3):
             if await self.visit(point, bootstrap=True):
                 return True
             self.error_code = '∞'
@@ -675,7 +694,6 @@ class Worker:
                 await random_sleep(minimum=12, maximum=20)
             else:
                 self.log.error('IP banned.')
-                self.kill()
         except ex.ServerBusyOrOfflineException as e:
             self.log.warning('{} Giving up.', e)
         except ex.NianticThrottlingException as e:
@@ -686,7 +704,12 @@ class Worker:
             self.log.error(err)
             print(err)
             _thread.interrupt_main()
-            self.kill()
+        except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
+            self.log.warning('{} Giving up.', e)
+            self.error_code = 'MALFORMED RESPONSE'
+        except EmptyGMOException:
+            self.error_code = '0'
+            self.log.warning('Empty GMO response.')
         except ex.HashServerException as e:
             self.log.warning('{}', e)
             self.error_code = 'HASHING ERROR'
@@ -728,9 +751,9 @@ class Worker:
 
         diff = self.last_gmo + config.SCAN_DELAY - time()
         if diff > 0:
-            await sleep(diff + .1)
+            await sleep(diff)
         responses = await self.call(request)
-        self.last_gmo = time()
+        self.last_gmo = self.last_request
 
         try:
             map_objects = responses['GET_MAP_OBJECTS']
@@ -739,15 +762,14 @@ class Worker:
             if map_status == 3:
                 raise ex.BannedAccountException('GMO code 3')
             elif map_status != 1:
-                error = 'GetMapObjects code: {}'.format(map_status)
-                self.log.warning(error)
+                error = 'GetMapObjects code for {}. Speed: {:.2f}'.format(self.username, self.speed)
                 self.empty_visits += 1
                 if self.empty_visits > 3:
                     reason = '{} empty visits'.format(self.empty_visits)
                     await self.swap_account(reason)
                 raise ex.UnexpectedResponseException(error)
         except KeyError:
-            raise ex.UnexpectedResponseException('Bad MapObjects response.')
+            raise ex.UnexpectedResponseException('Missing GetMapObjects response.')
 
         pokemon_seen = 0
         forts_seen = 0
@@ -757,8 +779,8 @@ class Worker:
             try:
                 time_of_day = map_objects['time_of_day']
             except KeyError:
-                self.log.warning('No day/night in response, defaulting to day.')
-                time_of_day = 0
+                self.empty_visits += 1
+                raise EmptyGMOException('Empty GetMapObjects response for {}. Speed: {:.2f}'.format(self.username, self.speed))
 
         if config.ITEM_LIMITS and self.bag_full():
             await self.clean_bag()
@@ -828,9 +850,6 @@ class Worker:
                 and len(self.eggs) > 0 and self.smart_throttle()):
             await self.incubate_eggs()
 
-        if spinning:
-            await spinning
-
         if pokemon_seen > 0:
             self.error_code = ':'
             self.total_seen += pokemon_seen
@@ -841,6 +860,7 @@ class Worker:
         else:
             self.empty_visits += 1
             if forts_seen == 0:
+                self.log.warning('Nothing seen by {}. Speed: {:.2f}', self.username, self.speed)
                 self.error_code = '0 SEEN'
             else:
                 self.error_code = ','
@@ -865,7 +885,10 @@ class Worker:
             forts_seen,
         )
 
-        self.update_accounts_dict(auth=False)
+        if spinning:
+            await spinning
+
+        self.update_accounts_dict()
         LOOP.call_later(60, self.unset_code)
         return pokemon_seen + forts_seen + points_seen
 
@@ -1108,23 +1131,20 @@ class Worker:
         self.altitude = uniform(self.altitude - 1, self.altitude + 1)
         self.api.set_position(*self.location, self.altitude)
 
-    def update_accounts_dict(self, captcha=False, banned=False, auth=True):
+    def update_accounts_dict(self, captcha=False, banned=False):
         self.account['captcha'] = captcha
         self.account['banned'] = banned
         self.account['location'] = self.location
         self.account['time'] = self.last_request
         self.account['inventory_timestamp'] = self.inventory_timestamp
         self.account['items'] = self.items
-        self.account['level'] = self.player_level
+        if self.player_level:
+            self.account['level'] = self.player_level
 
         try:
-            if auth:
-                self.account['refresh'] = self.api._auth_provider._refresh_token
-                if self.api._auth_provider.check_access_token():
-                    self.account['auth'] = self.api._auth_provider._access_token
-                    self.account['expiry'] = self.api._auth_provider._access_token_expiry
-                else:
-                    self.account['auth'] = self.account['expiry'] = None
+            self.account['refresh'] = self.api._auth_provider._refresh_token
+            self.account['auth'] = self.api._auth_provider._access_token
+            self.account['expiry'] = self.api._auth_provider._access_token_expiry
         except AttributeError:
             pass
 
@@ -1149,26 +1169,15 @@ class Worker:
         if lock:
             await self.busy.acquire()
         self.update_accounts_dict()
-        while self.extra_queue.empty():
-            if self.killed:
-                return False
-            await sleep(15)
         self.extra_queue.put(self.account)
         await self.new_account(lock)
 
     async def new_account(self, lock=False):
         captcha = False
-        while self.extra_queue.empty():
-            if config.CAPTCHA_KEY and not self.captcha_queue.empty():
-                captcha = True
-                break
-            if self.killed:
-                return False
-            await sleep(15)
-        if captcha:
+        if config.CAPTCHA_KEY and self.extra_queue.empty() and not self.captcha_queue.empty():
             self.account = self.captcha_queue.get()
         else:
-            self.account = self.extra_queue.get()
+            self.account = await LOOP.run_in_executor(None, self.extra_queue.get)
         self.username = self.account['username']
         try:
             self.location = self.account['location'][:2]
@@ -1196,16 +1205,6 @@ class Worker:
             return self.account_seen / seconds_active
         except TypeError:
             return None
-
-    def kill(self):
-        """Marks worker as killed
-
-        Killed worker won't be restarted.
-        """
-        self.error_code = 'KILLED'
-        self.killed = True
-        if self.authenticated:
-            self.update_accounts_dict()
 
     def unset_code(self):
         self.error_code = None
@@ -1281,15 +1280,15 @@ class Worker:
 
     @staticmethod
     def check_captcha(responses):
-        challenge_url = responses.get('CHECK_CHALLENGE', {}).get('challenge_url', ' ')
-        verify = responses.get('VERIFY_CHALLENGE', {})
-        success = verify.get('success')
-        if challenge_url != ' ' and not success:
-            if config.CAPTCHA_KEY and not verify:
-                return True
-            else:
-                raise CaptchaException
+        try:
+            challenge_url = responses['CHECK_CHALLENGE']['challenge_url']
+        except KeyError:
+            return False
         else:
+            if challenge_url != ' ':
+                if config.CAPTCHA_KEY:
+                    return True
+                raise CaptchaException
             return False
 
     @property
@@ -1314,16 +1313,13 @@ class Worker:
             return False
 
 
-class BusyLock(Lock):
-    def acquire_now(self):
-        if not self._locked and all(w.cancelled() for w in self._waiters):
-            self._locked = True
-            return True
-        else:
-            return False
+class EmptyGMOException(Exception):
+    """Raised when the GMO response is empty."""
+
 
 class CaptchaException(Exception):
     """Raised when a CAPTCHA is needed."""
+
 
 class CaptchaSolveException(Exception):
     """Raised when solving a CAPTCHA has failed."""

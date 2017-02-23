@@ -42,8 +42,6 @@ class DatabaseProcessor(Thread):
                     db.add_pokestop(session, item)
                 elif item['type'] == 'mystery-update':
                     db.update_mystery(session, item)
-                elif item['type'] == 'kill':
-                    break
                 self.log.debug('Item saved to db')
                 if self._commit:
                     session.commit()
@@ -51,7 +49,10 @@ class DatabaseProcessor(Thread):
             except Exception as e:
                 session.rollback()
                 self.log.exception('A wild {} appeared in the DB processor!', e.__class__.__name__)
-
+        try:
+            session.commit()
+        except Exception:
+            pass
         session.close()
 
     def commit(self):

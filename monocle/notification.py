@@ -371,7 +371,7 @@ class Notification:
         except AttributeError:
             pass
 
-        params = {
+        payload = {
             'chat_id': config.TELEGRAM_CHAT_ID,
             'latitude': self.coordinates[0],
             'longitude': self.coordinates[1],
@@ -380,7 +380,7 @@ class Notification:
         }
 
         try:
-            async with session.get(TELEGRAM_BASE_URL, params=params) as resp:
+            async with session.post(TELEGRAM_BASE_URL, data=payload) as resp:
                 resp.raise_for_status()
                 self.log.info('Sent a Telegram notification about {}.', self.name)
         except HttpProcessingError as e:

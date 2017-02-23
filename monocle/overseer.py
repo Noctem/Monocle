@@ -7,6 +7,7 @@ from os import system
 from sys import platform
 from random import uniform
 from collections import deque
+from concurrent.futures import CancelledError
 
 from pogo_async.hash_server import HashServer
 from sqlalchemy.exc import OperationalError
@@ -18,7 +19,7 @@ try:
 except ImportError:
     import _dummy_thread as _thread
 
-from .db import SIGHTING_CACHE, MYSTERY_CACHE, FORT_CACHE
+from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point
 from .shared import get_logger, LOOP
 from .db_proc import DB_PROC
@@ -62,7 +63,6 @@ class Overseer:
         self.status_bar = status_bar
         self.things_count = []
         self.paused = False
-        self.killed = False
         self.coroutines_count = 0
         self.skipped = 0
         self.visits = 0
@@ -100,7 +100,7 @@ class Overseer:
         last_swap = now
         last_stats_updated = 0
 
-        while not self.killed:
+        while True:
             try:
                 now = time.monotonic()
                 if now - last_commit > 5:
@@ -137,32 +137,10 @@ class Overseer:
                     await asyncio.sleep(max(15, config.REFRESH_RATE))
                 else:
                     await asyncio.sleep(config.REFRESH_RATE)
+            except CancelledError:
+                return
             except Exception as e:
                 self.log.exception('A wild {} appeared in check!', e.__class__.__name__)
-        # OK, now we're killed
-        try:
-            while (self.coroutines_count > 0 or
-                       self.coroutines_count == '?' or
-                       not DB_PROC.queue.empty()):
-                try:
-                    self.coroutines_count = sum(not t.done()
-                                            for t in asyncio.Task.all_tasks(LOOP))
-                except RuntimeError:
-                    self.coroutines_count = 0
-                pending = DB_PROC.queue.qsize()
-                # Spaces at the end are important, as they clear previously printed
-                # output - \r doesn't clean whole line
-                print(
-                    '{c} coroutines active, {d} DB items pending   '.format(
-                        c=self.coroutines_count, d=pending),
-                    end='\r'
-                )
-                await asyncio.sleep(.5)
-        except Exception as e:
-            self.log.exception('A wild {} appeared during exit!', e.__class__.__name__)
-        finally:
-            DB_PROC.queue.put({'type': 'kill'})
-            print('Done.                                          ')
 
     @staticmethod
     def generate_stats(somelist):
@@ -374,9 +352,22 @@ class Overseer:
         return closest
 
     async def launch(self, bootstrap, pickle):
+        try:
+            await self._launch(bootstrap, pickle)
+        except CancelledError:
+            return
+        except Exception:
+            exceptions += 1
+            if exceptions > 100:
+                self.log.exception('Over 100 errors occured in launcher loop, exiting.')
+                return False
+            else:
+                self.log.exception('Error occured in launcher loop.')
+
+    async def _launch(self, bootstrap, pickle):
         initial = True
         exceptions = 0
-        while not self.killed:
+        while True:
             if not initial:
                 pickle = False
                 bootstrap = False
@@ -413,61 +404,53 @@ class Overseer:
                 )
 
             for spawn_id, spawn in SPAWNS.items():
-                try:
-                    if initial:
-                        if spawn_id == start_point:
-                            initial = False
-                        else:
-                            continue
-
-                    try:
-                        if self.captcha_queue.qsize() > config.MAX_CAPTCHAS:
-                            self.paused = True
-                            self.idle_seconds += LOOP.run_in_executor(None, self.captcha_queue.full_wait, config.MAX_CAPTCHAS)
-                            self.paused = False
-                    except (EOFError, BrokenPipeError, FileNotFoundError):
+                if initial:
+                    if spawn_id == start_point:
+                        initial = False
+                    else:
                         continue
 
-                    point = spawn[0]
-                    spawn_time = spawn[1] + current_hour
+                try:
+                    if self.captcha_queue.qsize() > config.MAX_CAPTCHAS:
+                        self.paused = True
+                        self.idle_seconds += LOOP.run_in_executor(None, self.captcha_queue.full_wait, config.MAX_CAPTCHAS)
+                        self.paused = False
+                except (EOFError, BrokenPipeError, FileNotFoundError):
+                    continue
 
-                    # negative = hasn't happened yet
-                    # positive = already happened
+                point = spawn[0]
+                spawn_time = spawn[1] + current_hour
+
+                # negative = hasn't happened yet
+                # positive = already happened
+                time_diff = time.time() - spawn_time
+
+                while time_diff < 0:
+                    try:
+                        mystery_point = self.mysteries.popleft()
+
+                        await self.coroutine_semaphore.acquire()
+                        asyncio.ensure_future(
+                            self.try_point(mystery_point), loop=LOOP
+                        )
+                    except IndexError:
+                        self.mysteries = SPAWNS.get_mysteries()
+                        if not self.mysteries:
+                            time_diff = time.time() - spawn_time
+                            break
                     time_diff = time.time() - spawn_time
 
-                    while time_diff < 0:
-                        try:
-                            mystery_point = self.mysteries.popleft()
+                if time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
+                    self.redundant += 1
+                    continue
+                elif time_diff > config.SKIP_SPAWN:
+                    self.skipped += 1
+                    continue
 
-                            await self.coroutine_semaphore.acquire()
-                            asyncio.ensure_future(
-                                self.try_point(mystery_point), loop=LOOP
-                            )
-                        except IndexError:
-                            self.mysteries = SPAWNS.get_mysteries()
-                            if not self.mysteries:
-                                time_diff = time.time() - spawn_time
-                                break
-                        time_diff = time.time() - spawn_time
-
-                    if time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
-                        self.redundant += 1
-                        continue
-                    elif time_diff > config.SKIP_SPAWN:
-                        self.skipped += 1
-                        continue
-
-                    await self.coroutine_semaphore.acquire()
-                    asyncio.ensure_future(
-                        self.try_point(point, spawn_time), loop=LOOP
-                    )
-                except Exception:
-                    exceptions += 1
-                    if exceptions > 100:
-                        self.log.exception('Over 100 errors occured in launcher loop, exiting.')
-                        return False
-                    else:
-                        self.log.exception('Error occured in launcher loop.')
+                await self.coroutine_semaphore.acquire()
+                asyncio.ensure_future(
+                    self.try_point(point, spawn_time), loop=LOOP
+                )
 
     async def bootstrap(self):
         try:
@@ -528,6 +511,8 @@ class Overseer:
 
                 if await worker.visit(point):
                     self.visits += 1
+        except CancelledError:
+            return
         except Exception:
             self.log.exception('An exception occurred in try_point')
         finally:
@@ -559,15 +544,8 @@ class Overseer:
             worker = None
             await asyncio.sleep(config.SEARCH_SLEEP)
 
-    def kill(self):
-        self.killed = True
-        print('Killing workers.')
-        for worker in self.workers:
-            worker.kill()
-
-        FORT_CACHE.pickle()
-
+    def refresh_dict(self):
         while not self.extra_queue.empty():
             account = self.extra_queue.get()
-            username = account.get('username')
+            username = account['username']
             self.accounts[username] = account
