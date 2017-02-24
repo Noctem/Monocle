@@ -309,12 +309,13 @@ def main():
     overseer.start()
     checker = asyncio.ensure_future(overseer.check())
     launcher = asyncio.ensure_future(overseer.launch(args.bootstrap, args.pickle))
-    LOOP.add_signal_handler(SIGINT, launcher.cancel)
-    LOOP.add_signal_handler(SIGTERM, launcher.cancel)
+    if platform != 'win32':
+        LOOP.add_signal_handler(SIGINT, launcher.cancel)
+        LOOP.add_signal_handler(SIGTERM, launcher.cancel)
     try:
         LOOP.run_until_complete(launcher)
     except KeyboardInterrupt:
-        pass
+        launcher.cancel()
     finally:
         cleanup(overseer, manager, checker)
 
