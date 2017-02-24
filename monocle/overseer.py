@@ -465,8 +465,7 @@ class Overseer:
 
         try:
             self.log.warning('Starting bootstrap phase 2.')
-            self.bootstrap_two()
-            await asyncio.sleep(1)
+            await self.bootstrap_two()
             self.log.warning('Finished bootstrapping.')
         except CancelledError:
             raise
@@ -487,7 +486,7 @@ class Overseer:
             await asyncio.sleep(.25)
             asyncio.ensure_future(visit_release(worker, point), loop=LOOP)
 
-    def bootstrap_two(self):
+    async def bootstrap_two(self):
         async def bootstrap_try(point):
             async with self.coroutine_semaphore:
                 worker = await self.best_worker(point, must_visit=True)
@@ -495,8 +494,8 @@ class Overseer:
                     if await worker.bootstrap_visit(point):
                         self.visits += 1
 
-        for point in get_bootstrap_points():
-            asyncio.ensure_future(bootstrap_try(point), loop=LOOP)
+        tasks = (bootstrap_try(x) for x in get_bootstrap_points())
+        await asyncio.gather(*tasks, loop=LOOP)
 
     async def try_point(self, point, spawn_time=None):
         try:
