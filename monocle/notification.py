@@ -53,9 +53,13 @@ if config.NOTIFY:
     if all((config.TWITTER_CONSUMER_KEY, config.TWITTER_CONSUMER_SECRET,
             config.TWITTER_ACCESS_KEY, config.TWITTER_ACCESS_SECRET)):
         try:
+            import peony.utils
+            def _get_image_metadata(file_):
+                return 'image/png', 'tweet_image', True, file_
+            peony.utils.get_image_metadata = _get_image_metadata
             from peony import PeonyClient
         except ImportError as e:
-            raise ImportError("You specified a TWITTER_ACCESS_KEY but you don't have PeonyClient installed.") from e
+            raise ImportError("You specified a TWITTER_ACCESS_KEY but you don't have peony-twitter installed.") from e
         TWITTER=True
 
         if config.TWEET_IMAGES:
