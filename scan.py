@@ -74,7 +74,8 @@ _optional = {
     'COROUTINES_LIMIT': None,
     'GOOD_ENOUGH': None,
     'SEARCH_SLEEP': 2.5,
-    'STAT_REFRESH': 5
+    'STAT_REFRESH': 5,
+    'FAVOR_CAPTCHA': True
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):

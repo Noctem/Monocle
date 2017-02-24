@@ -174,6 +174,8 @@ REPORT_MAPS = True  # Show maps on reports
 #CAPTCHA_KEY = '1abc234de56fab7c89012d34e56fa7b8'
 ## the number of CAPTCHAs an account is allowed to receive before being swapped out
 #CAPTCHAS_ALLOWED = 3
+## Get new accounts from the CAPTCHA queue first if it's not empty
+#FAVOR_CAPTCHA = True
 
 MAP_WORKERS = True  # allow displaying the live location of workers on the map
 

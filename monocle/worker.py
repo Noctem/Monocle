@@ -1173,8 +1173,9 @@ class Worker:
         await self.new_account(lock)
 
     async def new_account(self, lock=False):
-        captcha = False
-        if config.CAPTCHA_KEY and self.extra_queue.empty() and not self.captcha_queue.empty():
+        if (config.CAPTCHA_KEY
+                and (config.FAVOR_CAPTCHA or self.extra_queue.empty())
+                and not self.captcha_queue.empty()):
             self.account = self.captcha_queue.get()
         else:
             self.account = await LOOP.run_in_executor(None, self.extra_queue.get)
