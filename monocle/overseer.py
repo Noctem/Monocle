@@ -352,6 +352,7 @@ class Overseer:
         return closest
 
     async def launch(self, bootstrap, pickle):
+        exceptions = 0
         try:
             await self._launch(bootstrap, pickle)
         except CancelledError:
@@ -366,7 +367,6 @@ class Overseer:
 
     async def _launch(self, bootstrap, pickle):
         initial = True
-        exceptions = 0
         while True:
             if not initial:
                 pickle = False
