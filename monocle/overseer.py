@@ -380,6 +380,8 @@ class Overseer:
                     if initial:
                         raise OperationalError('Could not update spawns, ensure your DB is set up.') from e
                     await asyncio.sleep(20)
+                except CancelledError:
+                    raise
                 except Exception as e:
                     self.log.exception('A wild {} appeared while updating spawns!', e.__class__.__name__)
                     await asyncio.sleep(20)
@@ -387,7 +389,7 @@ class Overseer:
                     break
 
             if not SPAWNS or bootstrap:
-                self.bootstrap()
+                await self.bootstrap()
 
             current_hour = get_current_hour()
             if SPAWNS.after_last():
@@ -455,15 +457,19 @@ class Overseer:
     async def bootstrap(self):
         try:
             await self.bootstrap_one()
-            await asyncio.sleep(10)
+            await asyncio.sleep(15)
+        except CancelledError:
+            raise
         except Exception:
             self.log.exception('An exception occurred during bootstrap phase 1.')
 
         try:
             self.log.warning('Starting bootstrap phase 2.')
-            await self.bootstrap_two()
+            self.bootstrap_two()
             await asyncio.sleep(1)
             self.log.warning('Finished bootstrapping.')
+        except CancelledError:
+            raise
         except Exception:
             self.log.exception('An exception occurred during bootstrap phase 2.')
 
@@ -512,7 +518,7 @@ class Overseer:
                 if await worker.visit(point):
                     self.visits += 1
         except CancelledError:
-            return
+            raise
         except Exception:
             self.log.exception('An exception occurred in try_point')
         finally:

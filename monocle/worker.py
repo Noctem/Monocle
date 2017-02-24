@@ -306,7 +306,7 @@ class Worker:
                         asset_ids.append(asset['asset_id'])
                         if len(asset_ids) == 3:
                             break
-            except Exception:
+            except (KeyError, TypeError):
                 asset_ids = ('1a3c2816-65fa-4b97-90eb-0b301c064b7a/1487275569649000',
                              'aa8f7687-a022-4773-b900-3a8c170e9aea/1487275581132582',
                              'e89109b0-9a54-40fe-8431-12f7826c8194/1487275593635524')
