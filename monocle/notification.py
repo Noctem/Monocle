@@ -825,17 +825,17 @@ class Notifier:
 
         payload = json.dumps(data)
         session = SessionManager.get()
-        return await self.wh_send(session)
+        return await self.wh_send(session, payload)
 
     if WEBHOOK > 1:
-        async def wh_send(self, session):
-            results = await gather(*tuple(self.hook_post(w, session) for w in HOOK_POINTS), loop=LOOP)
+        async def wh_send(self, session, payload):
+            results = await gather(*tuple(self.hook_post(w, session, payload) for w in HOOK_POINTS), loop=LOOP)
             return True in results
     else:
-        async def wh_send(self, session):
-            return await self.hook_post(HOOK_POINT, session)
+        async def wh_send(self, session, payload):
+            return await self.hook_post(HOOK_POINT, session, payload)
 
-    async def hook_post(self, w):
+    async def hook_post(self, w, session, payload):
         try:
             async with session.post(w, data=payload, timeout=3) as resp:
                 resp.raise_for_status()
