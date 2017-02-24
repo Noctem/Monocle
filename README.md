@@ -48,8 +48,8 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
 3. Copy `config.example.py` to `monocle/config.py` and customize it with your accounts, location, database information, and any other relevant settings. The comments in the config example provide some information about the options.
 4. `pip3 install -r requirements.txt`
   * Optionally `pip3 install` additional packages listed in optional-requirements
-    * *pushbullet.py* is required for pushbullet notifications
-    * *python-twitter* is required for twitter notifications
+    * *asyncpushbullet* is required for PushBullet notifications
+    * *peony-twitter* is required for Twitter notifications
     * *stem* is required for proxy circuit swapping
     * *shapely* is required for landmarks or spawnpoint scan boundaries
     * *selenium* (and [ChromeDriver](https://sites.google.com/a/chromium.org/chromedriver/)) are required for solving CAPTCHAs
