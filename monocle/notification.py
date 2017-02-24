@@ -381,11 +381,16 @@ class Notification:
 
         try:
             async with session.post(TELEGRAM_BASE_URL, data=payload) as resp:
-                resp.raise_for_status()
+                try:
+                    resp.raise_for_status()
+                except HttpProcessingError as e:
+                    try:
+                        response = await.resp.json()
+                        self.log.error('Error {} from Telegram: {}', e.code, response['description'])
+                    except Exception:
+                        self.log.error('Error {} from Telegram: {}', e.code, e.message)
+                    return False
                 self.log.info('Sent a Telegram notification about {}.', self.name)
-        except HttpProcessingError as e:
-            self.log.error('Error {} from Telegram: {}', e.code, e.message)
-            return False
         except (ClientError, DisconnectedError) as e:
             err = e.__cause__ or e
             self.log.error('{} during Telegram notification.', err.__class__.__name__)
