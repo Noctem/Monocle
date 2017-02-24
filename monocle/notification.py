@@ -385,7 +385,7 @@ class Notification:
                     resp.raise_for_status()
                 except HttpProcessingError as e:
                     try:
-                        response = await.resp.json()
+                        response = await resp.json()
                         self.log.error('Error {} from Telegram: {}', e.code, response['description'])
                     except Exception:
                         self.log.error('Error {} from Telegram: {}', e.code, e.message)
