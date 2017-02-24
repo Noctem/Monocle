@@ -528,7 +528,7 @@ class Overseer:
         if spawn_time:
             skip_time = max(time.monotonic() + config.GIVE_UP_KNOWN, spawn_time)
         elif must_visit:
-            skip_time = None
+            skip_time = float('inf')
         else:
             skip_time = time.monotonic() + config.GIVE_UP_UNKNOWN
 
