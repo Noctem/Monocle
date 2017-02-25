@@ -82,6 +82,20 @@ ACCOUNTS = [
     ('misty', 'bulbus4ur', 'ptc')
 ]
 
+## If you have a lot of accounts, you can put in a accounts.csv
+## If an accounts.csv exists it will be override the accounts in this config
+## One account per line
+## valid account format
+# username,password,provider
+'''
+from os import path
+ACCOUNTS_FILE = 'accounts.csv'
+if path.exists(ACCOUNTS_FILE):
+    import csv
+    with open(ACCOUNTS_FILE) as f:
+        ACCOUNTS=[tuple(line) for line in csv.reader(f)]
+'''
+
 # key for Bossland's hashing server, otherwise the old hashing lib will be used
 #HASH_KEY = '9d87af14461b93cb3605'  # this key is fake
 
