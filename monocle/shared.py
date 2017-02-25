@@ -1,7 +1,8 @@
 from logging import getLogger, LoggerAdapter
-
+from concurrent.futures import ThreadPoolExecutor
 from time import time
 from asyncio import get_event_loop
+
 from aiohttp import ClientSession
 
 LOOP = get_event_loop()
@@ -60,3 +61,8 @@ def call_at(when, cb, *args):
     """Run call back at the unix time given"""
     delay = when - time()
     return call_later(delay, cb, *args)
+
+
+async def run_threaded(cb, *args):
+    with ThreadPoolExecutor(max_workers=1) as x:
+        return await LOOP.run_in_executor(x, cb, *args)

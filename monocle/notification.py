@@ -13,7 +13,7 @@ from aiohttp import ClientError, DisconnectedError, HttpProcessingError
 from .utils import load_pickle, dump_pickle
 from .db import session_scope, get_pokemon_ranking, estimate_remaining_time
 from .names import POKEMON_NAMES, POKEMON_MOVES
-from .shared import get_logger, call_at, SessionManager, LOOP
+from .shared import get_logger, call_at, SessionManager, LOOP, run_threaded
 
 from . import config
 
@@ -725,7 +725,7 @@ class Notifier:
         now = monotonic()
         if self.auto:
             if now - self.ranking_time > 3600:
-                await LOOP.run_in_executor(None, self.set_ranking)
+                await run_threaded(self.set_ranking)
                 self.set_notify_ids()
 
         if pokemon_id in self.always_notify:
@@ -766,7 +766,7 @@ class Notifier:
             seen = pokemon['seen'] % 3600
             try:
                 with session_scope() as session:
-                    tth = await LOOP.run_in_executor(None, estimate_remaining_time, session, pokemon['spawn_id'], seen)
+                    tth = await run_threaded(estimate_remaining_time, session, pokemon['spawn_id'], seen)
             except Exception:
                 self.log.exception('An exception occurred while trying to estimate remaining time.')
                 return self.cleanup(encounter_id, cache_handle)

@@ -21,7 +21,7 @@ except ImportError:
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point
-from .shared import get_logger, LOOP
+from .shared import get_logger, LOOP, run_threaded
 from .db_proc import DB_PROC
 from .spawns import SPAWNS
 from . import config
@@ -374,7 +374,7 @@ class Overseer:
 
             while True:
                 try:
-                    await LOOP.run_in_executor(None, SPAWNS.update, pickle)
+                    await run_threaded(SPAWNS.update, pickle)
                 except OperationalError as e:
                     self.log.exception('Operational error while trying to update spawns.')
                     if initial:
@@ -401,9 +401,7 @@ class Overseer:
                 if not start_point:
                     initial = False
             else:
-                asyncio.ensure_future(
-                    LOOP.run_in_executor(None, dump_pickle, 'accounts', self.accounts)
-                )
+                await run_threaded(dump_pickle, 'accounts', self.accounts)
 
             for spawn_id, spawn in SPAWNS.items():
                 if initial:
@@ -415,7 +413,7 @@ class Overseer:
                 try:
                     if self.captcha_queue.qsize() > config.MAX_CAPTCHAS:
                         self.paused = True
-                        self.idle_seconds += LOOP.run_in_executor(None, self.captcha_queue.full_wait, config.MAX_CAPTCHAS)
+                        self.idle_seconds += await run_threaded(self.captcha_queue.full_wait, config.MAX_CAPTCHAS)
                         self.paused = False
                 except (EOFError, BrokenPipeError, FileNotFoundError):
                     continue

@@ -1,17 +1,17 @@
-from functools import partial
-from pogo_async import PGoApi, exceptions as ex
-from pogo_async.auth_ptc import AuthPtc
-from pogo_async.utilities import get_cell_ids, HAVE_POGEO
-from pogo_async.hash_server import HashServer
 from asyncio import sleep, Lock, Semaphore, ensure_future, gather
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
 from array import typecodes
 from queue import Empty
 
+from pogo_async import PGoApi, exceptions as ex
+from pogo_async.auth_ptc import AuthPtc
+from pogo_async.utilities import get_cell_ids, HAVE_POGEO
+from pogo_async.hash_server import HashServer
+
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords, Units, randomize_point
-from .shared import get_logger, LOOP, SessionManager
+from .shared import get_logger, LOOP, SessionManager, run_threaded
 from .spawns import SPAWNS
 from .db_proc import DB_PROC
 from . import config, avatar
@@ -1178,7 +1178,10 @@ class Worker:
                 and not self.captcha_queue.empty()):
             self.account = self.captcha_queue.get()
         else:
-            self.account = await LOOP.run_in_executor(None, self.extra_queue.get)
+            try:
+                self.account = self.extra_queue.get_nowait()
+            except Empty:
+                self.account = await run_threaded(self.extra_queue.get)
         self.username = self.account['username']
         try:
             self.location = self.account['location'][:2]
