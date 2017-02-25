@@ -13,7 +13,7 @@ from aiohttp import ClientError, DisconnectedError, HttpProcessingError
 from .utils import load_pickle, dump_pickle
 from .db import session_scope, get_pokemon_ranking, estimate_remaining_time
 from .names import POKEMON_NAMES, POKEMON_MOVES
-from .shared import get_logger, call_at, SessionManager, LOOP, run_threaded
+from .shared import get_logger, SessionManager, LOOP, run_threaded
 
 from . import config
 
@@ -120,9 +120,9 @@ class NotificationCache:
     def __contains__(self, item):
         return item in self.store
 
-    def add(self, item, expires):
+    def add(self, item, delay):
         self.store.add(item)
-        return call_at(expires, self.remove, item)
+        return LOOP.call_later(delay, self.remove, item)
 
     def remove(self, item):
         self.store.discard(item)
@@ -720,7 +720,7 @@ class Notifier:
             self.log.info("{} was already notified about.", name)
             return False
 
-        cache_handle = self.cache.add(pokemon['encounter_id'], pokemon.get('expire_timestamp', 3600))
+        cache_handle = self.cache.add(pokemon['encounter_id'], pokemon.get('time_till_hidden', 3600))
 
         now = monotonic()
         if self.auto:
