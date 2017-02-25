@@ -771,13 +771,12 @@ class Notifier:
                 self.log.exception('An exception occurred while trying to estimate remaining time.')
                 now_epoch = time()
                 tth = (pokemon['seen'] + 90 - now_epoch, pokemon['seen'] + 3600 - now_epoch)
+            LOOP.call_later(tth[1], self.cache.remove, pokemon['encounter_id'])
             if pokemon_id not in self.always_notify:
                 mean = sum(tth) / 2
                 if mean < config.TIME_REQUIRED:
                     self.log.info('{} has only around {} seconds remaining.', name, mean)
-                    self.cache.store.discard(pokemon['encounter_id'])
                     return False
-            LOOP.call_later(tth[1], self.cache.remove, pokemon['encounter_id'])
             pokemon['earliest_tth'], pokemon['latest_tth'] = tth
         else:
             cache_handle = self.cache.add(pokemon['encounter_id'], pokemon['time_till_hidden'])

@@ -184,8 +184,8 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 
 ## Map data provider and appearance, previews available at:
 ## https://leaflet-extras.github.io/leaflet-providers/preview/
-#MAP_PROVIDER_URL = '//{s}.tile.osm.org/{z}/{x}/{y}.png'
-#MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+#MAP_PROVIDER_URL = '//{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+#MAP_PROVIDER_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
 # set of proxy addresses and ports
 # SOCKS requires aiosocks to be installed
