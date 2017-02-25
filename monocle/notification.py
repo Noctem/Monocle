@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from collections import deque
 from math import sqrt
-from time import monotonic
+from time import monotonic, time
 from pkg_resources import resource_stream
 from tempfile import TemporaryFile
-from asyncio import gather, TimeoutError
+from asyncio import gather, ensure_future, TimeoutError
 
 import json
 
@@ -626,28 +626,33 @@ class Notifier:
         self.sent = 0
         if self.notify_ranking:
             self.initialize_ranking()
-            self.set_notify_ids()
-            self.auto = True
+            LOOP.call_later(3600, self.set_notify_ids)
         elif config.NOTIFY_IDS or config.ALWAYS_NOTIFY_IDS:
             self.notify_ids = config.NOTIFY_IDS or config.ALWAYS_NOTIFY_IDS
             self.always_notify = config.ALWAYS_NOTIFY_IDS
             self.notify_ranking = len(self.notify_ids)
-            self.auto = False
 
     def set_notify_ids(self):
+        ensure_future(self._set_notify_ids())
+        LOOP.call_later(3600, self.set_notify_ids)
+
+    async def _set_notify_ids(self):
+        await run_threaded(self.set_ranking)
         self.notify_ids = self.pokemon_ranking[0:self.notify_ranking]
         self.always_notify = set(self.pokemon_ranking[0:config.ALWAYS_NOTIFY])
         self.always_notify |= set(config.ALWAYS_NOTIFY_IDS)
+        self.log.info('Updated Pokemon rankings.')
 
     def initialize_ranking(self):
         self.pokemon_ranking = load_pickle('ranking')
-        if self.pokemon_ranking and len(self.pokemon_ranking) != self.notify_ranking:
-            self.ranking_time = monotonic()
+        if self.pokemon_ranking:
+            self.notify_ids = self.pokemon_ranking[0:self.notify_ranking]
+            self.always_notify = set(self.pokemon_ranking[0:config.ALWAYS_NOTIFY])
+            self.always_notify |= set(config.ALWAYS_NOTIFY_IDS)
         else:
-            self.set_ranking()
+            LOOP.run_until_complete(self._set_notify_ids())
 
     def set_ranking(self):
-        self.ranking_time = monotonic()
         try:
             with session_scope() as session:
                 self.pokemon_ranking = get_pokemon_ranking(session)
@@ -683,7 +688,8 @@ class Notifier:
             return False
         if pokemon_id in self.always_notify:
             return encounter_id not in self.cache
-        if pokemon_id not in self.notify_ids:
+        if (pokemon_id not in self.notify_ids
+                and pokemon_id not in self.rarity_override):
             return False
         if config.IGNORE_RARITY:
             return encounter_id not in self.cache
@@ -720,14 +726,7 @@ class Notifier:
             self.log.info("{} was already notified about.", name)
             return False
 
-        cache_handle = self.cache.add(pokemon['encounter_id'], pokemon.get('time_till_hidden', 3600))
-
         now = monotonic()
-        if self.auto:
-            if now - self.ranking_time > 3600:
-                await run_threaded(self.set_ranking)
-                self.set_notify_ids()
-
         if pokemon_id in self.always_notify:
             score_required = 0
         else:
@@ -740,7 +739,7 @@ class Notifier:
                 iv_score = None
             else:
                 self.log.warning('IVs are supposed to be considered but were not found.')
-                return self.cleanup(encounter_id, cache_handle)
+                return False
 
         if score_required:
             if config.IGNORE_RARITY:
@@ -760,22 +759,28 @@ class Notifier:
                                  name, score, iv_score, score_required)
             except TypeError:
                 pass
-            return self.cleanup(encounter_id, cache_handle)
+            return False
 
         if 'time_till_hidden' not in pokemon:
             seen = pokemon['seen'] % 3600
+            self.cache.store.add(pokemon['encounter_id'])
             try:
                 with session_scope() as session:
                     tth = await run_threaded(estimate_remaining_time, session, pokemon['spawn_id'], seen)
             except Exception:
                 self.log.exception('An exception occurred while trying to estimate remaining time.')
-                return self.cleanup(encounter_id, cache_handle)
+                now_epoch = time()
+                tth = (pokemon['seen'] + 90 - now_epoch, pokemon['seen'] + 3600 - now_epoch)
             if pokemon_id not in self.always_notify:
                 mean = sum(tth) / 2
                 if mean < config.TIME_REQUIRED:
                     self.log.info('{} has only around {} seconds remaining.', name, mean)
-                    return self.cleanup(encounter_id, cache_handle)
+                    self.cache.store.discard(pokemon['encounter_id'])
+                    return False
+            LOOP.call_later(tth[1], self.cache.remove, pokemon['encounter_id'])
             pokemon['earliest_tth'], pokemon['latest_tth'] = tth
+        else:
+            cache_handle = self.cache.add(pokemon['encounter_id'], pokemon['time_till_hidden'])
 
         if WEBHOOK and NATIVE:
             notified, whpushed = await gather(

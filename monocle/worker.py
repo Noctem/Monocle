@@ -538,7 +538,7 @@ class Worker:
                 self.last_request = time()
                 if err != e:
                     err = e
-                    message = repr(e)
+                    message = str(e)
                     if 'GetMapObjects' in message:
                         message = '{} {:.2f} seconds since last GMO.'.format(
                             message, self.last_request - self.last_gmo)
@@ -707,9 +707,9 @@ class Worker:
         except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
             self.log.warning('{} Giving up.', e)
             self.error_code = 'MALFORMED RESPONSE'
-        except EmptyGMOException:
+        except EmptyGMOException as e:
             self.error_code = '0'
-            self.log.warning('Empty GMO response.')
+            self.log.warning('Empty GetMapObjects response for {}. Speed: {:.2f}', self.username, self.speed)
         except ex.HashServerException as e:
             self.log.warning('{}', e)
             self.error_code = 'HASHING ERROR'
@@ -780,7 +780,7 @@ class Worker:
                 time_of_day = map_objects['time_of_day']
             except KeyError:
                 self.empty_visits += 1
-                raise EmptyGMOException('Empty GetMapObjects response for {}. Speed: {:.2f}'.format(self.username, self.speed))
+                raise EmptyGMOException
 
         if config.ITEM_LIMITS and self.bag_full():
             await self.clean_bag()
