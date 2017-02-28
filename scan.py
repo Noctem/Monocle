@@ -127,7 +127,7 @@ if config.DIRECTORY is None:
         config.DIRECTORY = ''
 
 if config.FORCED_KILL is True:
-    config.FORCED_KILL = ('0.57.2', '0.55.0', '0.53.0', '0.53.1', '0.53.2')
+    config.FORCED_KILL = ('0.57.2', '0.57.3', '0.55.0', '0.53.0', '0.53.1', '0.53.2')
 
 if not config.COROUTINES_LIMIT:
     config.COROUTINES_LIMIT = config.GRID[0] * config.GRID[1]

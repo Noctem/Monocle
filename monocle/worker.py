@@ -202,7 +202,7 @@ class Worker:
             raise err
 
         self.error_code = '°'
-        version = 5702
+        version = 5703
         async with self.sim_semaphore:
             self.error_code = 'APP SIMULATION'
             if config.APP_SIMULATION:
