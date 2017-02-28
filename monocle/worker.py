@@ -214,6 +214,28 @@ class Worker:
         self.account_start = time()
         return True
 
+    async def get_player(self):
+        request = self.api.create_request()
+        request.get_player(player_locale=config.PLAYER_LOCALE)
+
+        responses = await self.call(request, chain=False)
+
+        tutorial_state = None
+        try:
+            get_player = responses['GET_PLAYER']
+
+            if get_player.get('banned', False):
+                raise ex.BannedAccountException
+
+            player_data = get_player['player_data']
+            tutorial_state = player_data['tutorial_state']
+            self.item_capacity = player_data['max_item_storage']
+            if 'created' not in self.account:
+                self.account['created'] = player_data['creation_timestamp_ms'] / 1000
+        except (KeyError, TypeError, AttributeError):
+            pass
+        return tutorial_state
+
     async def download_remote_config(self, version):
         request = self.api.create_request()
         request.download_remote_config_version(platform=1, app_version=version)
@@ -264,25 +286,7 @@ class Worker:
         await random_sleep(.43, .97)
 
         # request 1: get_player
-        request = self.api.create_request()
-        request.get_player(player_locale=config.PLAYER_LOCALE)
-
-        responses = await self.call(request, chain=False)
-
-        tutorial_state = None
-        try:
-            get_player = responses['GET_PLAYER']
-
-            if get_player.get('banned', False):
-                raise ex.BannedAccountException
-
-            player_data = get_player['player_data']
-            tutorial_state = player_data.get('tutorial_state', [])
-            self.item_capacity = player_data['max_item_storage']
-            if 'created' not in self.account:
-                self.account['created'] = player_data['creation_timestamp_ms'] / 1000
-        except (KeyError, TypeError, AttributeError):
-            pass
+        tutorial_state = await self.get_player()
 
         await random_sleep(.53, 1)
 
@@ -769,6 +773,8 @@ class Worker:
                     await self.swap_account(reason)
                 raise ex.UnexpectedResponseException(error)
         except KeyError:
+            await random_sleep(.5, 1)
+            await self.get_player()
             raise ex.UnexpectedResponseException('Missing GetMapObjects response.')
 
         pokemon_seen = 0
