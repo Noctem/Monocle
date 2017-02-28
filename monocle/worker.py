@@ -126,6 +126,7 @@ class Worker:
         self.visits = 0
         self.pokestops = config.SPIN_POKESTOPS
         self.next_spin = 0
+        self.handle = HandleStub()
 
     def initialize_api(self):
         device_info = get_device_info(self.account)
@@ -727,6 +728,7 @@ class Worker:
         return False
 
     async def visit_point(self, point, bootstrap=False):
+        self.handle.cancel()
         if bootstrap:
             self.error_code = '∞'
         else:
@@ -895,7 +897,7 @@ class Worker:
             await spinning
 
         self.update_accounts_dict()
-        LOOP.call_later(60, self.unset_code)
+        self.handle = LOOP.call_later(60, self.unset_code)
         return pokemon_seen + forts_seen + points_seen
 
     def smart_throttle(self, requests=1):
@@ -1321,6 +1323,11 @@ class Worker:
             return self.api._auth_provider.is_login()
         except AttributeError:
             return False
+
+
+class HandleStub:
+    def cancel(self):
+        pass
 
 
 class EmptyGMOException(Exception):
