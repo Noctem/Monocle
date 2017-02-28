@@ -4,10 +4,10 @@ from time import time, monotonic
 from array import typecodes
 from queue import Empty
 
-from pogo_async import PGoApi, exceptions as ex
-from pogo_async.auth_ptc import AuthPtc
-from pogo_async.utilities import get_cell_ids, HAVE_POGEO
-from pogo_async.hash_server import HashServer
+from aiopogo import PGoApi, exceptions as ex
+from aiopogo.auth_ptc import AuthPtc
+from aiopogo.utilities import get_cell_ids, HAVE_POGEO
+from aiopogo.hash_server import HashServer
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
 from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords, Units, randomize_point

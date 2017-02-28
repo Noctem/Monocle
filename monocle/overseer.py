@@ -9,7 +9,7 @@ from random import uniform
 from collections import deque
 from concurrent.futures import CancelledError
 
-from pogo_async.hash_server import HashServer
+from aiopogo.hash_server import HashServer
 from sqlalchemy.exc import OperationalError
 
 import time

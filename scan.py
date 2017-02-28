@@ -23,7 +23,7 @@ from sys import platform
 from concurrent.futures import TimeoutError
 
 from sqlalchemy.exc import DBAPIError
-from pogo_async import close_sessions
+from aiopogo import close_sessions
 
 import time
 

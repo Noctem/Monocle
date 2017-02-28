@@ -16,7 +16,7 @@ from logging import getLogger
 
 from geopy import Point
 from geopy.distance import distance
-from pogo_async import utilities as pgoapi_utils
+from aiopogo import utilities as pgoapi_utils
 
 try:
     from numba import jit
