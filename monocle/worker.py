@@ -106,7 +106,7 @@ class Worker:
         # last time of a GetMapObjects request
         self.last_gmo = self.last_request
         self.items = self.account.get('items', {})
-        self.player_level = self.account.get('player_level')
+        self.player_level = self.account.get('level')
         self.num_captchas = 0
         self.eggs = {}
         self.unused_incubators = []
@@ -1194,7 +1194,7 @@ class Worker:
         except KeyError:
             self.location = get_start_coords(self.worker_no)
         self.inventory_timestamp = self.account.get('inventory_timestamp')
-        self.player_level = self.account.get('player_level')
+        self.player_level = self.account.get('level')
         self.last_request = self.account.get('time', 0)
         self.last_action = self.last_request
         self.last_gmo = self.last_request
