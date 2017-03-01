@@ -229,7 +229,7 @@ class Worker:
                 raise ex.BannedAccountException
 
             player_data = get_player['player_data']
-            tutorial_state = player_data['tutorial_state']
+            tutorial_state = player_data.get('tutorial_state', [])
             self.item_capacity = player_data['max_item_storage']
             if 'created' not in self.account:
                 self.account['created'] = player_data['creation_timestamp_ms'] / 1000
