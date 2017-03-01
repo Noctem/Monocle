@@ -765,9 +765,7 @@ class Worker:
             map_objects = responses['GET_MAP_OBJECTS']
 
             map_status = map_objects['status']
-            if map_status == 3:
-                raise ex.BannedAccountException('GMO code 3')
-            elif map_status != 1:
+            if map_status != 1:
                 error = 'GetMapObjects code for {}. Speed: {:.2f}'.format(self.username, self.speed)
                 self.empty_visits += 1
                 if self.empty_visits > 3:

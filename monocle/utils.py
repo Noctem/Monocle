@@ -244,8 +244,11 @@ def get_bootstrap_points():
 def get_device_info(account):
     device_info = {'brand': 'Apple',
                    'device': 'iPhone',
-                   'manufacturer': 'Apple',
-                   'product': 'iPhone OS'}
+                   'manufacturer': 'Apple'}
+    if account['iOS'].startswith('1'):
+        device_info['product'] = 'iOS'
+    else:
+        device_info['product'] = 'iPhone OS'
     device_info['hardware'] = account['model']
     device_info['model'] = IPHONES[account['model']]
     device_info['version'] = account['iOS']
