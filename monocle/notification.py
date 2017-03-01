@@ -4,7 +4,7 @@ from math import sqrt
 from time import monotonic, time
 from pkg_resources import resource_stream
 from tempfile import TemporaryFile
-from asyncio import gather, ensure_future, TimeoutError
+from asyncio import gather, TimeoutError
 
 import json
 
@@ -633,7 +633,7 @@ class Notifier:
             self.notify_ranking = len(self.notify_ids)
 
     def set_notify_ids(self):
-        ensure_future(self._set_notify_ids())
+        LOOP.create_task(self._set_notify_ids())
         LOOP.call_later(3600, self.set_notify_ids)
 
     async def _set_notify_ids(self):

@@ -1,4 +1,4 @@
-from asyncio import sleep, Lock, Semaphore, ensure_future, gather
+from asyncio import sleep, Lock, Semaphore, gather
 from random import choice, randint, uniform, triangular
 from time import time, monotonic
 from array import typecodes
@@ -67,8 +67,8 @@ class Worker:
         cell_ids = load_pickle('cells') or {}
         COMPACT = 'Q' in typecodes
 
-    login_semaphore = Semaphore(config.SIMULTANEOUS_LOGINS)
-    sim_semaphore = Semaphore(config.SIMULTANEOUS_SIMULATION)
+    login_semaphore = Semaphore(config.SIMULTANEOUS_LOGINS, loop=LOOP)
+    sim_semaphore = Semaphore(config.SIMULTANEOUS_SIMULATION, loop=LOOP)
 
     proxies = None
     proxy = None
@@ -115,7 +115,7 @@ class Worker:
             self.new_proxy(set_api=False)
         self.initialize_api()
         # State variables
-        self.busy = Lock()
+        self.busy = Lock(loop=LOOP)
         # Other variables
         self.after_spawn = None
         self.speed = 0
@@ -188,7 +188,7 @@ class Worker:
                     )
             except (ex.AuthTimeoutException, ex.AuthConnectionException) as e:
                 err = e
-                await sleep(2)
+                await sleep(2, loop=LOOP)
             else:
                 err = None
                 break
@@ -398,11 +398,11 @@ class Worker:
             request.claim_codename(codename=self.username)
             await self.call(request, action=2)
 
-            await sleep(.7)
+            await sleep(.7, loop=LOOP)
             request = self.api.create_request()
             request.get_player(player_locale=config.PLAYER_LOCALE)
             await self.call(request)
-            await sleep(.13)
+            await sleep(.13, loop=LOOP)
 
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=4)
@@ -422,7 +422,7 @@ class Worker:
             await self.call(request, action=2)
             await random_sleep(.8, 1.2)
 
-        await sleep(.2)
+        await sleep(.2, loop=LOOP)
         return True
 
     def update_inventory(self, inventory_items):
@@ -471,7 +471,7 @@ class Worker:
             while HashServer.status.get('remaining') < 5 and time() < refresh:
                 self.error_code = 'HASH WAITING'
                 wait = refresh - time() + 1
-                await sleep(wait)
+                await sleep(wait, loop=LOOP)
                 refresh = HashServer.status.get('period')
         except TypeError:
             pass
@@ -480,9 +480,9 @@ class Worker:
         if action:
             # wait for the time required, or at least a half-second
             if self.last_action > now + .5:
-                await sleep(self.last_action - now)
+                await sleep(self.last_action - now, loop=LOOP)
             else:
-                await sleep(0.5)
+                await sleep(0.5, loop=LOOP)
 
         response = None
         err = None
@@ -504,20 +504,20 @@ class Worker:
             except (ex.NotLoggedInException, ex.AuthException) as e:
                 self.log.info('Auth error on {}: {}', self.username, e)
                 err = e
-                await sleep(3)
+                await sleep(3, loop=LOOP)
                 await self.login(reauth=True)
             except ex.TimeoutException as e:
                 self.error_code = 'TIMEOUT'
                 if err != e:
                     err = e
                     self.log.warning('{}', e)
-                await sleep(10)
+                await sleep(10, loop=LOOP)
             except ex.HashingOfflineException as e:
                 if err != e:
                     err = e
                     self.log.warning('{}', e)
                 self.error_code = 'HASHING OFFLINE'
-                await sleep(5)
+                await sleep(5, loop=LOOP)
             except ex.NianticOfflineException as e:
                 if err != e:
                     err = e
@@ -533,11 +533,11 @@ class Worker:
                 now = time()
                 if refresh:
                     if refresh > now:
-                        await sleep(refresh - now + 1)
+                        await sleep(refresh - now + 1, loop=LOOP)
                     else:
-                        await sleep(5)
+                        await sleep(5, loop=LOOP)
                 else:
-                    await sleep(30)
+                    await sleep(30, loop=LOOP)
             except ex.NianticThrottlingException as e:
                 old_time = self.last_request
                 self.last_request = time()
@@ -566,7 +566,7 @@ class Worker:
                 else:
                     if err != e:
                         self.log.error('{}', e)
-                    await sleep(5)
+                    await sleep(5, loop=LOOP)
             except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
                 self.last_request = time()
                 if err != e:
@@ -645,32 +645,32 @@ class Worker:
             return await self.visit_point(point, bootstrap=bootstrap)
         except ex.NotLoggedInException:
             self.error_code = 'NOT AUTHENTICATED'
-            await sleep(1)
+            await sleep(1, loop=LOOP)
             if not await self.login(reauth=True):
                 await self.swap_account(reason='reauth failed')
             return await self.visit(point, bootstrap)
         except ex.AuthException as e:
             self.log.warning('Auth error on {}: {}', self.username, e)
             self.error_code = 'NOT AUTHENTICATED'
-            await sleep(3)
+            await sleep(3, loop=LOOP)
             await self.swap_account(reason='login failed')
         except CaptchaException:
             self.error_code = 'CAPTCHA'
             self.g['captchas'] += 1
-            await sleep(1)
+            await sleep(1, loop=LOOP)
             await self.bench_account()
         except CaptchaSolveException:
             self.error_code = 'CAPTCHA'
-            await sleep(1)
+            await sleep(1, loop=LOOP)
             await self.swap_account(reason='solving CAPTCHA failed')
         except ex.TempHashingBanException:
             self.error_code = 'HASHING BAN'
             self.log.error('Temporarily banned from hashing server for using invalid keys.')
-            await sleep(185)
+            await sleep(185, loop=LOOP)
         except ex.BannedAccountException:
             self.error_code = 'BANNED'
             self.log.warning('{} is banned', self.username)
-            await sleep(1)
+            await sleep(1, loop=LOOP)
             await self.remove_account()
         except ex.ProxyException as e:
             self.error_code = 'PROXY ERROR'
@@ -682,7 +682,7 @@ class Worker:
                     self.new_proxy()
             else:
                 self.log.error('{}', e)
-            await sleep(5)
+            await sleep(5, loop=LOOP)
         except ex.TimeoutException as e:
             self.log.warning('{} Giving up.', e)
         except ex.NianticIPBannedException:
@@ -724,7 +724,7 @@ class Worker:
         except Exception as e:
             self.log.exception('A wild {} appeared!', e.__class__.__name__)
             self.error_code = 'EXCEPTION'
-        await sleep(1)
+        await sleep(1, loop=LOOP)
         return False
 
     async def visit_point(self, point, bootstrap=False):
@@ -757,7 +757,7 @@ class Worker:
 
         diff = self.last_gmo + config.SCAN_DELAY - time()
         if diff > 0:
-            await sleep(diff)
+            await sleep(diff, loop=LOOP)
         responses = await self.call(request)
         self.last_gmo = self.last_request
 
@@ -806,7 +806,7 @@ class Worker:
                             await self.encounter(normalized)
                         except Exception as e:
                             self.log.warning('{} during encounter', e.__class__.__name__)
-                    ensure_future(self.notifier.notify(normalized, time_of_day))
+                    LOOP.create_task(self.notifier.notify(normalized, time_of_day))
 
                 if (normalized not in SIGHTING_CACHE and
                         normalized not in MYSTERY_CACHE):
@@ -838,7 +838,7 @@ class Worker:
                             and (not spinning or spinning.done())):
                         cooldown = fort.get('cooldown_complete_timestamp_ms')
                         if not cooldown or time() > cooldown / 1000:
-                            spinning = ensure_future(self.spin_pokestop(pokestop))
+                            spinning = LOOP.create_task(self.spin_pokestop(pokestop))
                 else:
                     DB_PROC.add(self.normalize_gym(fort))
 
@@ -987,7 +987,7 @@ class Worker:
             delay_required = triangular(1.5, 4, 2.25)
 
         if time() - self.last_request < delay_required:
-            await sleep(delay_required)
+            await sleep(delay_required, loop=LOOP)
 
         try:
             spawn_id = hex(pokemon['spawn_id'])[2:]
@@ -1110,7 +1110,7 @@ class Worker:
                     response = await resp.json()
                 if response.get('request') != 'CAPCHA_NOT_READY':
                     break
-                await sleep(5)
+                await sleep(5, loop=LOOP)
         except Exception as e:
             self.log.error('Got an error while trying to solve CAPTCHA. '
                               'Check your API Key and account balance.')

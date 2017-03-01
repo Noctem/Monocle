@@ -67,7 +67,7 @@ class Overseer:
         self.skipped = 0
         self.visits = 0
         self.mysteries = deque()
-        self.coroutine_semaphore = asyncio.Semaphore(config.COROUTINES_LIMIT)
+        self.coroutine_semaphore = asyncio.Semaphore(config.COROUTINES_LIMIT, loop=LOOP)
         self.redundant = 0
         self.all_seen = False
         self.idle_seconds = 0
@@ -110,12 +110,10 @@ class Overseer:
                     if not self.extra_queue.empty():
                         worst, per_minute = self.least_productive()
                         if worst:
-                            asyncio.ensure_future(
+                            LOOP.create_task(
                                 worst.swap_account(
                                     reason='only {:.1f} seen per minute'.format(per_minute),
-                                    lock=True),
-                                loop=LOOP
-                            )
+                                    lock=True))
                     last_swap = now
                 # Record things found count
                 if not self.paused and now - last_stats_updated > config.STAT_REFRESH:
@@ -134,9 +132,9 @@ class Overseer:
                     print(self.get_status_message())
 
                 if self.paused:
-                    await asyncio.sleep(max(15, config.REFRESH_RATE))
+                    await asyncio.sleep(max(15, config.REFRESH_RATE), loop=LOOP)
                 else:
-                    await asyncio.sleep(config.REFRESH_RATE)
+                    await asyncio.sleep(config.REFRESH_RATE, loop=LOOP)
             except CancelledError:
                 return
             except Exception as e:
@@ -379,12 +377,12 @@ class Overseer:
                     self.log.exception('Operational error while trying to update spawns.')
                     if initial:
                         raise OperationalError('Could not update spawns, ensure your DB is set up.') from e
-                    await asyncio.sleep(20)
+                    await asyncio.sleep(20, loop=LOOP)
                 except CancelledError:
                     raise
                 except Exception as e:
                     self.log.exception('A wild {} appeared while updating spawns!', e.__class__.__name__)
-                    await asyncio.sleep(20)
+                    await asyncio.sleep(20, loop=LOOP)
                 else:
                     break
 
@@ -430,9 +428,7 @@ class Overseer:
                         mystery_point = self.mysteries.popleft()
 
                         await self.coroutine_semaphore.acquire()
-                        asyncio.ensure_future(
-                            self.try_point(mystery_point), loop=LOOP
-                        )
+                        LOOP.create_task(self.try_point(mystery_point))
                     except IndexError:
                         self.mysteries = SPAWNS.get_mysteries()
                         if not self.mysteries:
@@ -448,14 +444,12 @@ class Overseer:
                     continue
 
                 await self.coroutine_semaphore.acquire()
-                asyncio.ensure_future(
-                    self.try_point(point, spawn_time), loop=LOOP
-                )
+                LOOP.create_task(self.try_point(point, spawn_time))
 
     async def bootstrap(self):
         try:
             await self.bootstrap_one()
-            await asyncio.sleep(15)
+            await asyncio.sleep(15, loop=LOOP)
         except CancelledError:
             raise
         except Exception:
@@ -481,8 +475,8 @@ class Overseer:
             number = worker.worker_no
             worker.bootstrap = True
             point = get_start_coords(number)
-            await asyncio.sleep(.25)
-            asyncio.ensure_future(visit_release(worker, point), loop=LOOP)
+            await asyncio.sleep(.25, loop=LOOP)
+            LOOP.create_task(visit_release(worker, point))
 
     async def bootstrap_two(self):
         async def bootstrap_try(point):
@@ -509,7 +503,7 @@ class Overseer:
                 if spawn_time:
                     time_diff = spawn_time - time.time() + 1
                     if time_diff > 0:
-                        await asyncio.sleep(time_diff)
+                        await asyncio.sleep(time_diff, loop=LOOP)
                     worker.after_spawn = time.time() - spawn_time
 
                 if await worker.visit(point):
@@ -545,7 +539,7 @@ class Overseer:
             if time.monotonic() > skip_time:
                 return None
             worker = None
-            await asyncio.sleep(config.SEARCH_SLEEP)
+            await asyncio.sleep(config.SEARCH_SLEEP, loop=LOOP)
 
     def refresh_dict(self):
         while not self.extra_queue.empty():

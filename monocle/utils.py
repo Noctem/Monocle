@@ -25,6 +25,7 @@ except ImportError:
         return func
 
 from . import config
+from .shared import LOOP
 
 _optional = {
     'ALT_RANGE': (300, 400),
@@ -404,6 +405,6 @@ def randomize_point(point, amount=0.0003):
 async def random_sleep(minimum=10, maximum=13, mode=None):
     """Sleeps for a bit"""
     if mode:
-        await sleep(random.triangular(minimum, maximum, mode))
+        await sleep(random.triangular(minimum, maximum, mode), loop=LOOP)
     else:
-        await sleep(random.uniform(minimum, maximum))
+        await sleep(random.uniform(minimum, maximum), loop=LOOP)
