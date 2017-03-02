@@ -333,8 +333,8 @@ def accounts_from_csv(new_accounts, pickled_accounts):
                 del pickled_account['password']
             account.update(pickled_account)
         else:
-            account['provider'] = account['provider'] or 'ptc'
-            if not all(account[x] for x in ('model', 'iOS', 'id')):
+            account['provider'] = account.get('provider') or 'ptc'
+            if not all(account.get(x) is not None for x in ('model', 'iOS', 'id')):
                 account = generate_device_info(account)
             account['time'] = 0
             account['captcha'] = False
