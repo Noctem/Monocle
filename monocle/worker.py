@@ -1295,7 +1295,7 @@ class Worker:
     @staticmethod
     async def random_sleep(minimum=10.1, maximum=14):
         """Sleeps for a bit"""
-        await sleep(random.uniform(minimum, maximum), loop=LOOP)
+        await sleep(uniform(minimum, maximum), loop=LOOP)
 
     @property
     def status(self):
