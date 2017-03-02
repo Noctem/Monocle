@@ -46,7 +46,6 @@ _optional = {
     'HASH_KEY': None,
     'SMART_THROTTLE': False,
     'MAX_CAPTCHAS': 0,
-    'ACCOUNTS': None,
     'ENCOUNTER': None,
     'NOTIFY': False,
     'AUTHKEY': b'm3wtw0',
@@ -75,8 +74,7 @@ _optional = {
     'GOOD_ENOUGH': None,
     'SEARCH_SLEEP': 2.5,
     'STAT_REFRESH': 5,
-    'FAVOR_CAPTCHA': True,
-    'ACCOUNTS_CSV': None
+    'FAVOR_CAPTCHA': True
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):

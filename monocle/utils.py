@@ -39,7 +39,9 @@ _optional = {
     'MANAGER_ADDRESS': None,
     'BOOTSTRAP_RADIUS': 450,
     'DIRECTORY': None,
-    'SPEED_UNIT': 'miles'
+    'SPEED_UNIT': 'miles',
+    'ACCOUNTS': None,
+    'ACCOUNTS_CSV': None
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):

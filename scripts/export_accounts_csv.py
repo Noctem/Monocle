@@ -1,37 +1,26 @@
 #!/usr/bin/env python3
 
-import csv
+from datetime import datetime
+import csv, os
 
-from monocle import config
+from monocle.shared import ACCOUNTS
 
-if not hasattr(config, 'PASS'):
-    config.PASS = None
-if not hasattr(config, 'PROVIDER'):
-    config.PROVIDER = None
+try:
+    os.rename('accounts.csv', 'accounts-{}.csv'.format(datetime.now().strftime("%Y%m%d-%H%M")))
+except FileNotFoundError:
+    pass
 
-usernames = set()
-
-with open('accounts-exported.csv', 'wt') as f:
-    writer = csv.writer(f)
+with open('accounts.csv', 'wt') as csvfile:
+    writer = csv.writer(csvfile, delimiter=',')
     writer.writerow(('username', 'password', 'provider', 'model', 'iOS', 'id'))
-    for account in config.ACCOUNTS:
-        length = len(account)
-        if length not in (1, 3, 4, 6):
-            raise ValueError('Each account should have either 3 (account info only) or 6 values (account and device info).')
-        if length in (1, 4):
-            if not config.PASS or not config.PROVIDER:
-                raise ValueError('No default PASS or PROVIDER are set.')
-            if length == 1:
-                row = account[0], config.PASS, config.PROVIDER
-            else:
-                row = account[0], config.PASS, config.PROVIDER, *account[1:]
-        else:
-            row = account
-        username = row[0]
-        if username in usernames:
-            print('Skipping duplicate: {}'.format(username))
-        else:
-            usernames.append(username)
-        writer.writerow(row)
+    for account in ACCOUNTS.values():
+        if account.get('banned', False):
+            continue
+        writer.writerow((account['username'],
+                         account['password'],
+                         account['provider'],
+                         account['model'],
+                         account['iOS'],
+                         account['id']))
 
 print('Done!')
