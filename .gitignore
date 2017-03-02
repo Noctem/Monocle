@@ -94,6 +94,7 @@ ENV/
 
 # configuration
 config.py
+accounts*.csv
 templates/footer.html
 templates/custom.html
 static/css/custom.css
