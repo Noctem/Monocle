@@ -10,8 +10,8 @@ from aiopogo.utilities import get_cell_ids, HAVE_POGEO
 from aiopogo.hash_server import HashServer
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
-from .utils import random_sleep, round_coords, load_pickle, load_accounts, get_device_info, get_spawn_id, get_distance, get_start_coords, Units, randomize_point
-from .shared import get_logger, LOOP, SessionManager, run_threaded
+from .utils import random_sleep, round_coords, load_pickle, get_device_info, get_spawn_id, get_distance, get_start_coords, Units, randomize_point
+from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS
 from .spawns import SPAWNS
 from .db_proc import DB_PROC
 from . import config, avatar
@@ -62,7 +62,6 @@ class Worker:
     download_hash = "7b9c5056799a2c5c7d48a62c497736cbcf8c4acb"
     g = {'seen': 0, 'captchas': 0}
 
-    accounts = load_accounts()
     if config.CACHE_CELLS:
         cell_ids = load_pickle('cells') or {}
         COMPACT = 'Q' in typecodes
@@ -1154,7 +1153,7 @@ class Worker:
         except AttributeError:
             pass
 
-        self.accounts[self.username] = self.account
+        ACCOUNTS[self.username] = self.account
 
     async def remove_account(self):
         self.error_code = 'REMOVING'

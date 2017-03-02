@@ -21,7 +21,7 @@ except ImportError:
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point
-from .shared import get_logger, LOOP, run_threaded
+from .shared import get_logger, LOOP, run_threaded, ACCOUNTS
 from .db_proc import DB_PROC
 from .spawns import SPAWNS
 from . import config
@@ -52,8 +52,6 @@ START_TIME = time.monotonic()
 
 
 class Overseer:
-    accounts = Worker.accounts
-
     def __init__(self, status_bar, manager):
         self.log = get_logger('overseer')
         self.workers = []
@@ -81,7 +79,7 @@ class Overseer:
         if config.MAP_WORKERS:
             Worker.worker_dict = self.manager.worker_dict()
 
-        for username, account in self.accounts.items():
+        for username, account in ACCOUNTS.items():
             account['username'] = username
             if account.get('banned'):
                 continue
@@ -399,7 +397,7 @@ class Overseer:
                 if not start_point:
                     initial = False
             else:
-                await run_threaded(dump_pickle, 'accounts', self.accounts)
+                await run_threaded(dump_pickle, 'accounts', ACCOUNTS)
 
             for spawn_id, spawn in SPAWNS.items():
                 if initial:
@@ -545,4 +543,4 @@ class Overseer:
         while not self.extra_queue.empty():
             account = self.extra_queue.get()
             username = account['username']
-            self.accounts[username] = account
+            ACCOUNTS[username] = account

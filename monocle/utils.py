@@ -13,6 +13,7 @@ from math import sqrt
 from uuid import uuid4
 from enum import Enum
 from logging import getLogger
+from csv import DictReader
 
 from geopy import Point
 from geopy.distance import distance
@@ -24,8 +25,7 @@ except ImportError:
     def jit(func):
         return func
 
-from . import config
-from .shared import LOOP
+from . import config, shared
 
 _optional = {
     'ALT_RANGE': (300, 400),
@@ -256,14 +256,14 @@ def get_device_info(account):
     return device_info
 
 
-def generate_device_info():
-    account = dict()
-    devices = tuple(IPHONES.keys())
+def generate_device_info(account):
     ios8 = ('8.0', '8.0.1', '8.0.2', '8.1', '8.1.1', '8.1.2', '8.1.3', '8.2', '8.3', '8.4', '8.4.1')
     ios9 = ('9.0', '9.0.1', '9.0.2', '9.1', '9.2', '9.2.1', '9.3', '9.3.1', '9.3.2', '9.3.3', '9.3.4', '9.3.5')
     ios10 = ('10.0', '10.0.1', '10.0.2', '10.0.3', '10.1', '10.1.1', '10.2', '10.2.1')
 
+    devices = tuple(IPHONES.keys())
     account['model'] = random.choice(devices)
+
     account['id'] = uuid4().hex
 
     if account['model'] in ('iPhone9,1', 'iPhone9,2',
@@ -283,13 +283,13 @@ def create_account_dict(account):
     else:
         raise TypeError('Account must be a tuple or list.')
 
-    if not (length == 1 or length == 3 or length == 4 or length == 6):
+    if length not in (1, 3, 4, 6):
         raise ValueError('Each account should have either 3 (account info only) or 6 values (account and device info).')
-    if (length == 1 or length == 4) and (not config.PASS or not config.PROVIDER):
-        raise AttributeError('No default PASS or PROVIDER are set.')
+    if length in (1, 4) and (not config.PASS or not config.PROVIDER):
+        raise ValueError('No default PASS or PROVIDER are set.')
 
-    username = account[0]
     entry = {}
+    entry['username'] = account[0]
 
     if length == 1 or length == 4:
         entry['password'], entry['provider'] = config.PASS, config.PROVIDER
@@ -299,24 +299,45 @@ def create_account_dict(account):
     if length == 4 or length == 6:
         entry['model'], entry['iOS'], entry['id'] = account[-3:]
     else:
-        entry.update(generate_device_info())
+        entry = generate_device_info(entry)
 
-    entry.update({'time': 0, 'captcha': False, 'banned': False})
+    entry['time'] = 0
+    entry['captcha'] = False
+    entry['banned'] = False
 
     return entry
 
 
-def create_accounts_dict(old_accounts=None):
+def accounts_from_config(pickled_accounts=None):
     accounts = {}
     for account in config.ACCOUNTS:
         username = account[0]
-        if old_accounts and username in old_accounts:
-            accounts[username] = old_accounts[username]
+        if pickled_accounts and username in pickled_accounts:
+            accounts[username] = pickled_accounts[username]
             if len(account) == 3 or len(account) == 6:
                 accounts[username]['password'] = account[1]
                 accounts[username]['provider'] = account[2]
         else:
             accounts[username] = create_account_dict(account)
+    return accounts
+
+
+def accounts_from_csv(new_accounts, pickled_accounts):
+    accounts = {}
+    for username, account in new_accounts.items():
+        pickled_account = pickled_accounts.get(username)
+        if pickled_account:
+            if pickled_account['password'] != account['password']:
+                del pickled_account['password']
+            account.update(pickled_account)
+        else:
+            account['provider'] = account['provider'] or 'ptc'
+            if not all(account[x] for x in ('model', 'iOS', 'id')):
+                account = generate_device_info(account)
+            account['time'] = 0
+            account['captcha'] = False
+            account['banned'] = False
+        accounts[username] = account
     return accounts
 
 
@@ -378,20 +399,35 @@ def dump_pickle(name, var):
 
 
 def load_accounts():
-    location = join(config.DIRECTORY, 'pickles', 'accounts.pickle')
-    try:
-        with open(location, 'rb') as f:
-            accounts = pickle.load(f)
-        if (config.ACCOUNTS and 
-                set(accounts) != set(acc[0] for acc in config.ACCOUNTS)):
-            accounts = create_accounts_dict(accounts)
-            dump_pickle('accounts', accounts)
-    except (FileNotFoundError, EOFError):
-        if not config.ACCOUNTS:
-            raise ValueError(
-                'Must have accounts in config or an accounts pickle.')
-        accounts = create_accounts_dict()
-        dump_pickle('accounts', accounts)
+    pickled_accounts = load_pickle('accounts')
+
+    if config.ACCOUNTS_CSV:
+        accounts = load_accounts_csv()
+        if not pickled_accounts:
+            return accounts
+        elif set(pickled_accounts) == set(accounts):
+            return pickled_accounts
+        else:
+            accounts = accounts_from_csv(accounts, pickled_accounts)
+    elif config.ACCOUNTS:
+        if set(pickled_accounts) == set(acc[0] for acc in config.ACCOUNTS):
+            return pickled_accounts
+        else:
+            accounts = accounts_from_config(pickled_accounts)
+    else:
+        raise ValueError('Must provide accounts in a CSV or your config file.')
+
+    dump_pickle('accounts', accounts)
+    return accounts
+
+
+def load_accounts_csv():
+    csv_location = join(config.DIRECTORY, config.ACCOUNTS_CSV)
+    with open(csv_location, 'rt') as f:
+        accounts = {}
+        reader = DictReader(f)
+        for row in reader:
+            accounts[row['username']] = row
     return accounts
 
 
@@ -408,6 +444,6 @@ def randomize_point(point, amount=0.0003):
 async def random_sleep(minimum=10, maximum=13, mode=None):
     """Sleeps for a bit"""
     if mode:
-        await sleep(random.triangular(minimum, maximum, mode), loop=LOOP)
+        await sleep(random.triangular(minimum, maximum, mode), loop=shared.LOOP)
     else:
-        await sleep(random.uniform(minimum, maximum), loop=LOOP)
+        await sleep(random.uniform(minimum, maximum), loop=shared.LOOP)

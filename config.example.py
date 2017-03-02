@@ -34,7 +34,10 @@ GIVE_UP_KNOWN = 75   # try to find a worker for a known spawn for this many seco
 GIVE_UP_UNKNOWN = 60 # try to find a worker for an unknown point for this many seconds before giving up
 SKIP_SPAWN = 90      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
 
-# the directory that the pickles folder, socket, etc. will go in
+# filename of accounts CSV
+ACCOUNTS_CSV = 'accounts.csv'
+
+# the directory that the pickles folder, socket, CSV, etc. will go in
 # defaults to working directory if not set
 #DIRECTORY = None
 
@@ -61,26 +64,6 @@ SEARCH_SLEEP = 2.5
 ## http://toblerity.org/shapely/manual.html#polygons
 #from shapely.geometry import Polygon
 #BOUNDARIES = Polygon(((40.799609, -111.948556), (40.792749, -111.887341), (40.779264, -111.838078), (40.761410, -111.817908), (40.728636, -111.805293), (40.688833, -111.785564), (40.689768, -111.919389), (40.750461, -111.949938)))
-
-# If accounts use the same provider and password you can set defaults here
-# and omit them from the accounts list.
-#PASS = 'pik4chu'
-#PROVIDER = 'ptc'
-
-### Device information will be generated for you if you do not provide it.
-### Account details are automatically retained in pickles/accounts.pickle
-## valid account formats (without PASS and PROVIDER set):
-# (username, password, provider, iPhone, iOS, device_id)
-# (username, password, provider)
-## valid account formats (with PASS and PROVIDER set):
-# (username, iPhone, iOS, device_id)
-# [username]
-ACCOUNTS = [
-    ('ash_ketchum', 'pik4chu', 'ptc'),
-    ('ziemniak_kalafior', 'ogorek', 'google'),
-    ('noideawhattoputhere', 's3cr3t', 'ptc'),
-    ('misty', 'bulbus4ur', 'ptc')
-]
 
 # key for Bossland's hashing server, otherwise the old hashing lib will be used
 #HASH_KEY = '9d87af14461b93cb3605'  # this key is fake
