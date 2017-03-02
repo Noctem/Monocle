@@ -34,7 +34,7 @@ BAD_STATUSES = (
     'KEY EXPIRED',
     'HASHING OFFLINE',
     'NIANTIC OFFLINE',
-    'THROTTLE',
+    'BAD REQUEST',
     'CAPTCHA',
     'BANNED',
     'BENCHING',

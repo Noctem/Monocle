@@ -10,7 +10,7 @@ from aiopogo.utilities import get_cell_ids, HAVE_POGEO
 from aiopogo.hash_server import HashServer
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
-from .utils import random_sleep, round_coords, load_pickle, get_device_info, get_spawn_id, get_distance, get_start_coords, Units, randomize_point
+from .utils import round_coords, load_pickle, get_device_info, get_spawn_id, get_distance, get_start_coords, Units, randomize_point
 from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS
 from .spawns import SPAWNS
 from .db_proc import DB_PROC
@@ -247,7 +247,7 @@ class Worker:
             if player_stats:
                 self.player_level = player_stats.get('level') or self.player_level
                 break
-        await random_sleep(.78, .95)
+        await self.random_sleep(.78, .95)
 
     async def set_avatar(self, tutorial=False):
         plater_avatar = avatar.new()
@@ -258,20 +258,20 @@ class Worker:
             filters=(2,)
         )
         await self.call(request, buddy=not tutorial, action=5)
-        await random_sleep(7, 14)
+        await self.random_sleep(7, 14)
 
         request = self.api.create_request()
         request.set_avatar(player_avatar=plater_avatar)
         await self.call(request, buddy=not tutorial, action=2)
 
         if tutorial:
-            await random_sleep(.5, 4)
+            await self.random_sleep(.5, 4)
 
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=1)
             await self.call(request, buddy=False)
 
-        await random_sleep(.5, 1)
+        await self.random_sleep(.5, 1)
 
         request = self.api.create_request()
         request.get_player_profile()
@@ -283,12 +283,12 @@ class Worker:
         # empty request
         request = self.api.create_request()
         await self.call(request, chain=False)
-        await random_sleep(.43, .97)
+        await self.random_sleep(.43, .97)
 
         # request 1: get_player
         tutorial_state = await self.get_player()
 
-        await random_sleep(.53, 1)
+        await self.random_sleep(.53, 1)
 
         # request 2: download_remote_config_version
         await self.download_remote_config(version)
@@ -298,7 +298,7 @@ class Worker:
         request.get_asset_digest(platform=1, app_version=version)
         responses = await self.call(request, buddy=False, settings=True)
 
-        await random_sleep(.87, 2)
+        await self.random_sleep(.87, 2)
 
         if (config.COMPLETE_TUTORIAL and
                 tutorial_state is not None and
@@ -321,14 +321,14 @@ class Worker:
             request = self.api.create_request()
             request.get_player_profile()
             await self.call(request, settings=True)
-            await random_sleep(.2, .4)
+            await self.random_sleep(.2, .4)
 
             if self.player_level:
                 # request 5: level_up_rewards
                 request = self.api.create_request()
                 request.level_up_rewards(level=self.player_level)
                 await self.call(request, settings=True)
-                await random_sleep(.45, .7)
+                await self.random_sleep(.45, .7)
             else:
                 self.log.warning('No player level')
 
@@ -338,7 +338,7 @@ class Worker:
             await self.call(request, action=0.1)
 
             self.log.info('Finished RPC login sequence (iOS app simulation)')
-            await random_sleep(.5, 1.3)
+            await self.random_sleep(.5, 1.3)
         self.error_code = None
         return True
 
@@ -350,7 +350,7 @@ class Worker:
             request.mark_tutorial_complete(tutorials_completed=[0])
             await self.call(request, buddy=False)
 
-            await random_sleep(.35, .525)
+            await self.random_sleep(.35, .525)
 
             request = self.api.create_request()
             request.get_player(player_locale=config.PLAYER_LOCALE)
@@ -364,18 +364,18 @@ class Worker:
         starter_id = None
         if 3 not in tutorial_state:
             # encounter tutorial
-            await random_sleep(.7, .9)
+            await self.random_sleep(.7, .9)
             request = self.api.create_request()
             request.get_download_urls(asset_id=asset_ids)
             await self.call(request)
 
-            await random_sleep(7, 10.3)
+            await self.random_sleep(7, 10.3)
             request = self.api.create_request()
             starter = choice((1, 4, 7))
             request.encounter_tutorial_complete(pokemon_id=starter)
             await self.call(request, action=1)
 
-            await random_sleep(.4, .5)
+            await self.random_sleep(.4, .5)
             request = self.api.create_request()
             request.get_player(player_locale=config.PLAYER_LOCALE)
             responses = await self.call(request)
@@ -392,7 +392,7 @@ class Worker:
 
         if 4 not in tutorial_state:
             # name selection
-            await random_sleep(12, 18)
+            await self.random_sleep(12, 18)
             request = self.api.create_request()
             request.claim_codename(codename=self.username)
             await self.call(request, action=2)
@@ -409,17 +409,17 @@ class Worker:
 
         if 7 not in tutorial_state:
             # first time experience
-            await random_sleep(3.9, 4.5)
+            await self.random_sleep(3.9, 4.5)
             request = self.api.create_request()
             request.mark_tutorial_complete(tutorials_completed=7)
             await self.call(request)
 
         if starter_id:
-            await random_sleep(4, 5)
+            await self.random_sleep(4, 5)
             request = self.api.create_request()
             request.set_buddy_pokemon(pokemon_id=starter_id)
             await self.call(request, action=2)
-            await random_sleep(.8, 1.2)
+            await self.random_sleep(.8, 1.2)
 
         await sleep(.2, loop=LOOP)
         return True
@@ -522,7 +522,7 @@ class Worker:
                     err = e
                     self.log.warning('{}', e)
                 self.error_code = 'NIANTIC OFFLINE'
-                await random_sleep()
+                await self.random_sleep()
             except ex.HashingQuotaExceededException as e:
                 if err != e:
                     err = e
@@ -537,21 +537,13 @@ class Worker:
                         await sleep(5, loop=LOOP)
                 else:
                     await sleep(30, loop=LOOP)
-            except ex.NianticThrottlingException as e:
-                old_time = self.last_request
+            except ex.InvalidRPCException as e:
                 self.last_request = time()
                 if err != e:
                     err = e
-                    message = str(e)
-                    if 'GetMapObjects' in message:
-                        message = '{} {:.2f} seconds since last GMO.'.format(
-                            message, self.last_request - self.last_gmo)
-                    else:
-                        message = '{} {:.2f} seconds since last request.'.format(
-                            message, self.last_request - old_time)
-                    self.log.warning(message)
-                self.error_code = 'THROTTLE'
-                await random_sleep(11, 22, 12)
+                    self.log.warning('{}', e)
+                self.error_code = 'BAD REQUEST'
+                await self.random_sleep()
             except ex.ProxyException as e:
                 if err != e:
                     err = e
@@ -571,7 +563,7 @@ class Worker:
                 if err != e:
                     self.log.warning('{}', e)
                 self.error_code = 'MALFORMED RESPONSE'
-                await random_sleep(10, 14, 11)
+                await self.random_sleep()
         if err is not None:
             raise err
 
@@ -689,18 +681,18 @@ class Worker:
 
             if config.CONTROL_SOCKS:
                 self.swap_circuit('IP ban')
-                await random_sleep(minimum=25, maximum=35)
+                await self.random_sleep(25, 35)
             elif self.proxies:
                 self.log.warning('Swapping out {} due to IP ban.', self.proxy)
                 proxy = self.proxy
                 while proxy == self.proxy:
                     self.new_proxy()
-                await random_sleep(minimum=12, maximum=20)
+                await self.random_sleep(12, 20)
             else:
                 self.log.error('IP banned.')
         except ex.ServerBusyOrOfflineException as e:
             self.log.warning('{} Giving up.', e)
-        except ex.NianticThrottlingException as e:
+        except ex.InvalidRPCException as e:
             self.log.warning('{} Giving up.', e)
         except ex.ExpiredHashKeyException:
             self.error_code = 'KEY EXPIRED'
@@ -772,7 +764,7 @@ class Worker:
                     await self.swap_account(reason)
                 raise ex.UnexpectedResponseException(error)
         except KeyError:
-            await random_sleep(.5, 1)
+            await self.random_sleep(.5, 1)
             await self.get_player()
             raise ex.UnexpectedResponseException('Missing GetMapObjects response.')
 
@@ -1299,6 +1291,11 @@ class Worker:
                     return True
                 raise CaptchaException
             return False
+
+    @staticmethod
+    async def random_sleep(minimum=10.1, maximum=14):
+        """Sleeps for a bit"""
+        await sleep(random.uniform(minimum, maximum), loop=LOOP)
 
     @property
     def status(self):

@@ -25,7 +25,7 @@ except ImportError:
     def jit(func):
         return func
 
-from . import config, shared
+from . import config
 
 _optional = {
     'ALT_RANGE': (300, 400),
@@ -441,11 +441,3 @@ def randomize_point(point, amount=0.0003):
         random.uniform(lat - amount, lat + amount),
         random.uniform(lon - amount, lon + amount)
     )
-
-
-async def random_sleep(minimum=10, maximum=13, mode=None):
-    """Sleeps for a bit"""
-    if mode:
-        await sleep(random.triangular(minimum, maximum, mode), loop=shared.LOOP)
-    else:
-        await sleep(random.uniform(minimum, maximum), loop=shared.LOOP)
