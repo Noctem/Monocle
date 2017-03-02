@@ -107,6 +107,11 @@ ITEM_LIMITS = {
     104:  40,  # Max Potion
     201:   0,  # Revive
     202:  40,  # Max Revive
+    701:  20,  # Razz Berry
+    702:  20,  # Bluk Berry
+    703:  20,  # Nanab Berry
+    704:  20,  # Wepar Berry
+    705:  20,  # Pinap Berry
 }
 '''
 
