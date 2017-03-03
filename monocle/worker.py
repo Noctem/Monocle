@@ -537,12 +537,14 @@ class Worker:
                         await sleep(5, loop=LOOP)
                 else:
                     await sleep(30, loop=LOOP)
+            except ex.BadRPCException:
+                raise
             except ex.InvalidRPCException as e:
                 self.last_request = time()
                 if err != e:
                     err = e
                     self.log.warning('{}', e)
-                self.error_code = 'BAD REQUEST'
+                self.error_code = 'INVALID REQUEST'
                 await self.random_sleep()
             except ex.ProxyException as e:
                 if err != e:
@@ -692,6 +694,10 @@ class Worker:
                 self.log.error('IP banned.')
         except ex.ServerBusyOrOfflineException as e:
             self.log.warning('{} Giving up.', e)
+        except ex.BadRPCException:
+            self.error_code = 'BAD REQUEST'
+            self.log.warning('{} received code 3 and is likely banned. Removing until next run.', self.username)
+            await self.new_account()
         except ex.InvalidRPCException as e:
             self.log.warning('{} Giving up.', e)
         except ex.ExpiredHashKeyException:
@@ -709,13 +715,12 @@ class Worker:
         except ex.HashServerException as e:
             self.log.warning('{}', e)
             self.error_code = 'HASHING ERROR'
-        except ex.PgoapiError as e:
+        except ex.AiopogoError as e:
             self.log.exception(e.__class__.__name__)
-            self.error_code = 'PGOAPI ERROR'
+            self.error_code = 'AIOPOGO ERROR'
         except Exception as e:
             self.log.exception('A wild {} appeared!', e.__class__.__name__)
             self.error_code = 'EXCEPTION'
-        await sleep(1, loop=LOOP)
         return False
 
     async def visit_point(self, point, bootstrap=False):

@@ -159,8 +159,8 @@ async def main():
                 print('Authentication error on {}: {}'.format(username, e))
                 captcha_queue.put(account)
                 await sleep(3)
-            except ex.PgoapiError as e:
-                print('pgoapi error on {}: {}'.format(username, e))
+            except ex.AiopogoError as e:
+                print('aiopogo error on {}: {}'.format(username, e))
                 captcha_queue.put(account)
                 await sleep(3)
             except Exception:
