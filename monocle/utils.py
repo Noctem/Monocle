@@ -327,18 +327,20 @@ def accounts_from_config(pickled_accounts=None):
 def accounts_from_csv(new_accounts, pickled_accounts):
     accounts = {}
     for username, account in new_accounts.items():
-        pickled_account = pickled_accounts.get(username)
-        if pickled_account:
-            if pickled_account['password'] != account['password']:
-                del pickled_account['password']
-            account.update(pickled_account)
-        else:
-            account['provider'] = account.get('provider', 'ptc')
-            if not all(account.get(x) for x in ('model', 'iOS', 'id')):
-                account = generate_device_info(account)
-            account['time'] = 0
-            account['captcha'] = False
-            account['banned'] = False
+        if pickled_accounts:
+            pickled_account = pickled_accounts.get(username)
+            if pickled_account:
+                if pickled_account['password'] != account['password']:
+                    del pickled_account['password']
+                account.update(pickled_account)
+            accounts[username] = account
+            continue
+        account['provider'] = account.get('provider', 'ptc')
+        if not all(account.get(x) for x in ('model', 'iOS', 'id')):
+            account = generate_device_info(account)
+        account['time'] = 0
+        account['captcha'] = False
+        account['banned'] = False
         accounts[username] = account
     return accounts
 
@@ -410,7 +412,7 @@ def load_accounts():
         else:
             accounts = accounts_from_csv(accounts, pickled_accounts)
     elif config.ACCOUNTS:
-        if set(pickled_accounts) == set(acc[0] for acc in config.ACCOUNTS):
+        if pickled_accounts and set(pickled_accounts) == set(acc[0] for acc in config.ACCOUNTS):
             return pickled_accounts
         else:
             accounts = accounts_from_config(pickled_accounts)
