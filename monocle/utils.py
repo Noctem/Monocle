@@ -333,8 +333,8 @@ def accounts_from_csv(new_accounts, pickled_accounts):
                 del pickled_account['password']
             account.update(pickled_account)
         else:
-            account['provider'] = account.get('provider') or 'ptc'
-            if not all(account.get(x) is not None for x in ('model', 'iOS', 'id')):
+            account['provider'] = account.get('provider', 'ptc')
+            if not all(account.get(x) for x in ('model', 'iOS', 'id')):
                 account = generate_device_info(account)
             account['time'] = 0
             account['captcha'] = False
@@ -405,9 +405,7 @@ def load_accounts():
 
     if config.ACCOUNTS_CSV:
         accounts = load_accounts_csv()
-        if not pickled_accounts:
-            return accounts
-        elif set(pickled_accounts) == set(accounts):
+        if set(pickled_accounts) == set(accounts):
             return pickled_accounts
         else:
             accounts = accounts_from_csv(accounts, pickled_accounts)
@@ -429,7 +427,7 @@ def load_accounts_csv():
         accounts = {}
         reader = DictReader(f)
         for row in reader:
-            accounts[row['username']] = row
+            accounts[row['username']] = dict(row)
     return accounts
 
 
