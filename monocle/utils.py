@@ -405,7 +405,7 @@ def load_accounts():
 
     if config.ACCOUNTS_CSV:
         accounts = load_accounts_csv()
-        if set(pickled_accounts) == set(accounts):
+        if pickled_accounts and set(pickled_accounts) == set(accounts):
             return pickled_accounts
         else:
             accounts = accounts_from_csv(accounts, pickled_accounts)
