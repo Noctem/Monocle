@@ -335,7 +335,7 @@ def accounts_from_csv(new_accounts, pickled_accounts):
                 account.update(pickled_account)
             accounts[username] = account
             continue
-        account['provider'] = account.get('provider', 'ptc')
+        account['provider'] = account.get('provider') or 'ptc'
         if not all(account.get(x) for x in ('model', 'iOS', 'id')):
             account = generate_device_info(account)
         account['time'] = 0
