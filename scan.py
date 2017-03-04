@@ -15,6 +15,7 @@ from queue import Queue, Full
 from argparse import ArgumentParser
 from signal import signal, SIGINT, SIGTERM, SIG_IGN
 from logging import getLogger, basicConfig, WARNING, INFO
+from logging.handlers import RotatingFileHandler
 from os.path import exists, join
 from sys import platform
 from concurrent.futures import TimeoutError
@@ -106,12 +107,16 @@ def parse_args():
 
 
 def configure_logger(filename='scan.log'):
+    if filename:
+        handlers = (RotatingFileHandler(filename, maxBytes=500000, backupCount=4),)
+    else:
+        handlers = None
     basicConfig(
-        filename=filename,
         format='[{asctime}][{levelname:>8s}][{name}] {message}',
         datefmt='%Y-%m-%d %X',
         style='{',
-        level=INFO
+        level=INFO,
+        handlers=handlers
     )
 
 

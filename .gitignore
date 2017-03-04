@@ -106,6 +106,7 @@ static/js/custom.js
 # storage and logging
 *.sqlite
 *.log
+scan.log.*
 *.pickle
 *.xz
 pickles/
