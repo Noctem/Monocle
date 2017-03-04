@@ -124,7 +124,7 @@ class Worker:
             self.api.activate_hash_server(conf.HASH_KEY)
         self.api.set_position(*self.location, self.altitude)
         if self.proxies:
-            self.api.set_proxy(next(self.proxy))
+            self.api.set_proxy(next(self.proxies))
         try:
             if self.account['provider'] == 'ptc' and 'auth' in self.account:
                 self.api._auth_provider = AuthPtc(username=self.username, password=self.account['password'], timeout=conf.LOGIN_TIMEOUT)
