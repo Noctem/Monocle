@@ -76,6 +76,11 @@ SEARCH_SLEEP = 2.5
 # value: how many requests to keep as spare (0.1 = 10%), False to disable
 #SMART_THROTTLE = 0.1
 
+# Swap the worker that has seen the fewest Pokémon every x seconds
+# Defaults to whatever will allow every worker to be swapped within 6 hours
+#SWAP_OLDEST = 300  # 5 minutes
+# Only swap if it's been active for more than x minutes
+#MINIMUM_RUNTIME = 10
 
 ### these next 6 options use more requests but look more like the real client
 APP_SIMULATION = True     # mimic the actual app's login requests
@@ -115,9 +120,6 @@ ITEM_LIMITS = {
 }
 '''
 
-# Swap the worker that has seen the fewest Pokémon every x seconds
-SWAP_WORST = 600  # 10 minutes
-
 # Update the console output every x seconds
 REFRESH_RATE = 0.6  # 600ms
 # Update the seen/speed/visit/speed stats every x seconds
@@ -151,7 +153,7 @@ RARE_IDS = (
 )
 
 from datetime import datetime
-REPORT_SINCE = datetime(2016, 12, 17)  # base reports on data from after this date
+REPORT_SINCE = datetime(2017, 2, 17)  # base reports on data from after this date
 
 # used for altitude queries and maps in reports
 GOOGLE_MAPS_KEY = 'OYOgW1wryrp2RKJ81u7BLvHfYUA6aArIyuQCXu4'  # this key is fake

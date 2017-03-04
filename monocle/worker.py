@@ -118,7 +118,6 @@ class Worker:
         # Other variables
         self.after_spawn = None
         self.speed = 0
-        self.account_start = None
         self.total_seen = 0
         self.error_code = 'INIT'
         self.item_capacity = 350
@@ -211,7 +210,6 @@ class Worker:
                 await self.download_remote_config(version)
 
         self.error_code = None
-        self.account_start = time()
         return True
 
     async def get_player(self):
@@ -1165,16 +1163,27 @@ class Worker:
         self.captcha_queue.put(self.account)
         await self.new_account()
 
-    async def swap_account(self, reason='', lock=False):
+    async def lock_and_swap(self, minutes):
+        async with self.busy:
+            self.error_code = 'SWAPPING'
+            h, m = divmod(int(minutes), 3600)
+            if h:
+                timestr = '{}h{}m'.format(h, m)
+            else:
+                timestr = '{}m'.format(m)
+            self.log.warning('Swapping {} which had been running for {}.', self.username, timestr)
+            self.update_accounts_dict()
+            self.extra_queue.put(self.account)
+            await self.new_account()
+
+    async def swap_account(self, reason=''):
         self.error_code = 'SWAPPING'
         self.log.warning('Swapping out {} because {}.', self.username, reason)
-        if lock:
-            await self.busy.acquire()
         self.update_accounts_dict()
         self.extra_queue.put(self.account)
-        await self.new_account(lock)
+        await self.new_account()
 
-    async def new_account(self, lock=False):
+    async def new_account(self):
         if (config.CAPTCHA_KEY
                 and (config.FAVOR_CAPTCHA or self.extra_queue.empty())
                 and not self.captcha_queue.empty()):
@@ -1200,17 +1209,6 @@ class Worker:
         self.unused_incubators = []
         self.initialize_api()
         self.error_code = None
-        if lock:
-            self.busy.release()
-
-    def seen_per_second(self, now):
-        try:
-            seconds_active = now - self.account_start
-            if seconds_active < 120:
-                return None
-            return self.account_seen / seconds_active
-        except TypeError:
-            return None
 
     def unset_code(self):
         self.error_code = None
@@ -1301,6 +1299,10 @@ class Worker:
     async def random_sleep(minimum=10.1, maximum=14):
         """Sleeps for a bit"""
         await sleep(uniform(minimum, maximum), loop=LOOP)
+
+    @property
+    def start_time(self):
+        return self.api.start_time
 
     @property
     def status(self):

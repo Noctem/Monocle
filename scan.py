@@ -37,6 +37,9 @@ _required = (
 for setting_name in _required:
     if not hasattr(config, setting_name):
         raise AttributeError('Please set "{}" in config'.format(setting_name))
+
+worker_count = config.GRID[0] * config.GRID[1]
+
 # Set defaults for missing config options
 _optional = {
     'PROXIES': None,
@@ -67,14 +70,15 @@ _optional = {
     'CAPTCHAS_ALLOWED': 3,
     'DIRECTORY': None,
     'FORCED_KILL': None,
-    'SWAP_WORST': 600,
     'REFRESH_RATE': 0.6,
     'SPEED_LIMIT': 19.5,
-    'COROUTINES_LIMIT': None,
+    'COROUTINES_LIMIT': worker_count,
     'GOOD_ENOUGH': None,
     'SEARCH_SLEEP': 2.5,
     'STAT_REFRESH': 5,
-    'FAVOR_CAPTCHA': True
+    'FAVOR_CAPTCHA': True,
+    'SWAP_OLDEST': 21600 / worker_count,
+    'MINIMUM_RUNTIME': 10
 }
 for setting_name, default in _optional.items():
     if not hasattr(config, setting_name):
@@ -127,9 +131,6 @@ if config.DIRECTORY is None:
 
 if config.FORCED_KILL is True:
     config.FORCED_KILL = ('0.57.2', '0.57.3', '0.55.0', '0.53.0', '0.53.1', '0.53.2')
-
-if not config.COROUTINES_LIMIT:
-    config.COROUTINES_LIMIT = config.GRID[0] * config.GRID[1]
 
 from monocle.shared import LOOP, get_logger, SessionManager, ACCOUNTS
 from monocle.utils import get_address, dump_pickle

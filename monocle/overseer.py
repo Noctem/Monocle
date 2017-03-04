@@ -105,14 +105,11 @@ class Overseer:
                 if now - last_commit > 5:
                     DB_PROC.commit()
                     last_commit = now
-                if not self.paused and now - last_swap > config.SWAP_WORST:
-                    if not self.extra_queue.empty():
-                        worst, per_minute = self.least_productive()
-                        if worst:
-                            LOOP.create_task(
-                                worst.swap_account(
-                                    reason='only {:.1f} seen per minute'.format(per_minute),
-                                    lock=True))
+                if now - last_swap > config.SWAP_OLDEST:
+                    if not self.paused and not self.extra_queue.empty():
+                        oldest, minutes = self.longest_running()
+                        if minutes > config.MINIMUM_RUNTIME:
+                            LOOP.create_task(oldest.lock_and_swap(minutes))
                     last_swap = now
                 # Record things found count
                 if not self.paused and now - last_stats_updated > config.STAT_REFRESH:
@@ -319,20 +316,16 @@ class Overseer:
             output += ('', 'CAPTCHAs are needed to proceed.')
         return '\n'.join(output)
 
-    def least_productive(self):
-        worker = None
-        lowest = None
-        now = time.time()
-        for account in self.workers:
-            per_second = account.seen_per_second(now)
-            if not lowest or (per_second and per_second < lowest):
-                lowest = per_second
-                worker = account
-        try:
-            per_minute = lowest * 60
-            return worker, per_minute
-        except TypeError:
-            return None, None
+    def longest_running(self):
+        workers = (x for x in self.workers if x.start_time)
+        worker = next(workers)
+        earliest = worker.start_time
+        for w in workers:
+            if w.start_time < earliest:
+                worker = w
+                earliest = w.start_time
+        minutes = ((time.time() * 1000) - earliest) / 60000
+        return worker, minutes
 
     def get_start_point(self):
         smallest_diff = float('inf')
