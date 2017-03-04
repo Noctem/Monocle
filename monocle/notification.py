@@ -395,6 +395,7 @@ class Notification:
                         self.log.error('Error {} from Telegram: {}', e.code, e.message)
                     return False
                 self.log.info('Sent a Telegram notification about {}.', self.name)
+                return True
         except (ClientError, DisconnectedError) as e:
             err = e.__cause__ or e
             self.log.error('{} during Telegram notification.', err.__class__.__name__)
