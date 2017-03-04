@@ -236,7 +236,7 @@ class Config:
                     setattr(self, key, _defaults.pop(key))
                 else:
                     valid = isinstance(_valid_types[key], type)
-                    actual = type(value).__name
+                    actual = type(value).__name__
                     if isinstance(valid, type):
                         err = '{} must be {}. Yours is: {}.'.format(
                             key, valid.__name__, actual)
