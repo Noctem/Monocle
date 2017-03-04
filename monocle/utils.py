@@ -18,6 +18,7 @@ from csv import DictReader
 from geopy import Point
 from geopy.distance import distance
 from aiopogo import utilities as pgoapi_utils
+from pogeo import get_distance
 
 try:
     from numba import jit
@@ -25,34 +26,7 @@ except ImportError:
     def jit(func):
         return func
 
-from . import config
-
-_optional = {
-    'ALT_RANGE': (300, 400),
-    'GOOGLE_MAPS_KEY': None,
-    'MAP_START': None,
-    'MAP_END': None,
-    'BOUNDARIES': None,
-    'SPAWN_ID_INT': True,
-    'PASS': None,
-    'PROVIDER': None,
-    'MANAGER_ADDRESS': None,
-    'BOOTSTRAP_RADIUS': 450,
-    'DIRECTORY': None,
-    'SPEED_UNIT': 'miles',
-    'ACCOUNTS': None,
-    'ACCOUNTS_CSV': None
-}
-for setting_name, default in _optional.items():
-    if not hasattr(config, setting_name):
-        setattr(config, setting_name, default)
-del _optional
-
-if config.DIRECTORY is None:
-    if exists(join('..', 'pickles')):
-        config.DIRECTORY = '..'
-    else:
-        config.DIRECTORY = ''
+from . import sanitized as conf
 
 IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone5,2': 'N42AP',
@@ -70,46 +44,28 @@ IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone9,3': 'D101AP',
            'iPhone9,4': 'D111AP'}
 
-if config.BOUNDARIES:
-    MAP_CENTER = config.BOUNDARIES.centroid.coords[0]
+if conf.BOUNDARIES:
+    MAP_CENTER = conf.BOUNDARIES.centroid.coords[0]
     LAT_MEAN, LON_MEAN = MAP_CENTER
 else:
-    LAT_MEAN = (config.MAP_END[0] + config.MAP_START[0]) / 2
-    LON_MEAN = (config.MAP_END[1] + config.MAP_START[1]) / 2
+    LAT_MEAN = (conf.MAP_END[0] + conf.MAP_START[0]) / 2
+    LON_MEAN = (conf.MAP_END[1] + conf.MAP_START[1]) / 2
     MAP_CENTER = LAT_MEAN, LON_MEAN
 
-try:
-    from pogeo import get_distance
-
-    class Units(Enum):
-        miles = 1
-        kilometers = 2
-        meters = 3
-except ImportError:
-    from math import hypot, pi, cos
-
-    LON_MULT = cos(pi * LAT_MEAN / 180)
-    _lat_rad = LAT_MEAN * pi / 180
-    _mult = 111132.92 + (-559.82 * cos(2 * _lat_rad)) + (1.175 * cos(4 * _lat_rad)) + (-0.0023 * cos(6 * _lat_rad))
-
-    class Units(Enum):
-        miles = _mult * 0.000621371
-        kilometers = _mult / 1000
-        meters = _mult
-
-    del _lat_rad, _mult
-
-    @jit
-    def get_distance(p1, p2, mult=Units.meters.value):
-        return hypot(p1[0] - p2[0], (p1[1] - p2[1]) * LON_MULT) * mult
 
 log = getLogger(__name__)
 
 
+class Units(Enum):
+    miles = 1
+    kilometers = 2
+    meters = 3
+
+
 def get_scan_area():
     """Returns the square kilometers for configured scan area"""
-    width = get_distance(config.MAP_START, (config.MAP_START[0], config.MAP_END[1]), Units.kilometers.value)
-    height = get_distance(config.MAP_START, (config.MAP_END[0], config.MAP_START[1]), Units.kilometers.value)
+    width = get_distance(conf.MAP_START, (conf.MAP_START[0], conf.MAP_END[1]), Units.kilometers.value)
+    height = get_distance(conf.MAP_START, (conf.MAP_END[0], conf.MAP_START[1]), Units.kilometers.value)
     area = round(width * height)
     return area
 
@@ -117,16 +73,16 @@ def get_scan_area():
 @jit
 def get_start_coords(worker_no):
     """Returns center of square for given worker"""
-    grid = config.GRID
+    grid = conf.GRID
     total_workers = grid[0] * grid[1]
     per_column = int(total_workers / grid[0])
 
     column = worker_no % per_column
     row = int(worker_no / per_column)
-    part_lat = (config.MAP_END[0] - config.MAP_START[0]) / grid[0]
-    part_lon = (config.MAP_END[1] - config.MAP_START[1]) / grid[1]
-    start_lat = config.MAP_START[0] + part_lat * row + part_lat / 2
-    start_lon = config.MAP_START[1] + part_lon * column + part_lon / 2
+    part_lat = (conf.MAP_END[0] - conf.MAP_START[0]) / grid[0]
+    part_lon = (conf.MAP_END[1] - conf.MAP_START[1]) / grid[1]
+    start_lat = conf.MAP_START[0] + part_lat * row + part_lat / 2
+    start_lon = conf.MAP_START[1] + part_lon * column + part_lon / 2
     return start_lat, start_lon
 
 
@@ -164,14 +120,14 @@ def round_coords(point, precision):
 
 @jit
 def random_altitude():
-    altitude = random.uniform(*config.ALT_RANGE)
+    altitude = random.uniform(*conf.ALT_RANGE)
     return altitude
 
 
 def get_altitude(point):
     params = {'locations': 'enc:' + polyline.encode((point,))}
-    if config.GOOGLE_MAPS_KEY:
-        params['key'] = config.GOOGLE_MAPS_KEY
+    if conf.GOOGLE_MAPS_KEY:
+        params['key'] = conf.GOOGLE_MAPS_KEY
     r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
                      params=params).json()
     altitude = r['results'][0]['elevation']
@@ -191,8 +147,8 @@ def get_altitudes(coords, precision=3):
     else:
         try:
             params = {'locations': 'enc:' + polyline.encode(coords)}
-            if config.GOOGLE_MAPS_KEY:
-                params['key'] = config.GOOGLE_MAPS_KEY
+            if conf.GOOGLE_MAPS_KEY:
+                params['key'] = conf.GOOGLE_MAPS_KEY
             r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
                              params=params).json()
 
@@ -209,14 +165,14 @@ def get_point_altitudes(precision=3):
     rounded_coords = set()
     lat_gain, lon_gain = get_gains(100)
     for map_row, lat in enumerate(
-        float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)
+        float_range(conf.MAP_START[0], conf.MAP_END[0], lat_gain)
     ):
-        row_start_lon = config.MAP_START[1]
+        row_start_lon = conf.MAP_START[1]
         odd = map_row % 2 != 0
         if odd:
             row_start_lon -= 0.5 * lon_gain
         for map_col, lon in enumerate(
-            float_range(row_start_lon, config.MAP_END[1], lon_gain)
+            float_range(row_start_lon, conf.MAP_END[1], lon_gain)
         ):
             key = round_coords((lat, lon), precision)
             rounded_coords.add(key)
@@ -226,17 +182,17 @@ def get_point_altitudes(precision=3):
 
 
 def get_bootstrap_points():
-    lat_gain, lon_gain = get_gains(config.BOOTSTRAP_RADIUS)
+    lat_gain, lon_gain = get_gains(conf.BOOTSTRAP_RADIUS)
     coords = []
     for map_row, lat in enumerate(
-        float_range(config.MAP_START[0], config.MAP_END[0], lat_gain)
+        float_range(conf.MAP_START[0], conf.MAP_END[0], lat_gain)
     ):
-        row_start_lon = config.MAP_START[1]
+        row_start_lon = conf.MAP_START[1]
         odd = map_row % 2 != 0
         if odd:
             row_start_lon -= 0.5 * lon_gain
         for map_col, lon in enumerate(
-            float_range(row_start_lon, config.MAP_END[1], lon_gain)
+            float_range(row_start_lon, conf.MAP_END[1], lon_gain)
         ):
             coords.append([lat,lon])
     random.shuffle(coords)
@@ -287,14 +243,14 @@ def create_account_dict(account):
 
     if length not in (1, 3, 4, 6):
         raise ValueError('Each account should have either 3 (account info only) or 6 values (account and device info).')
-    if length in (1, 4) and (not config.PASS or not config.PROVIDER):
+    if length in (1, 4) and (not conf.PASS or not conf.PROVIDER):
         raise ValueError('No default PASS or PROVIDER are set.')
 
     entry = {}
     entry['username'] = account[0]
 
     if length == 1 or length == 4:
-        entry['password'], entry['provider'] = config.PASS, config.PROVIDER
+        entry['password'], entry['provider'] = conf.PASS, conf.PROVIDER
     else:
         entry['password'], entry['provider'] = account[1:3]
 
@@ -312,7 +268,7 @@ def create_account_dict(account):
 
 def accounts_from_config(pickled_accounts=None):
     accounts = {}
-    for account in config.ACCOUNTS:
+    for account in conf.ACCOUNTS:
         username = account[0]
         if pickled_accounts and username in pickled_accounts:
             accounts[username] = pickled_accounts[username]
@@ -345,10 +301,11 @@ def accounts_from_csv(new_accounts, pickled_accounts):
     return accounts
 
 
-def get_spawn_id(pokemon):
-    if config.SPAWN_ID_INT:
+if conf.SPAWN_ID_INT:
+    def get_spawn_id(pokemon):
         return int(pokemon['spawn_point_id'], 16)
-    else:
+else:
+    def get_spawn_id(pokemon):
         return pokemon['spawn_point_id']
 
 
@@ -368,19 +325,17 @@ def time_until_time(seconds, seen=None):
 
 
 def get_address():
-    if config.MANAGER_ADDRESS:
-        return config.MANAGER_ADDRESS
+    if conf.MANAGER_ADDRESS:
+        return conf.MANAGER_ADDRESS
     if platform == 'win32':
-        address = r'\\.\pipe\monocle'
-    elif hasattr(socket, 'AF_UNIX'):
-        address = join(config.DIRECTORY, 'monocle.sock')
-    else:
-        address = ('127.0.0.1', 5001)
-    return address
+        return r'\\.\pipe\monocle'
+    if hasattr(socket, 'AF_UNIX'):
+        return join(conf.DIRECTORY, 'monocle.sock')
+    return ('127.0.0.1', 5001)
 
 
 def load_pickle(name):
-    location = join(config.DIRECTORY, 'pickles', '{}.pickle'.format(name))
+    location = join(conf.DIRECTORY, 'pickles', '{}.pickle'.format(name))
     try:
         with open(location, 'rb') as f:
             return pickle.load(f)
@@ -389,7 +344,7 @@ def load_pickle(name):
 
 
 def dump_pickle(name, var):
-    folder = join(config.DIRECTORY, 'pickles')
+    folder = join(conf.DIRECTORY, 'pickles')
     try:
         mkdir(folder)
     except FileExistsError:
@@ -405,14 +360,14 @@ def dump_pickle(name, var):
 def load_accounts():
     pickled_accounts = load_pickle('accounts')
 
-    if config.ACCOUNTS_CSV:
+    if conf.ACCOUNTS_CSV:
         accounts = load_accounts_csv()
         if pickled_accounts and set(pickled_accounts) == set(accounts):
             return pickled_accounts
         else:
             accounts = accounts_from_csv(accounts, pickled_accounts)
-    elif config.ACCOUNTS:
-        if pickled_accounts and set(pickled_accounts) == set(acc[0] for acc in config.ACCOUNTS):
+    elif conf.ACCOUNTS:
+        if pickled_accounts and set(pickled_accounts) == set(acc[0] for acc in conf.ACCOUNTS):
             return pickled_accounts
         else:
             accounts = accounts_from_config(pickled_accounts)
@@ -424,7 +379,7 @@ def load_accounts():
 
 
 def load_accounts_csv():
-    csv_location = join(config.DIRECTORY, config.ACCOUNTS_CSV)
+    csv_location = join(conf.DIRECTORY, conf.ACCOUNTS_CSV)
     with open(csv_location, 'rt') as f:
         accounts = {}
         reader = DictReader(f)

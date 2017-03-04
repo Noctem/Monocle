@@ -28,7 +28,7 @@ MAP_END = (40.7143, -111.8046)
 STAY_WITHIN_MAP = True
 
 # ensure that you visit within this many meters of every part of your map during bootstrap
-#BOOTSTRAP_RADIUS = 450
+#BOOTSTRAP_RADIUS = 240
 
 GIVE_UP_KNOWN = 75   # try to find a worker for a known spawn for this many seconds before giving up
 GIVE_UP_UNKNOWN = 60 # try to find a worker for an unknown point for this many seconds before giving up
@@ -99,8 +99,7 @@ SPIN_POKESTOPS = False # spin all PokéStops that are within range
 SPIN_COOLDOWN = 300    # spin only one PokéStop every n seconds (default 300)
 
 # minimum number of each item to keep if the bag is cleaned
-# remove or set to None to disable bag cleaning
-# automatically disabled if SPIN_POKESTOPS is disabled
+# bag cleaning is disabled if this is not present or is commented out
 ''' # triple quotes are comments, remove them to use this ITEM_LIMITS example
 ITEM_LIMITS = {
     1:    20,  # Poké Ball
@@ -187,15 +186,14 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 
 # Bytestring key to authenticate with manager for inter-process communication
 #AUTHKEY = b'm3wtw0'
-# Address to use for manager, leave unset or set to None if you're note sure.
+# Address to use for manager, leave commented if you're not sure.
 #MANAGER_ADDRESS = r'\\.\pipe\monocle'  # must be in this format for Windows
 #MANAGER_ADDRESS = 'monocle.sock'       # the socket name for Unix systems
-#MANAGER_ADDRESS = ('127.0.0.1', 5002)    # could be used for CAPTCHA solving and live worker maps on remote systems
+#MANAGER_ADDRESS = ('127.0.0.1', 5002)  # could be used for CAPTCHA solving and live worker maps on remote systems
 
 # Store the cell IDs so that they don't have to be recalculated every visit.
-# Highly recommended unless you don't have enough memory for them.
-# Disabling will increase processor usage.
-#CACHE_CELLS = True
+# Enabling will increase memory usage.
+#CACHE_CELLS = False
 
 # Only for use with web-sanic (requires PostgreSQL)
 #DB = {'host': '127.0.0.1', 'user': 'monocle_role', 'password': 'pik4chu', 'port': '5432', 'database': 'monocle'}
@@ -211,10 +209,10 @@ LOAD_CUSTOM_HTML_FILE = False # File path MUST be 'templates/custom.html'
 LOAD_CUSTOM_CSS_FILE = False  # File path MUST be 'static/css/custom.css'
 LOAD_CUSTOM_JS_FILE = False  # File path MUST be 'static/js/custom.js'
 
-FB_PAGE_ID = None
-TWITTER_SCREEN_NAME = None  # Username withouth '@' char
-DISCORD_INVITE_ID = None
-TELEGRAM_USERNAME = None  # Username withouth '@' char
+#FB_PAGE_ID = None
+#TWITTER_SCREEN_NAME = None  # Username withouth '@' char
+#DISCORD_INVITE_ID = None
+#TELEGRAM_USERNAME = None  # Username withouth '@' char
 
 ## Variables below will be used as default values on frontend
 FIXED_OPACITY = False  # Make marker opacity independent of remaining time
@@ -274,7 +272,7 @@ INITIAL_SCORE = 0.7  # the required score immediately after a notification
 MINIMUM_SCORE = 0.4  # the required score after FULL_TIME seconds have passed
 
 ### The following values are fake, replace them with your own keys to enable
-### notifications, otherwise leave them out of your config or set them to None.
+### notifications, otherwise exclude them from your config
 ### You must provide keys for at least one service to use notifications.
 
 #PB_API_KEY = 'o.9187cb7d5b857c97bfcaa8d63eaa8494'

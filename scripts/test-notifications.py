@@ -2,10 +2,10 @@
 
 from asyncio import get_event_loop
 
-from monocle import config, names
+from monocle import names, sanitized as conf
 
-config.ALWAYS_NOTIFY_IDS = {0}
-config.HASHTAGS = {'test'}
+conf.ALWAYS_NOTIFY_IDS = {0}
+conf.HASHTAGS = {'test'}
 names.POKEMON_NAMES[0] = 'Test'
 
 from monocle.notification import Notifier

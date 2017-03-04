@@ -15,43 +15,17 @@ from .db import session_scope, get_pokemon_ranking, estimate_remaining_time
 from .names import POKEMON_NAMES, POKEMON_MOVES
 from .shared import get_logger, SessionManager, LOOP, run_threaded
 
-from . import config
+from . import sanitized as conf
 
 
-# set unset config options to None
-for variable_name in ('PB_API_KEY', 'PB_CHANNEL', 'TWITTER_CONSUMER_KEY',
-                      'TWITTER_CONSUMER_SECRET', 'TWITTER_ACCESS_KEY',
-                      'TWITTER_ACCESS_SECRET', 'LANDMARKS', 'AREA_NAME',
-                      'HASHTAGS', 'TZ_OFFSET', 'ENCOUNTER', 'INITIAL_RANKING',
-                      'NOTIFY', 'NAME_FONT', 'IV_FONT', 'MOVE_FONT',
-                      'TWEET_IMAGES', 'NOTIFY_IDS', 'NEVER_NOTIFY_IDS',
-                      'RARITY_OVERRIDE', 'IGNORE_IVS', 'IGNORE_RARITY',
-                      'WEBHOOKS', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'):
-    if not hasattr(config, variable_name):
-        setattr(config, variable_name, None)
-
-_optional = {
-    'ALWAYS_NOTIFY': 9,
-    'FULL_TIME': 1800,
-    'TIME_REQUIRED': 300,
-    'NOTIFY_RANKING': 90,
-    'ALWAYS_NOTIFY_IDS': set()
-}
-# set defaults for unset config options
-for setting_name, default in _optional.items():
-    if not hasattr(config, setting_name):
-        setattr(config, setting_name, default)
-del _optional
-
-if config.NOTIFY:
-
+if conf.NOTIFY:
     WEBHOOK = False
     TWITTER = False
     PUSHBULLET = False
     TELEGRAM = False
 
-    if all((config.TWITTER_CONSUMER_KEY, config.TWITTER_CONSUMER_SECRET,
-            config.TWITTER_ACCESS_KEY, config.TWITTER_ACCESS_SECRET)):
+    if all((conf.TWITTER_CONSUMER_KEY, conf.TWITTER_CONSUMER_SECRET,
+            conf.TWITTER_ACCESS_KEY, conf.TWITTER_ACCESS_SECRET)):
         try:
             import peony.utils
             def _get_image_metadata(file_):
@@ -62,38 +36,30 @@ if config.NOTIFY:
             raise ImportError("You specified a TWITTER_ACCESS_KEY but you don't have peony-twitter installed.") from e
         TWITTER=True
 
-        if config.TWEET_IMAGES:
-            if not config.ENCOUNTER:
+        if conf.TWEET_IMAGES:
+            if not conf.ENCOUNTER:
                 raise ValueError('You enabled TWEET_IMAGES but ENCOUNTER is not set.')
             try:
                 import cairo
             except ImportError as e:
                 raise ImportError('You enabled TWEET_IMAGES but Cairo could not be imported.') from e
 
-    if config.PB_API_KEY:
+    if conf.PB_API_KEY:
         try:
             from asyncpushbullet import AsyncPushbullet
         except ImportError as e:
             raise ImportError("You specified a PB_API_KEY but you don't have asyncpushbullet installed.") from e
         PUSHBULLET=True
 
-    if config.WEBHOOKS:
-        if isinstance(config.WEBHOOKS, (set, list, tuple)):
-            if len(config.WEBHOOKS) == 1:
-                try:
-                    HOOK_POINT = config.WEBHOOKS.pop()
-                except AttributeError:
-                    HOOK_POINT = config.WEBHOOKS[0]
-                WEBHOOK = 1
-            else:
-                HOOK_POINTS = config.WEBHOOKS
-                WEBHOOK = 2
-        elif isinstance(config.WEBHOOKS, str):
-            HOOK_POINT = config.WEBHOOKS
+    if conf.WEBHOOKS:
+        if len(conf.WEBHOOKS) == 1:
+            HOOK_POINT = next(iter(conf.WEBHOOKS))
             WEBHOOK = 1
         else:
-            raise ValueError('WEBHOOKS must be a set or list of addresses, or a string with one address.')
-    if config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID:
+            HOOK_POINTS = conf.WEBHOOKS
+            WEBHOOK = 2
+
+    if conf.TELEGRAM_BOT_TOKEN and conf.TELEGRAM_CHAT_ID:
         TELEGRAM=True
 
     NATIVE = TWITTER or PUSHBULLET or TELEGRAM
@@ -102,14 +68,14 @@ if config.NOTIFY:
         raise ValueError('NOTIFY is enabled but no keys or webhook address were provided.')
 
     try:
-        if config.INITIAL_SCORE < config.MINIMUM_SCORE:
+        if conf.INITIAL_SCORE < conf.MINIMUM_SCORE:
             raise ValueError('INITIAL_SCORE should be greater than or equal to MINIMUM_SCORE.')
     except TypeError:
         raise AttributeError('INITIAL_SCORE or MINIMUM_SCORE are not set.')
 
-    if config.NOTIFY_RANKING and config.NOTIFY_IDS:
+    if conf.NOTIFY_RANKING and conf.NOTIFY_IDS:
         raise ValueError('Only set NOTIFY_RANKING or NOTIFY_IDS, not both.')
-    elif not any((config.NOTIFY_RANKING, config.NOTIFY_IDS, config.ALWAYS_NOTIFY_IDS)):
+    elif not any((conf.NOTIFY_RANKING, conf.NOTIFY_IDS, conf.ALWAYS_NOTIFY_IDS)):
         raise ValueError('Must set either NOTIFY_RANKING, NOTIFY_IDS, or ALWAYS_NOTIFY_IDS.')
 
 
@@ -164,7 +130,7 @@ class PokeImage:
         text_x = 240
 
         try:
-            self.context.select_font_face(config.IV_FONT or "monospace")
+            self.context.select_font_face(conf.IV_FONT or "monospace")
             self.context.set_font_size(22)
 
             # black stroke
@@ -181,7 +147,7 @@ class PokeImage:
             pass
 
         if self.move1 or self.move2:
-            self.context.select_font_face(config.MOVE_FONT or "sans-serif")
+            self.context.select_font_face(conf.MOVE_FONT or "sans-serif")
             self.context.set_font_size(16)
 
             # black stroke
@@ -244,7 +210,7 @@ class PokeImage:
         self.context.set_line_width(2.5)
         text_x = 240
         text_y = 50
-        self.context.select_font_face(config.NAME_FONT or "sans-serif")
+        self.context.select_font_face(conf.NAME_FONT or "sans-serif")
         self.context.set_font_size(32)
         self.context.move_to(text_x, text_y)
         self.context.set_source_rgba(0, 0, 0)
@@ -284,14 +250,14 @@ class Notification:
         except TypeError:
             pass
 
-        if config.TZ_OFFSET:
-            _tz = timezone(timedelta(hours=config.TZ_OFFSET))
+        if conf.TZ_OFFSET:
+            _tz = timezone(timedelta(hours=conf.TZ_OFFSET))
         else:
             _tz = None
         now = datetime.fromtimestamp(pokemon['seen'], _tz)
 
-        if TWITTER and config.HASHTAGS:
-            self.hashtags = config.HASHTAGS.copy()
+        if TWITTER and conf.HASHTAGS:
+            self.hashtags = conf.HASHTAGS.copy()
         else:
             self.hashtags = set()
 
@@ -325,8 +291,8 @@ class Notification:
         self.place = None
 
     async def notify(self):
-        if config.LANDMARKS and (TWITTER or PUSHBULLET):
-            self.landmark = config.LANDMARKS.find_landmark(self.coordinates)
+        if conf.LANDMARKS and (TWITTER or PUSHBULLET):
+            self.landmark = conf.LANDMARKS.find_landmark(self.coordinates)
 
         try:
             self.place = self.landmark.generate_string(self.coordinates)
@@ -362,7 +328,7 @@ class Notification:
 
     async def sendToTelegram(self):
         session = SessionManager.get()
-        TELEGRAM_BASE_URL = "https://api.telegram.org/bot{token}/sendVenue".format(token=config.TELEGRAM_BOT_TOKEN)
+        TELEGRAM_BASE_URL = "https://api.telegram.org/bot{token}/sendVenue".format(token=conf.TELEGRAM_BOT_TOKEN)
         title = self.name
         try:
             minutes, seconds = divmod(self.tth, 60)
@@ -376,7 +342,7 @@ class Notification:
             pass
 
         payload = {
-            'chat_id': config.TELEGRAM_CHAT_ID,
+            'chat_id': conf.TELEGRAM_CHAT_ID,
             'latitude': self.coordinates[0],
             'longitude': self.coordinates[1],
             'title' : title,
@@ -420,7 +386,6 @@ class Notification:
         except TypeError:
             pass
 
-        area = config.AREA_NAME
         try:
             expiry = 'until {}'.format(self.expire_time)
             minutes, seconds = divmod(self.tth, 60)
@@ -433,7 +398,7 @@ class Notification:
             max_remaining = '{:.0f}m{:.0f}s'.format(minutes, seconds)
             remaining = 'for between {} and {}'.format(min_remaining, max_remaining)
 
-        title = 'A {} {} will be in {} {}!'.format(description, self.name, area, expiry)
+        title = 'A {} {} will be in {} {}!'.format(description, self.name, conf.AREA_NAME, expiry)
 
         body = 'It will be {} {}.\n\n'.format(self.place, remaining)
         try:
@@ -447,7 +412,7 @@ class Notification:
 
         try:
             try:
-                channel = pb.channels[config.PB_CHANNEL]
+                channel = pb.channels[conf.PB_CHANNEL]
             except (IndexError, KeyError):
                 channel = None
             await pb.async_push_link(title, self.map_link, body, channel=channel)
@@ -546,7 +511,7 @@ class Notification:
 
         media_id = None
         client = self.get_twitter_client()
-        if config.TWEET_IMAGES:
+        if conf.TWEET_IMAGES:
             try:
                 image = PokeImage(self.pokemon, self.move1, self.move2, self.time_of_day).create()
             except Exception:
@@ -579,13 +544,9 @@ class Notification:
     @staticmethod
     def generic_place_string():
         """ Create a place string with area name (if available)"""
-        if config.AREA_NAME:
-            # no landmarks defined, just use area name
-            place = 'in {}'.format(config.AREA_NAME)
-            return place
-        else:
-            # no landmarks or area name defined, just say 'around'
-            return 'around'
+        # no landmarks defined, just use area name
+        place = 'in {}'.format(conf.AREA_NAME)
+        return place
 
     @classmethod
     def get_pushbullet_client(cls):
@@ -593,7 +554,7 @@ class Notification:
             return cls._pushbullet_client
         except AttributeError:
             cls._pushbullet_client = AsyncPushbullet(
-                api_key=config.PB_API_KEY,
+                api_key=conf.PB_API_KEY,
                 loop=LOOP)
             return cls._pushbullet_client
 
@@ -603,10 +564,10 @@ class Notification:
             return cls._twitter_client
         except AttributeError:
             cls._twitter_client = PeonyClient(
-                consumer_key=config.TWITTER_CONSUMER_KEY,
-                consumer_secret=config.TWITTER_CONSUMER_SECRET,
-                access_token=config.TWITTER_ACCESS_KEY,
-                access_token_secret=config.TWITTER_ACCESS_SECRET,
+                consumer_key=conf.TWITTER_CONSUMER_KEY,
+                consumer_secret=conf.TWITTER_CONSUMER_SECRET,
+                access_token=conf.TWITTER_ACCESS_KEY,
+                access_token_secret=conf.TWITTER_ACCESS_SECRET,
                 session=SessionManager.get(),
                 loop=LOOP)
             return cls._twitter_client
@@ -616,21 +577,21 @@ class Notifier:
 
     def __init__(self):
         self.cache = NotificationCache()
-        self.notify_ranking = config.NOTIFY_RANKING
-        self.initial_score = config.INITIAL_SCORE
-        self.minimum_score = config.MINIMUM_SCORE
-        self.last_notification = monotonic() - (config.FULL_TIME / 2)
+        self.notify_ranking = conf.NOTIFY_RANKING
+        self.initial_score = conf.INITIAL_SCORE
+        self.minimum_score = conf.MINIMUM_SCORE
+        self.last_notification = monotonic() - (conf.FULL_TIME / 2)
         self.always_notify = []
         self.log = get_logger('notifier')
-        self.never_notify = config.NEVER_NOTIFY_IDS or tuple()
-        self.rarity_override = config.RARITY_OVERRIDE or {}
+        self.never_notify = conf.NEVER_NOTIFY_IDS
+        self.rarity_override = conf.RARITY_OVERRIDE
         self.sent = 0
         if self.notify_ranking:
             self.initialize_ranking()
             LOOP.call_later(3600, self.set_notify_ids)
-        elif config.NOTIFY_IDS or config.ALWAYS_NOTIFY_IDS:
-            self.notify_ids = config.NOTIFY_IDS or config.ALWAYS_NOTIFY_IDS
-            self.always_notify = config.ALWAYS_NOTIFY_IDS
+        elif conf.NOTIFY_IDS or conf.ALWAYS_NOTIFY_IDS:
+            self.notify_ids = conf.NOTIFY_IDS or conf.ALWAYS_NOTIFY_IDS
+            self.always_notify = conf.ALWAYS_NOTIFY_IDS
             self.notify_ranking = len(self.notify_ids)
 
     def set_notify_ids(self):
@@ -640,16 +601,16 @@ class Notifier:
     async def _set_notify_ids(self):
         await run_threaded(self.set_ranking)
         self.notify_ids = self.pokemon_ranking[0:self.notify_ranking]
-        self.always_notify = set(self.pokemon_ranking[0:config.ALWAYS_NOTIFY])
-        self.always_notify |= set(config.ALWAYS_NOTIFY_IDS)
+        self.always_notify = set(self.pokemon_ranking[0:conf.ALWAYS_NOTIFY])
+        self.always_notify |= set(conf.ALWAYS_NOTIFY_IDS)
         self.log.info('Updated Pokemon rankings.')
 
     def initialize_ranking(self):
         self.pokemon_ranking = load_pickle('ranking')
         if self.pokemon_ranking:
             self.notify_ids = self.pokemon_ranking[0:self.notify_ranking]
-            self.always_notify = set(self.pokemon_ranking[0:config.ALWAYS_NOTIFY])
-            self.always_notify |= set(config.ALWAYS_NOTIFY_IDS)
+            self.always_notify = set(self.pokemon_ranking[0:conf.ALWAYS_NOTIFY])
+            self.always_notify |= set(conf.ALWAYS_NOTIFY_IDS)
         else:
             LOOP.run_until_complete(self._set_notify_ids())
 
@@ -672,13 +633,13 @@ class Notifier:
         return percentile
 
     def get_required_score(self, now=None):
-        if self.initial_score == self.minimum_score or config.FULL_TIME == 0:
+        if self.initial_score == self.minimum_score or conf.FULL_TIME == 0:
             return self.initial_score
         now = now or monotonic()
         time_passed = now - self.last_notification
         subtract = self.initial_score - self.minimum_score
-        if time_passed < config.FULL_TIME:
-            subtract *= (time_passed / config.FULL_TIME)
+        if time_passed < conf.FULL_TIME:
+            subtract *= (time_passed / conf.FULL_TIME)
         return self.initial_score - subtract
 
     def eligible(self, pokemon):
@@ -692,10 +653,10 @@ class Notifier:
         if (pokemon_id not in self.notify_ids
                 and pokemon_id not in self.rarity_override):
             return False
-        if config.IGNORE_RARITY:
+        if conf.IGNORE_RARITY:
             return encounter_id not in self.cache
         try:
-            if pokemon['time_till_hidden'] < config.TIME_REQUIRED:
+            if pokemon['time_till_hidden'] < conf.TIME_REQUIRED:
                 return False
         except KeyError:
             pass
@@ -736,16 +697,16 @@ class Notifier:
         try:
             iv_score = (pokemon['individual_attack'] + pokemon['individual_defense'] + pokemon['individual_stamina']) / 45
         except KeyError:
-            if config.IGNORE_IVS:
+            if conf.IGNORE_IVS:
                 iv_score = None
             else:
                 self.log.warning('IVs are supposed to be considered but were not found.')
                 return False
 
         if score_required:
-            if config.IGNORE_RARITY:
+            if conf.IGNORE_RARITY:
                 score = iv_score
-            elif config.IGNORE_IVS:
+            elif conf.IGNORE_IVS:
                 score = self.get_rareness_score(pokemon_id)
             else:
                 rareness = self.get_rareness_score(pokemon_id)
@@ -775,7 +736,7 @@ class Notifier:
             LOOP.call_later(tth[1], self.cache.remove, pokemon['encounter_id'])
             if pokemon_id not in self.always_notify:
                 mean = sum(tth) / 2
-                if mean < config.TIME_REQUIRED:
+                if mean < conf.TIME_REQUIRED:
                     self.log.info('{} has only around {} seconds remaining.', name, mean)
                     return False
             pokemon['earliest_tth'], pokemon['latest_tth'] = tth

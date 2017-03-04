@@ -12,39 +12,20 @@ from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm.exc import NoResultFound
 
-from . import utils, config, spawns, db_proc
+from . import utils, spawns, db_proc, sanitized as conf
 from .shared import call_at
 
-try:
-    DB_ENGINE = config.DB_ENGINE
-except AttributeError:
-    DB_ENGINE = 'sqlite:///db.sqlite'
-
-_optional = {
-    'LAST_MIGRATION': 1481932800,
-    'SPAWN_ID_INT': True,
-    'RARE_IDS': [],
-    'REPORT_SINCE': None,
-    'BOUNDARIES': None,
-    'STAY_WITHIN_MAP': True,
-    'MORE_POINTS': True
-}
-for setting_name, default in _optional.items():
-    if not hasattr(config, setting_name):
-        setattr(config, setting_name, default)
-del _optional
-
-if config.BOUNDARIES:
+if conf.BOUNDARIES:
     try:
         from shapely.geometry import Polygon, Point
 
-        if not isinstance(config.BOUNDARIES, Polygon):
+        if not isinstance(conf.BOUNDARIES, Polygon):
             raise TypeError('BOUNDARIES must be a shapely Polygon.')
     except ImportError as e:
         raise ImportError('BOUNDARIES is set but shapely is not available.') from e
 
 try:
-    if config.LAST_MIGRATION > time.time():
+    if conf.LAST_MIGRATION > time.time():
         raise ValueError('LAST_MIGRATION must be a timestamp from the past.')
 except TypeError as e:
     raise TypeError('LAST_MIGRATION must be a numeric timestamp.') from e
@@ -57,11 +38,11 @@ class Team(enum.Enum):
     instict = 3
 
 
-if DB_ENGINE.startswith('mysql'):
+if conf.DB_ENGINE.startswith('mysql'):
     TINY_TYPE = TINYINT(unsigned=True)          # 0 to 255
     MEDIUM_TYPE = MEDIUMINT(unsigned=True)      # 0 to 4294967295
     HUGE_TYPE = BIGINT(unsigned=True)           # 0 to 18446744073709551615
-elif DB_ENGINE.startswith('postgres'):
+elif conf.DB_ENGINE.startswith('postgres'):
     class NumInt(TypeDecorator):
         '''Modify Numeric type for integers'''
         impl = Numeric
@@ -94,14 +75,14 @@ else:
     MEDIUM_TYPE = Integer
     HUGE_TYPE = TextInt
 
-if config.SPAWN_ID_INT:
+if conf.SPAWN_ID_INT:
     ID_TYPE = BigInteger
 else:
     ID_TYPE = String(11)
 
 
 def get_engine():
-    return create_engine(DB_ENGINE)
+    return create_engine(conf.DB_ENGINE)
 
 
 def get_engine_name(session):
@@ -115,17 +96,17 @@ Base = declarative_base()
 
 
 class Bounds:
-    if config.BOUNDARIES:
-        boundaries = config.BOUNDARIES
+    if conf.BOUNDARIES:
+        boundaries = conf.BOUNDARIES
 
         @classmethod
         def contain(cls, p):
             return cls.boundaries.contains(Point(p))
-    elif config.STAY_WITHIN_MAP:
-        north = max(config.MAP_START[0], config.MAP_END[0])
-        south = min(config.MAP_START[0], config.MAP_END[0])
-        east = max(config.MAP_START[1], config.MAP_END[1])
-        west = min(config.MAP_START[1], config.MAP_END[1])
+    elif conf.STAY_WITHIN_MAP:
+        north = max(conf.MAP_START[0], conf.MAP_END[0])
+        south = min(conf.MAP_START[0], conf.MAP_END[0])
+        east = max(conf.MAP_START[1], conf.MAP_END[1])
+        west = min(conf.MAP_START[1], conf.MAP_END[1])
 
         @classmethod
         def contain(cls, p):
@@ -382,7 +363,7 @@ def get_spawns(session):
         rounded = utils.round_coords(point, 3)
         altitudes[rounded] = spawn.alt
 
-        if not spawn.updated or spawn.updated <= config.LAST_MIGRATION:
+        if not spawn.updated or spawn.updated <= conf.LAST_MIGRATION:
             mysteries.add(point)
             continue
 
@@ -393,7 +374,7 @@ def get_spawns(session):
 
         despawn_times[spawn.spawn_id] = spawn.despawn_time
         spawns_dict[spawn.spawn_id] = (point, spawn_time)
-        if config.MORE_POINTS:
+        if conf.MORE_POINTS:
             known_points.add(point)
 
     spawns = OrderedDict(sorted(spawns_dict.items(), key=lambda k: k[1][1]))
@@ -402,12 +383,12 @@ def get_spawns(session):
 
 def get_since():
     """Returns 'since' timestamp that should be used for filtering"""
-    return time.mktime(config.REPORT_SINCE.timetuple())
+    return time.mktime(conf.REPORT_SINCE.timetuple())
 
 
 def get_since_query_part(where=True):
     """Returns WHERE part of query filtering records before set date"""
-    if config.REPORT_SINCE:
+    if conf.REPORT_SINCE:
         return '{noun} expire_timestamp > {since}'.format(
             noun='WHERE' if where else 'AND',
             since=get_since(),
@@ -458,7 +439,7 @@ def add_spawnpoint(session, pokemon):
         existing.updated = now
 
         if (existing.despawn_time is None or
-                existing.updated < config.LAST_MIGRATION):
+                existing.updated < conf.LAST_MIGRATION):
             widest = get_widest_range(session, spawn_id)
             if widest and widest > 1710:
                 existing.duration = 60
@@ -669,7 +650,7 @@ def get_forts(session):
 def get_session_stats(session):
     query = session.query(func.min(Sighting.expire_timestamp),
         func.max(Sighting.expire_timestamp))
-    if config.REPORT_SINCE:
+    if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > get_since())
     min_max_result = query.one()
     length_hours = (min_max_result[1] - min_max_result[0]) // 3600
@@ -686,7 +667,7 @@ def get_session_stats(session):
 def get_despawn_time(session, spawn_id):
     spawn_time = session.query(Spawnpoint.despawn_time) \
         .filter(Spawnpoint.spawn_id == spawn_id) \
-        .filter(Spawnpoint.updated > config.LAST_MIGRATION) \
+        .filter(Spawnpoint.updated > conf.LAST_MIGRATION) \
         .scalar()
     return spawn_time
 
@@ -694,7 +675,7 @@ def get_despawn_time(session, spawn_id):
 def get_first_last(session, spawn_id):
     result = session.query(func.min(Mystery.first_seconds), func.max(Mystery.last_seconds)) \
         .filter(Mystery.spawn_id == spawn_id) \
-        .filter(Mystery.first_seen > config.LAST_MIGRATION) \
+        .filter(Mystery.first_seen > conf.LAST_MIGRATION) \
         .first()
     return result
 
@@ -702,7 +683,7 @@ def get_first_last(session, spawn_id):
 def get_widest_range(session, spawn_id):
     largest = session.query(func.max(Mystery.seen_range)) \
         .filter(Mystery.spawn_id == spawn_id) \
-        .filter(Mystery.first_seen > config.LAST_MIGRATION) \
+        .filter(Mystery.first_seen > conf.LAST_MIGRATION) \
         .scalar()
     return largest
 
@@ -740,7 +721,7 @@ def get_punch_card(session):
     query = session.query(cast(Sighting.expire_timestamp / 300, Integer).label('ts_date'), func.count('ts_date')) \
         .group_by('ts_date') \
         .order_by('ts_date')
-    if config.REPORT_SINCE:
+    if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > get_since())
     results = tuple(query)
     results_dict = {r[0]: r[1] for r in results}
@@ -753,7 +734,7 @@ def get_punch_card(session):
 def get_top_pokemon(session, count=30, order='DESC'):
     query = session.query(Sighting.pokemon_id, func.count(Sighting.pokemon_id).label('how_many')) \
         .group_by(Sighting.pokemon_id)
-    if config.REPORT_SINCE:
+    if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > get_since())
     if order == 'DESC':
         query = query.order_by(desc('how_many')).limit(count)
@@ -766,7 +747,7 @@ def get_pokemon_ranking(session):
     ranking = []
     query = session.query(Sighting.pokemon_id, func.count(Sighting.pokemon_id).label('how_many')) \
         .group_by(Sighting.pokemon_id)
-    if config.REPORT_SINCE:
+    if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > get_since())
     query = query.order_by(asc('how_many'))
     db_ids = [r[0] for r in query]
@@ -781,7 +762,7 @@ def get_sightings_per_pokemon(session):
     query = session.query(Sighting.pokemon_id, func.count(Sighting.pokemon_id).label('how_many')) \
         .group_by(Sighting.pokemon_id) \
         .order_by('how_many')
-    if config.REPORT_SINCE:
+    if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > get_since())
     return OrderedDict(query.all())
 
@@ -790,7 +771,7 @@ def sightings_to_csv(since=None, output='sightings.csv'):
     import csv
 
     if since:
-        config.REPORT_SINCE = since
+        conf.REPORT_SINCE = since
     with session_scope() as session:
         sightings = get_sightings_per_pokemon(session)
     od = OrderedDict()
@@ -808,10 +789,10 @@ def sightings_to_csv(since=None, output='sightings.csv'):
 def get_rare_pokemon(session):
     result = []
 
-    for pokemon_id in config.RARE_IDS:
+    for pokemon_id in conf.RARE_IDS:
         query = session.query(Sighting) \
             .filter(Sighting.pokemon_id == pokemon_id)
-        if config.REPORT_SINCE:
+        if conf.REPORT_SINCE:
             query = query.filter(Sighting.expire_timestamp > get_since())
         count = query.count()
         if count > 0:
@@ -836,7 +817,7 @@ def get_all_sightings(session, pokemon_ids):
     # TODO: rename this and get_sightings
     query = session.query(Sighting) \
         .filter(Sighting.pokemon_id.in_(pokemon_ids))
-    if config.REPORT_SINCE:
+    if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > get_since())
     return query.all()
 
@@ -879,7 +860,7 @@ def get_spawns_per_hour(session, pokemon_id):
 def get_total_spawns_count(session, pokemon_id):
     query = session.query(Sighting) \
         .filter(Sighting.pokemon_id == pokemon_id)
-    if config.REPORT_SINCE:
+    if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > get_since())
     return query.count()
 
@@ -888,6 +869,6 @@ def get_all_spawn_coords(session, pokemon_id=None):
     points = session.query(Sighting.lat, Sighting.lon)
     if pokemon_id:
         points = points.filter(Sighting.pokemon_id == int(pokemon_id))
-    if config.REPORT_SINCE:
+    if conf.REPORT_SINCE:
         points = points.filter(Sighting.expire_timestamp > get_since())
     return points.all()

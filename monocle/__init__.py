@@ -1,5 +1,5 @@
 __title__ = 'monocle'
 __version__ = '0.8b'
-__author__ = 'Noctem'
+__author__ = 'David Christenson'
 __license__ = 'MIT License'
-__copyright__ = 'Copyright (c) 2017 Noctem <https://github.com/Noctem>'
+__copyright__ = 'Copyright (c) 2017 David Christenson <https://github.com/Noctem>'

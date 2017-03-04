@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 
-try:
-    from monocle import config
-except ImportError as e:
-    raise ImportError('Please copy config.example.py to config.py and customize it.') from e
+import monocle.sanitized as conf
 
 import asyncio
 try:
-    if not hasattr(config, 'UVLOOP') or config.UVLOOP:
+    if conf.UVLOOP:
         from uvloop import EventLoopPolicy
         asyncio.set_event_loop_policy(EventLoopPolicy())
 except ImportError:
@@ -26,111 +23,6 @@ import time
 
 from sqlalchemy.exc import DBAPIError
 from aiopogo import close_sessions
-
-# Check whether config has all necessary attributes
-_required = (
-    'DB_ENGINE',
-    'GRID',
-    'MAP_START',
-    'MAP_END'
-)
-for setting_name in _required:
-    if not hasattr(config, setting_name):
-        raise AttributeError('Please set "{}" in config'.format(setting_name))
-
-worker_count = config.GRID[0] * config.GRID[1]
-
-# Set defaults for missing config options
-_optional = {
-    'PROXIES': None,
-    'NOTIFY_IDS': None,
-    'NOTIFY_RANKING': None,
-    'CONTROL_SOCKS': None,
-    'HASH_KEY': None,
-    'SMART_THROTTLE': False,
-    'MAX_CAPTCHAS': 0,
-    'ENCOUNTER': None,
-    'NOTIFY': False,
-    'AUTHKEY': b'm3wtw0',
-    'SPIN_POKESTOPS': False,
-    'SPIN_COOLDOWN': 300,
-    'COMPLETE_TUTORIAL': False,
-    'INCUBATE_EGGS': False,
-    'MAP_WORKERS': True,
-    'APP_SIMULATION': True,
-    'ITEM_LIMITS': None,
-    'MAX_RETRIES': 3,
-    'MORE_POINTS': True,
-    'GIVE_UP_KNOWN': 75,
-    'GIVE_UP_UNKNOWN': 60,
-    'SKIP_SPAWN': 90,
-    'LOGIN_TIMEOUT': 2.5,
-    'PLAYER_LOCALE': {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'},
-    'CAPTCHA_KEY': None,
-    'CAPTCHAS_ALLOWED': 3,
-    'DIRECTORY': None,
-    'FORCED_KILL': None,
-    'REFRESH_RATE': 0.6,
-    'SPEED_LIMIT': 19.5,
-    'COROUTINES_LIMIT': worker_count,
-    'GOOD_ENOUGH': None,
-    'SEARCH_SLEEP': 2.5,
-    'STAT_REFRESH': 5,
-    'FAVOR_CAPTCHA': True,
-    'SWAP_OLDEST': 21600 / worker_count,
-    'MINIMUM_RUNTIME': 10
-}
-for setting_name, default in _optional.items():
-    if not hasattr(config, setting_name):
-        setattr(config, setting_name, default)
-del (_optional, _required)
-
-# validate PROXIES input and cast to set if needed
-if config.PROXIES:
-    if isinstance(config.PROXIES, (tuple, list)):
-        config.PROXIES = set(config.PROXIES)
-    elif isinstance(config.PROXIES, str):
-        config.PROXIES = {config.PROXIES}
-    elif not isinstance(config.PROXIES, set):
-        raise ValueError('PROXIES must be either a list, set, tuple, or str.')
-
-# ensure that user's latitudes and longitudes are different
-if (config.MAP_START[0] == config.MAP_END[0]
-        or config.MAP_START[1] == config.MAP_END[1]):
-    raise ValueError('The latitudes and longitudes of your MAP_START and MAP_END must differ.')
-
-# disable bag cleaning if not spinning PokéStops
-if config.ITEM_LIMITS and not config.SPIN_POKESTOPS:
-    config.ITEM_LIMITS = None
-
-# ensure that numbers are valid
-try:
-    if config.SCAN_DELAY < 10:
-        raise ValueError('SCAN_DELAY must be at least 10.')
-except (TypeError, AttributeError):
-    config.SCAN_DELAY = 10
-try:
-    if config.SIMULTANEOUS_LOGINS < 1:
-        raise ValueError('SIMULTANEOUS_LOGINS must be at least 1.')
-except (TypeError, AttributeError):
-    config.SIMULTANEOUS_LOGINS = 4
-try:
-    if config.SIMULTANEOUS_SIMULATION < 1:
-        raise ValueError('SIMULTANEOUS_SIMULATION must be at least 1.')
-except (TypeError, AttributeError):
-    config.SIMULTANEOUS_SIMULATION = config.SIMULTANEOUS_LOGINS
-
-if config.ENCOUNTER not in (None, 'notifying', 'all'):
-    raise ValueError("Valid ENCOUNTER settings are: None, 'notifying', and 'all'")
-
-if config.DIRECTORY is None:
-    if exists(join('..', 'pickles')):
-        config.DIRECTORY = '..'
-    else:
-        config.DIRECTORY = ''
-
-if config.FORCED_KILL is True:
-    config.FORCED_KILL = ('0.57.2', '0.57.3', '0.55.0', '0.53.0', '0.53.1', '0.53.2')
 
 from monocle.shared import LOOP, get_logger, SessionManager, ACCOUNTS
 from monocle.utils import get_address, dump_pickle
@@ -254,7 +146,7 @@ def cleanup(overseer, manager, checker):
         print('Dumping pickles...')
         dump_pickle('accounts', ACCOUNTS)
         FORT_CACHE.pickle()
-        if config.CACHE_CELLS:
+        if conf.CACHE_CELLS:
             dump_pickle('cells', Worker.cell_ids)
 
         DB_PROC.stop()
@@ -282,7 +174,7 @@ def main():
     args = parse_args()
     log = get_logger()
     if args.status_bar:
-        configure_logger(filename=join(config.DIRECTORY, 'scan.log'))
+        configure_logger(filename=join(conf.DIRECTORY, 'scan.log'))
         log.info('-' * 37)
         log.info('Starting up!')
     else:
@@ -291,11 +183,11 @@ def main():
 
     AccountManager.register('captcha_queue', callable=get_captchas)
     AccountManager.register('extra_queue', callable=get_extras)
-    if config.MAP_WORKERS:
+    if conf.MAP_WORKERS:
         AccountManager.register('worker_dict', callable=get_workers,
                                 proxytype=DictProxy)
     address = get_address()
-    manager = AccountManager(address=address, authkey=config.AUTHKEY)
+    manager = AccountManager(address=address, authkey=conf.AUTHKEY)
     try:
         manager.start(mgr_init)
     except (OSError, EOFError) as e:

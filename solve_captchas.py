@@ -13,7 +13,7 @@ from time import time
 
 import socket
 
-from monocle import config
+from monocle import sanitized as conf
 from monocle.utils import random_altitude, get_device_info, get_address, LAT_MEAN, LON_MEAN
 
 
@@ -30,18 +30,18 @@ async def solve_captcha(url, api, driver, timestamp):
     request.get_buddy_walked()
     request.check_challenge()
 
-    for attempt in range(-1, config.MAX_RETRIES):
+    for attempt in range(-1, conf.MAX_RETRIES):
         try:
             response = await request.call()
             return response['responses']['VERIFY_CHALLENGE']['success']
         except (ex.HashServerException, ex.MalformedResponseException, ex.ServerBusyOrOfflineException) as e:
-            if attempt == config.MAX_RETRIES - 1:
+            if attempt == conf.MAX_RETRIES - 1:
                 raise
             else:
                 print('{}, trying again soon.'.format(e))
                 await sleep(4)
         except ex.NianticThrottlingException:
-            if attempt == config.MAX_RETRIES - 1:
+            if attempt == conf.MAX_RETRIES - 1:
                 raise
             else:
                 print('Throttled, trying again in 11 seconds.')
@@ -52,20 +52,10 @@ async def solve_captcha(url, api, driver, timestamp):
 
 async def main():
     try:
-        if hasattr(config, 'AUTHKEY'):
-            authkey = config.AUTHKEY
-        else:
-            authkey = b'm3wtw0'
-
-        if hasattr(config, 'HASH_KEY'):
-            HASH_KEY = config.HASH_KEY
-        else:
-            HASH_KEY = None
-
         class AccountManager(BaseManager): pass
         AccountManager.register('captcha_queue')
         AccountManager.register('extra_queue')
-        manager = AccountManager(address=get_address(), authkey=authkey)
+        manager = AccountManager(address=get_address(), authkey=conf.authkey)
         manager.connect()
         captcha_queue = manager.captcha_queue()
         extra_queue = manager.extra_queue()
@@ -92,7 +82,7 @@ async def main():
             try:
                 device_info = get_device_info(account)
                 api = PGoApi(device_info=device_info)
-                if HASH_KEY:
+                if conf.HASH_KEY:
                     api.activate_hash_server(HASH_KEY)
                 api.set_position(lat, lon, alt)
 

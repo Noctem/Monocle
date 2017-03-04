@@ -24,7 +24,7 @@ from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstra
 from .shared import get_logger, LOOP, run_threaded, ACCOUNTS
 from .db_proc import DB_PROC
 from .spawns import SPAWNS
-from . import config
+from . import sanitized as conf
 from .worker import Worker
 
 BAD_STATUSES = (
@@ -57,7 +57,7 @@ class Overseer:
         self.log = get_logger('overseer')
         self.workers = []
         self.manager = manager
-        self.count = config.GRID[0] * config.GRID[1]
+        self.count = conf.GRID[0] * conf.GRID[1]
         self.start_date = datetime.now()
         self.status_bar = status_bar
         self.things_count = []
@@ -66,7 +66,7 @@ class Overseer:
         self.skipped = 0
         self.visits = 0
         self.mysteries = deque()
-        self.coroutine_semaphore = asyncio.Semaphore(config.COROUTINES_LIMIT, loop=LOOP)
+        self.coroutine_semaphore = asyncio.Semaphore(conf.COROUTINES_LIMIT, loop=LOOP)
         self.redundant = 0
         self.all_seen = False
         self.idle_seconds = 0
@@ -77,7 +77,7 @@ class Overseer:
         Worker.captcha_queue = self.manager.captcha_queue()
         self.extra_queue = self.manager.extra_queue()
         Worker.extra_queue = self.manager.extra_queue()
-        if config.MAP_WORKERS:
+        if conf.MAP_WORKERS:
             Worker.worker_dict = self.manager.worker_dict()
 
         for username, account in ACCOUNTS.items():
@@ -105,14 +105,14 @@ class Overseer:
                 if now - last_commit > 5:
                     DB_PROC.commit()
                     last_commit = now
-                if now - last_swap > config.SWAP_OLDEST:
+                if now - last_swap > conf.SWAP_OLDEST:
                     if not self.paused and not self.extra_queue.empty():
                         oldest, minutes = self.longest_running()
-                        if minutes > config.MINIMUM_RUNTIME:
+                        if minutes > conf.MINIMUM_RUNTIME:
                             LOOP.create_task(oldest.lock_and_swap(minutes))
                     last_swap = now
                 # Record things found count
-                if not self.paused and now - last_stats_updated > config.STAT_REFRESH:
+                if not self.paused and now - last_stats_updated > conf.STAT_REFRESH:
                     self.seen_stats, self.visit_stats, self.delay_stats, self.speed_stats = self.get_visit_stats()
                     self.update_coroutines_count()
                     last_stats_updated = now
@@ -128,9 +128,9 @@ class Overseer:
                     print(self.get_status_message())
 
                 if self.paused:
-                    await asyncio.sleep(max(15, config.REFRESH_RATE), loop=LOOP)
+                    await asyncio.sleep(max(15, conf.REFRESH_RATE), loop=LOOP)
                 else:
-                    await asyncio.sleep(config.REFRESH_RATE, loop=LOOP)
+                    await asyncio.sleep(conf.REFRESH_RATE, loop=LOOP)
             except CancelledError:
                 return
             except Exception as e:
@@ -198,7 +198,7 @@ class Overseer:
         messages = []
         row = []
         for i, worker in enumerate(self.workers):
-            if i > 0 and i % config.GRID[1] == 0:
+            if i > 0 and i % conf.GRID[1] == 0:
                 dots.append(row)
                 row = []
             if worker.error_code in BAD_STATUSES:
@@ -279,7 +279,7 @@ class Overseer:
         except ZeroDivisionError:
             pass
 
-        if config.HASH_KEY:
+        if conf.HASH_KEY:
             try:
                 refresh = HashServer.status.get('period') - time.time()
                 output.append('Hashes: {r}/{m}, refresh in {t:.0f}'.format(
@@ -401,9 +401,9 @@ class Overseer:
                         continue
 
                 try:
-                    if self.captcha_queue.qsize() > config.MAX_CAPTCHAS:
+                    if self.captcha_queue.qsize() > conf.MAX_CAPTCHAS:
                         self.paused = True
-                        self.idle_seconds += await run_threaded(self.captcha_queue.full_wait, config.MAX_CAPTCHAS)
+                        self.idle_seconds += await run_threaded(self.captcha_queue.full_wait, conf.MAX_CAPTCHAS)
                         self.paused = False
                 except (EOFError, BrokenPipeError, FileNotFoundError):
                     continue
@@ -431,7 +431,7 @@ class Overseer:
                 if time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
                     self.redundant += 1
                     continue
-                elif time_diff > config.SKIP_SPAWN:
+                elif time_diff > conf.SKIP_SPAWN:
                     self.skipped += 1
                     continue
 
@@ -509,11 +509,11 @@ class Overseer:
 
     async def best_worker(self, point, spawn_time=None, must_visit=False):
         if spawn_time:
-            skip_time = max(time.monotonic() + config.GIVE_UP_KNOWN, spawn_time)
+            skip_time = max(time.monotonic() + conf.GIVE_UP_KNOWN, spawn_time)
         elif must_visit:
             skip_time = float('inf')
         else:
-            skip_time = time.monotonic() + config.GIVE_UP_UNKNOWN
+            skip_time = time.monotonic() + conf.GIVE_UP_UNKNOWN
 
         while True:
             speed = None
@@ -523,15 +523,15 @@ class Overseer:
                 if speed < lowest_speed:
                     lowest_speed = speed
                     worker = w
-                    if config.GOOD_ENOUGH and speed < config.GOOD_ENOUGH:
+                    if conf.GOOD_ENOUGH and speed < conf.GOOD_ENOUGH:
                         break
-            if lowest_speed < config.SPEED_LIMIT:
+            if lowest_speed < conf.SPEED_LIMIT:
                 worker.speed = lowest_speed
                 return worker
             if time.monotonic() > skip_time:
                 return None
             worker = None
-            await asyncio.sleep(config.SEARCH_SLEEP, loop=LOOP)
+            await asyncio.sleep(conf.SEARCH_SLEEP, loop=LOOP)
 
     def refresh_dict(self):
         while not self.extra_queue.empty():

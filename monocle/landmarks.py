@@ -1,12 +1,6 @@
 from shapely.geometry import Point, Polygon, shape, box, LineString
 from geopy import Nominatim
-
-try:
-    from pogeo import get_distance
-except ImportError:
-    from geopy.distance import great_circle
-    def get_distance(p1, p2):
-        return great_circle(p1, p2).meters
+from pogeo import get_distance
 
 
 class FailedQuery(Exception):
