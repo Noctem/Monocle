@@ -214,6 +214,7 @@ _defaults = {
     'TRASH_IDS': (),
     'TWEET_IMAGES': False,
     'TWITTER_ACCESS_KEY': None,
+    'TWITTER_ACCESS_SECRET': None,
     'TWITTER_CONSUMER_KEY': None,
     'TWITTER_CONSUMER_SECRET': None,
     'TWITTER_SCREEN_NAME': None,
