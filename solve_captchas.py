@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 
 from multiprocessing.managers import BaseManager
-from aiopogo import PGoApi, close_sessions, exceptions as ex
-from aiopogo.auth_ptc import AuthPtc
 from asyncio import get_event_loop, sleep
 from random import uniform
+from time import time
+from itertools import cycle
+
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from time import time
-
-import socket
+from aiopogo import PGoApi, close_sessions, exceptions as ex
+from aiopogo.auth_ptc import AuthPtc
 
 from monocle import sanitized as conf
 from monocle.utils import random_altitude, get_device_info, get_address, LAT_MEAN, LON_MEAN
@@ -52,10 +52,15 @@ async def solve_captcha(url, api, driver, timestamp):
 
 async def main():
     try:
+        if isinstance(conf.HASH_KEY, (set, frozenset, tuple, list)):
+            HASH_KEYS = cycle(conf.HASH_KEY)
+        elif conf.HASH_KEY:
+            HASH_KEYS = cycle((conf.HASH_KEY,))
+
         class AccountManager(BaseManager): pass
         AccountManager.register('captcha_queue')
         AccountManager.register('extra_queue')
-        manager = AccountManager(address=get_address(), authkey=conf.authkey)
+        manager = AccountManager(address=get_address(), authkey=conf.AUTHKEY)
         manager.connect()
         captcha_queue = manager.captcha_queue()
         extra_queue = manager.extra_queue()
@@ -75,15 +80,15 @@ async def main():
                 except IndexError:
                     alt = random_altitude()
             else:
-                lat = uniform(LAT_MEAN - 0.001, LAT_MEAN + 0.001)
-                lon = uniform(LON_MEAN - 0.001, LON_MEAN + 0.001)
+                lat = uniform(LAT_MEAN - 0.0001, LAT_MEAN + 0.0001)
+                lon = uniform(LON_MEAN - 0.0001, LON_MEAN + 0.0001)
                 alt = random_altitude()
 
             try:
                 device_info = get_device_info(account)
                 api = PGoApi(device_info=device_info)
                 if conf.HASH_KEY:
-                    api.activate_hash_server(HASH_KEY)
+                    api.activate_hash_server(next(HASH_KEYS))
                 api.set_position(lat, lon, alt)
 
                 authenticated = False
@@ -102,6 +107,18 @@ async def main():
                                                  provider=account.get('provider', 'ptc'))
 
                 request = api.create_request()
+                await request.call()
+
+                request.get_player(player_locale=conf.PLAYER_LOCALE)
+                response = await request.call()
+                await sleep(.5)
+
+                if response['responses']['GET_PLAYER'].get('banned', False):
+                    print('{} appears to be banned.'.format(username))
+                    continue
+
+                await sleep(.75)
+
                 request.download_remote_config_version(platform=1, app_version=5703)
                 request.check_challenge()
                 request.get_hatched_eggs()
@@ -110,10 +127,6 @@ async def main():
                 request.download_settings()
                 response = await request.call()
                 account['time'] = time()
-
-                if response['status_code'] == 3:
-                    print('{} appears to be banned.'.format(username))
-                    continue
 
                 responses = response['responses']
                 challenge_url = responses['CHECK_CHALLENGE']['challenge_url']
