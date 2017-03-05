@@ -95,6 +95,7 @@ ENV/
 # configuration
 config.py
 accounts*.csv
+banned.csv
 templates/footer.html
 templates/custom.html
 static/css/custom.css

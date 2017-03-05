@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 
 from asyncio import get_event_loop
+from pathlib import Path
+
+import time
+import logging
+import sys
+
+monocle_dir = Path(__file__).resolve().parents[1]
+sys.path.append(str(monocle_dir))
 
 from monocle import names, sanitized as conf
 
@@ -10,10 +18,6 @@ names.POKEMON_NAMES[0] = 'Test'
 
 from monocle.notification import Notifier
 from monocle.shared import SessionManager
-
-import time
-import logging
-import sys
 
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
@@ -34,7 +38,8 @@ pokemon = {
     'seen': time.time(),
     'move_1': 13,
     'move_2': 14,
-    'valid': True
+    'valid': True,
+    'expire_timestamp': time.time() + 89
 }
 
 notifier = Notifier()
