@@ -140,7 +140,7 @@ _defaults = {
     'COMPLETE_TUTORIAL': False,
     'CONTROL_SOCKS': None,
     'COROUTINES_LIMIT': worker_count,
-    'DIRECTORY': Path(),
+    'DIRECTORY': '.',
     'DISCORD_INVITE_ID': None,
     'ENCOUNTER': None,
     'FAVOR_CAPTCHA': True,

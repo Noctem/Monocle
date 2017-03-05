@@ -1074,7 +1074,7 @@ class Worker:
             self.log.warning("Successfully solved CAPTCHA")
         except CaptchaException:
             self.log.warning("CAPTCHA #{} for {} was not solved correctly, trying again",
-                captcha_id, self.username)
+                code, self.username)
             # try again
             await self.handle_captcha(responses)
 
