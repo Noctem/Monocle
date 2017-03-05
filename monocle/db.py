@@ -601,11 +601,14 @@ def update_mystery(session, mystery):
 
 
 def get_sightings(session, after_id=0):
-    return session.query(Sighting) \
+    q = session.query(Sighting) \
         .filter(and_( \
             Sighting.expire_timestamp > time.time(), \
             Sighting.id > after_id \
-        )).all()
+        ))
+    if conf.MAP_FILTER_IDS:
+        q = q.filter(~Sighting.pokemon_id.in_(conf.MAP_FILTER_IDS))
+    return q.all()
 
 
 def get_spawn_points(session):
