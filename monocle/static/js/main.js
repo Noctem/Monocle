@@ -89,10 +89,11 @@ function getPopupContent (item) {
     var content = '<b>' + item.name + '</b> - <a href="https://pokemongo.gamepress.gg/pokemon/' + item.pokemon_id + '">#' + item.pokemon_id + '</a>';
     if(item.atk != undefined){
         var totaliv = 100 * (item.atk + item.def + item.sta) / 45;
-        content += ' - <b>' + totaliv.toFixed(2) + '%</b></br>';
+        content += ' - <b>' + totaliv.toFixed(2) + '%</b><br>';
         content += 'Disappears in: ' + expires_at + '<br>';
-        content += 'Move 1: ' + item.move1 + ' ( ' + item.damage1 + ' dps )</br>';
+        content += 'Move 1: ' + item.move1 + ' ( ' + item.damage1 + ' dps )<br>';
         content += 'Move 2: ' + item.move2 + ' ( ' + item.damage2 + ' dps )<br>';
+        content += 'IV: ' + item.atk + ' atk, ' + item.def + ' def, ' + item.sta + ' sta<br>'
     } else {
         content += '<br>Disappears in: ' + expires_at + '<br>';
     }
@@ -105,6 +106,7 @@ function getPopupContent (item) {
     }else{
         content += '<a href="#" data-pokeid="'+item.pokemon_id+'" data-newlayer="Trash" class="popup_filter_link">Move to Trash</a>';
     }
+    content += '<br>=&gt; <a href="https://www.google.com/maps/?daddr='+ item.lat + ','+ item.lon +'" target="_blank" title="See in Google Maps">Get directions</a>';
     return content;
 }
 
@@ -172,12 +174,25 @@ function FortMarker (raw) {
     marker.raw = raw;
     markers[raw.id] = marker;
     marker.on('popupopen',function popupopen (event) {
-        var pokemonName;
+        var content = ''
         if (raw.team === 0) {
-            event.popup.setContent('An empty Gym!');
-        } else {
-            event.popup.setContent('Prestige: <b>' + raw.prestige + '</b><br>Guarding Pokemon:<br><b>' + '#' + raw.pokemon_id + ' ' + raw.pokemon_name + '</b>');
+            content = '<b>An empty Gym!</b>'
         }
+        else {
+            if (raw.team === 1 ) {
+                content = '<b>Team Mystic</b>'
+            }
+            else if (raw.team === 2 ) {
+                content = '<b>Team Valor</b>'
+            }
+            else if (raw.team === 3 ) {
+                content = '<b>Team Instinct</b>'
+            }
+            content += '<br>Prestige: ' + raw.prestige +
+                       '<br>Guarding Pokemon: ' + raw.pokemon_name + ' (#' + raw.pokemon_id + ')';
+        }
+        content += '<br>=&gt; <a href=https://www.google.com/maps/?daddr='+ raw.lat + ','+ raw.lon +' target="_blank" title="See in Google Maps">Get directions</a>';
+        event.popup.setContent(content);
     });
     marker.bindPopup();
     return marker;
@@ -228,17 +243,18 @@ function addGymsToMap (data, map) {
 function addSpawnsToMap (data, map) {
     data.forEach(function (item) {
         var circle = L.circle([item.lat, item.lon], 5, {weight: 2});
-        var popup = '<b>Spawn ' + item.spawn_id + '</b><br/>time: ';
         var time = '??';
         if (item.despawn_time != null) {
-            time = item.despawn_time;
+            time = '' + Math.floor(item.despawn_time/60) + 'min ' +
+                   (item.despawn_time%60) + 'sec';
         }
         else {
             circle.setStyle({color: '#f03'})
         }
-        popup += time + '<br/>duration: ';
-        popup += item.duration == null ? '30mn' : item.duration + 'mn';
-        circle.bindPopup(popup);
+        circle.bindPopup('<b>Spawn ' + item.spawn_id + '</b>' +
+                         '<br/>despawn: ' + time +
+                         '<br/>duration: '+ (item.duration == null ? '30mn' : item.duration + 'mn') +
+                         '<br>=&gt; <a href=https://www.google.com/maps/?daddr='+ item.lat + ','+ item.lon +' target="_blank" title="See in Google Maps">Get directions</a>');
         circle.addTo(overlays.Spawns);
     });
 }
@@ -248,7 +264,8 @@ function addPokestopsToMap (data, map) {
         var icon = new PokestopIcon();
         var marker = L.marker([item.lat, item.lon], {icon: icon});
         marker.raw = item;
-        marker.bindPopup('<b>Pokestop ' + item.external_id + '</b>');
+        marker.bindPopup('<b>Pokestop: ' + item.external_id + '</b>' +
+                         '<br>=&gt; <a href=https://www.google.com/maps/?daddr='+ item.lat + ','+ item.lon +' target="_blank" title="See in Google Maps">Get directions</a>');
         marker.addTo(overlays.Pokestops);
     });
 }
