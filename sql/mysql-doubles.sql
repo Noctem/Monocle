@@ -1,0 +1,10 @@
+ALTER TABLE `sightings` CHANGE COLUMN `lat` `lat` double(17,14);
+ALTER TABLE `sightings` CHANGE COLUMN `lon` `lon` double(17,14);
+ALTER TABLE `mystery_sightings` CHANGE COLUMN `lat` `lat` double(17,14);
+ALTER TABLE `mystery_sightings` CHANGE COLUMN `lon` `lon` double(17,14);
+ALTER TABLE `spawnpoints` CHANGE COLUMN `lat` `lat` double(17,14);
+ALTER TABLE `spawnpoints` CHANGE COLUMN `lon` `lon` double(17,14);
+ALTER TABLE `forts` CHANGE COLUMN `lat` `lat` double(17,14);
+ALTER TABLE `forts` CHANGE COLUMN `lon` `lon` double(17,14);
+ALTER TABLE `pokestops` CHANGE COLUMN `lat` `lat` double(17,14);
+ALTER TABLE `pokestops` CHANGE COLUMN `lon` `lon` double(17,14);
