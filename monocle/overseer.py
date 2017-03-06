@@ -484,6 +484,9 @@ class Overseer:
     async def try_point(self, point, spawn_time=None):
         try:
             point = randomize_point(point)
+            time_diff = spawn_time - time.time() + 1
+            if time_diff > 0:
+                await asyncio.sleep(time_diff, loop=LOOP)
             worker = await self.best_worker(point, spawn_time)
             if not worker:
                 if spawn_time:
@@ -493,9 +496,6 @@ class Overseer:
                 return
             async with worker.busy:
                 if spawn_time:
-                    time_diff = spawn_time - time.time() + 1
-                    if time_diff > 0:
-                        await asyncio.sleep(time_diff, loop=LOOP)
                     worker.after_spawn = time.time() - spawn_time
 
                 if await worker.visit(point):
