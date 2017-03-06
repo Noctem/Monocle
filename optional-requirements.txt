@@ -13,3 +13,4 @@ aiosocks>=0.1.7
 numba>=0.30
 sanic>=0.3
 asyncpg>=0.8
+ujson>=1.35
