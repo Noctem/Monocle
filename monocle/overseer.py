@@ -428,7 +428,9 @@ class Overseer:
                             break
                     time_diff = time.time() - spawn_time
 
-                if time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
+                if time_diff < -1:
+                    await asyncio.sleep(time_diff * -1, loop=LOOP)
+                elif time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
                     self.redundant += 1
                     continue
                 elif time_diff > conf.SKIP_SPAWN:
@@ -484,9 +486,6 @@ class Overseer:
     async def try_point(self, point, spawn_time=None):
         try:
             point = randomize_point(point)
-            time_diff = spawn_time - time.time() + 1
-            if time_diff > 0:
-                await asyncio.sleep(time_diff, loop=LOOP)
             worker = await self.best_worker(point, spawn_time)
             if not worker:
                 if spawn_time:
