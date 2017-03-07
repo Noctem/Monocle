@@ -153,7 +153,7 @@ class Worker:
                     await self.api.set_authentication(
                         username=self.username,
                         password=self.account['password'],
-                        provider=self.account.get('provider', 'ptc'),
+                        provider=account.get('provider') or 'ptc',
                         timeout=conf.LOGIN_TIMEOUT
                     )
             except (ex.AuthTimeoutException, ex.AuthConnectionException) as e:
@@ -173,7 +173,7 @@ class Worker:
             raise err
 
         self.error_code = '°'
-        version = 5703
+        version = 5704
         async with self.sim_semaphore:
             self.error_code = 'APP SIMULATION'
             if conf.APP_SIMULATION:

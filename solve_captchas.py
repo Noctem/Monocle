@@ -109,17 +109,9 @@ async def main():
                 request = api.create_request()
                 await request.call()
 
-                request.get_player(player_locale=conf.PLAYER_LOCALE)
-                response = await request.call()
-                await sleep(.5)
+                await sleep(.6)
 
-                if response['responses']['GET_PLAYER'].get('banned', False):
-                    print('{} appears to be banned.'.format(username))
-                    continue
-
-                await sleep(.75)
-
-                request.download_remote_config_version(platform=1, app_version=5703)
+                request.download_remote_config_version(platform=1, app_version=5704)
                 request.check_challenge()
                 request.get_hatched_eggs()
                 request.get_inventory()
