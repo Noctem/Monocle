@@ -34,6 +34,10 @@ GIVE_UP_KNOWN = 75   # try to find a worker for a known spawn for this many seco
 GIVE_UP_UNKNOWN = 60 # try to find a worker for an unknown point for this many seconds before giving up
 SKIP_SPAWN = 90      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
 
+# How often should the mystery queue be reloaded (default 90s)
+# this will reduce the grouping of workers around the last few mysteries
+#RESCAN_UNKNOWN = 90
+
 # filename of accounts CSV
 ACCOUNTS_CSV = 'accounts.csv'
 
