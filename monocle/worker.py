@@ -45,7 +45,7 @@ elif _unit is Units.meters:
     UNIT_STRING = "m/h"
 _UNIT = _unit.value
 
-VERSIONS = ('0.57.2', '0.57.3', '0.55.0', '0.53.0', '0.53.1', '0.53.2')
+VERSIONS = ('0.57.4', '0.57.3', '0.57.2', '0.55.0')
 
 
 class Worker:
