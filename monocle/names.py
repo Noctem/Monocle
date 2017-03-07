@@ -914,7 +914,7 @@ elif conf.LANGUAGE == 'DE':
         241: 'Zertrümmerer'
     })
 elif conf.LANGUAGE == 'FR':
-    FR_NAMES = {
+    POKEMON_NAMES = {
         1: 'Bulbizarre',
         2: 'Herbizarre',
         3: 'Florizarre',
