@@ -129,17 +129,19 @@ def exception_handler(loop, context):
         print('Exception in exception handler.')
 
 
-def cleanup(overseer, manager, checker):
+def cleanup(overseer, manager):
     try:
-        checker.cancel()
+        overseer.running = False
         print('Exiting, please wait until all tasks finish')
 
         log = get_logger('cleanup')
         print('Finishing tasks...')
+
+        LOOP.create_task(overseer.exit_progress())
         pending = asyncio.Task.all_tasks(loop=LOOP)
         gathered = asyncio.gather(*pending, return_exceptions=True)
         try:
-            LOOP.run_until_complete(asyncio.wait_for(gathered, 30))
+            LOOP.run_until_complete(asyncio.wait_for(gathered, 40))
         except TimeoutError as e:
             print('Coroutine completion timed out, moving on.')
         except Exception as e:
@@ -205,8 +207,7 @@ def main():
 
     overseer = Overseer(status_bar=args.status_bar, manager=manager)
     overseer.start()
-    checker = asyncio.ensure_future(overseer.check())
-    launcher = asyncio.ensure_future(overseer.launch(args.bootstrap, args.pickle))
+    launcher = LOOP.create_task(overseer.launch(args.bootstrap, args.pickle))
     if platform != 'win32':
         LOOP.add_signal_handler(SIGINT, launcher.cancel)
         LOOP.add_signal_handler(SIGTERM, launcher.cancel)
@@ -215,7 +216,7 @@ def main():
     except KeyboardInterrupt:
         launcher.cancel()
     finally:
-        cleanup(overseer, manager, checker)
+        cleanup(overseer, manager)
 
 
 if __name__ == '__main__':

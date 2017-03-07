@@ -2,7 +2,7 @@ from queue import Queue
 from threading import Thread
 
 from . import db
-from .shared import get_logger
+from .shared import get_logger, LOOP
 
 class DatabaseProcessor(Thread):
 
@@ -17,31 +17,36 @@ class DatabaseProcessor(Thread):
     def stop(self):
         self.update_mysteries()
         self.running = False
+        self.queue.put({'type': False})
 
     def add(self, obj):
         self.queue.put(obj)
 
     def run(self):
         session = db.Session()
+        LOOP.call_soon_threadsafe(self.commit)
 
         while self.running or not self.queue.empty():
             try:
                 item = self.queue.get()
+                item_type = item['type']
 
-                if item['type'] == 'pokemon':
+                if item_type == 'pokemon':
                     db.add_sighting(session, item)
                     self.count += 1
                     if not item['inferred']:
                         db.add_spawnpoint(session, item)
-                elif item['type'] == 'mystery':
+                elif item_type == 'mystery':
                     db.add_mystery(session, item)
                     self.count += 1
-                elif item['type'] == 'fort':
+                elif item_type == 'fort':
                     db.add_fort_sighting(session, item)
-                elif item['type'] == 'pokestop':
+                elif item_type == 'pokestop':
                     db.add_pokestop(session, item)
-                elif item['type'] == 'mystery-update':
+                elif item_type == 'mystery-update':
                     db.update_mystery(session, item)
+                elif item_type is False:
+                    break
                 self.log.debug('Item saved to db')
                 if self._commit:
                     session.commit()
@@ -57,6 +62,8 @@ class DatabaseProcessor(Thread):
 
     def commit(self):
         self._commit = True
+        if self.running:
+            LOOP.call_later(5, self.commit)
 
     def update_mysteries(self):
        for key, times in db.MYSTERY_CACHE.items():
