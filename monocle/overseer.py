@@ -53,13 +53,12 @@ START_TIME = time.monotonic()
 
 
 class Overseer:
-    def __init__(self, status_bar, manager):
+    def __init__(self, manager):
         self.log = get_logger('overseer')
         self.workers = []
         self.manager = manager
         self.count = conf.GRID[0] * conf.GRID[1]
         self.start_date = datetime.now()
-        self.status_bar = status_bar
         self.things_count = deque(maxlen=9)
         self.paused = False
         self.coroutines_count = 0
@@ -77,7 +76,7 @@ class Overseer:
             self.clear = 'clear'
         self.log.info('Overseer initialized')
 
-    def start(self):
+    def start(self, status_bar):
         self.captcha_queue = self.manager.captcha_queue()
         Worker.captcha_queue = self.manager.captcha_queue()
         self.extra_queue = self.manager.extra_queue()
@@ -99,7 +98,8 @@ class Overseer:
         LOOP.call_later(10, self.update_count)
         LOOP.call_later(max(conf.SWAP_OLDEST, conf.MINIMUM_RUNTIME), self.swap_oldest)
         LOOP.call_soon(self.update_stats)
-        LOOP.call_soon(self.print_status)
+        if status_bar:
+            LOOP.call_soon(self.print_status)
 
     def update_count(self):
         self.things_count.append(str(DB_PROC.count))

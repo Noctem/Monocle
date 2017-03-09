@@ -205,8 +205,8 @@ def main():
 
     LOOP.set_exception_handler(exception_handler)
 
-    overseer = Overseer(status_bar=args.status_bar, manager=manager)
-    overseer.start()
+    overseer = Overseer(manager)
+    overseer.start(args.status_bar)
     launcher = LOOP.create_task(overseer.launch(args.bootstrap, args.pickle))
     if platform != 'win32':
         LOOP.add_signal_handler(SIGINT, launcher.cancel)
