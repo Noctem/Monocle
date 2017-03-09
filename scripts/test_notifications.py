@@ -3,6 +3,7 @@
 from asyncio import get_event_loop, set_event_loop_policy
 from pathlib import Path
 from random import uniform, randint, choice
+from argparse import ArgumentParser
 
 try:
     from uvloop import EventLoopPolicy
@@ -19,10 +20,45 @@ sys.path.append(str(monocle_dir))
 
 from monocle import names, sanitized as conf
 
-pokemon_id = randint(1, 251)
-conf.ALWAYS_NOTIFY_IDS = {pokemon_id}
+parser = ArgumentParser()
+parser.add_argument(
+    '-i', '--id',
+    type=int,
+    help='Pokémon ID to notify about'
+)
+parser.add_argument(
+    '-lat', '--latitude',
+    type=float,
+    help='latitude for fake spawn'
+)
+parser.add_argument(
+    '-lon', '--longitude',
+    type=float,
+    help='longitude for fake spawn'
+)
+parser.add_argument(
+    '-r', '--remaining',
+    type=int,
+    help='seconds remaining on fake spawn'
+)
+parser.add_argument(
+    '-u', '--unmodified',
+    action='store_true',
+    help="don't add ID to ALWAYS_NOTIFY_IDS"
+)
+args = parser.parse_args()
+
+if args.id is not None:
+    pokemon_id = args.id
+    if args.id == 0:
+        names.POKEMON_NAMES[0] = 'Test'
+else:
+    pokemon_id = randint(1, 252)
+
+if not args.unmodified:
+    conf.ALWAYS_NOTIFY_IDS = {pokemon_id}
+
 conf.HASHTAGS = {'test'}
-names.POKEMON_NAMES[0] = 'Test'
 
 from monocle.notification import Notifier
 from monocle.shared import SessionManager
@@ -36,17 +72,22 @@ root.addHandler(ch)
 
 MOVES = tuple(POKEMON_MOVES.keys())
 
-try:
+if args.latitude is not None:
+    lat = args.latitude
+else:
     lat = uniform(conf.MAP_START[0], conf.MAP_END[0])
+
+if args.longitude is not None:
+    lon = args.longitude
+else:
     lon = uniform(conf.MAP_START[1], conf.MAP_END[1])
-except Exception:
-    lat = 40.776714
-    lon = -111.888558
 
-tth = uniform(89, 3599)
+if args.remaining:
+    tth = args.remaining
+else:
+    tth = uniform(89, 3599)
+
 now = time.time()
-
-
 
 pokemon = {
     'encounter_id': 93253523,
