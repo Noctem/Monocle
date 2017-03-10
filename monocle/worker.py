@@ -3,6 +3,7 @@ from random import choice, randint, uniform, triangular
 from time import time, monotonic
 from queue import Empty
 from itertools import cycle
+from sys import exit
 from concurrent.futures import CancelledError
 
 from aiopogo import PGoApi, exceptions as ex
@@ -16,13 +17,6 @@ from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS
 from .spawns import SPAWNS
 from .db_proc import DB_PROC
 from . import avatar, sanitized as conf
-
-try:
-    import _thread
-except ImportError as e:
-    if conf.FORCED_KILL:
-        raise OSError('Your platform does not support _thread so FORCED_KILL will not work.') from e
-    import _dummy_thread as _thread
 
 if conf.NOTIFY:
     from .notification import Notifier
@@ -121,8 +115,6 @@ class Worker:
         self.account_seen = 0
 
         self.api = PGoApi(device_info=device_info)
-        if conf.HASH_KEY:
-            self.api.activate_hash_server(conf.HASH_KEY)
         self.api.set_position(*self.location, self.altitude)
         if self.proxies:
             self.api.set_proxy(next(self.proxies))
@@ -435,19 +427,8 @@ class Worker:
             if buddy:
                 request.get_buddy_walked()
 
-        try:
-            refresh = HashServer.status.get('period')
-
-            while HashServer.status.get('remaining') < 5 and time() < refresh:
-                self.error_code = 'HASH WAITING'
-                wait = refresh - time() + 1
-                await sleep(wait, loop=LOOP)
-                refresh = HashServer.status.get('period')
-        except TypeError:
-            pass
-
-        now = time()
         if action:
+            now = time()
             # wait for the time required, or at least a half-second
             if self.last_action > now + .5:
                 await sleep(self.last_action - now, loop=LOOP)
@@ -566,7 +547,7 @@ class Worker:
                         err = 'A new version is being forced, exiting.'
                         self.log.error(err)
                         print(err)
-                        _thread.interrupt_main()
+                        exit()
                 except KeyError:
                     pass
         if self.check_captcha(responses):
@@ -665,7 +646,7 @@ class Worker:
             err = 'Hash key has expired: {}'.format(conf.HASH_KEY)
             self.log.error(err)
             print(err)
-            _thread.interrupt_main()
+            exit()
         except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
             self.log.warning('{} Giving up.', e)
             self.error_code = 'MALFORMED RESPONSE'

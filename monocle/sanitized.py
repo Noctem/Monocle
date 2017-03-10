@@ -49,7 +49,7 @@ _valid_types = {
     'GOOGLE_MAPS_KEY': str,
     'GRID': sequence,
     'HASHTAGS': set_sequence,
-    'HASH_KEY': str,
+    'HASH_KEY': (str,) + set_sequence,
     'HEATMAP': bool,
     'IGNORE_IVS': bool,
     'IGNORE_RARITY': bool,

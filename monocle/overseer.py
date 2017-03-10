@@ -14,11 +14,6 @@ from sqlalchemy.exc import OperationalError
 
 import time
 
-try:
-    import _thread
-except ImportError:
-    import _dummy_thread as _thread
-
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point
 from .shared import get_logger, LOOP, run_threaded, ACCOUNTS
@@ -199,7 +194,6 @@ class Overseer:
         A = simulating app startup
         T = completing the tutorial
         X = something bad happened
-        H = waiting for the next period on the hashing server
         C = CAPTCHA
 
         Other letters: various errors and procedures
@@ -295,13 +289,13 @@ class Overseer:
 
         if conf.HASH_KEY:
             try:
-                refresh = HashServer.status.get('period') - time.time()
+                refresh = HashServer.status['period'] - time.time()
                 output.append('Hashes: {r}/{m}, refresh in {t:.0f}'.format(
-                    r=HashServer.status.get('remaining'),
-                    m=HashServer.status.get('maximum'),
+                    r=HashServer.status['remaining'],
+                    m=HashServer.status['maximum'],
                     t=refresh
                 ))
-            except TypeError:
+            except (KeyError, TypeError):
                 pass
 
         try:

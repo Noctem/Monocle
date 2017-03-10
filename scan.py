@@ -23,7 +23,7 @@ from concurrent.futures import TimeoutError
 import time
 
 from sqlalchemy.exc import DBAPIError
-from aiopogo import close_sessions
+from aiopogo import close_sessions, activate_hash_server
 
 from monocle.shared import LOOP, get_logger, SessionManager, ACCOUNTS
 from monocle.utils import get_address, dump_pickle
@@ -208,12 +208,13 @@ def main():
     overseer = Overseer(manager)
     overseer.start(args.status_bar)
     launcher = LOOP.create_task(overseer.launch(args.bootstrap, args.pickle))
+    activate_hash_server(conf.HASH_KEY)
     if platform != 'win32':
         LOOP.add_signal_handler(SIGINT, launcher.cancel)
         LOOP.add_signal_handler(SIGTERM, launcher.cancel)
     try:
         LOOP.run_until_complete(launcher)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         launcher.cancel()
     finally:
         cleanup(overseer, manager)
