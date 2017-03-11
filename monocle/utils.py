@@ -208,8 +208,8 @@ def get_device_info(account):
             device_info['product'] = 'iOS'
         else:
             device_info['product'] = 'iPhone OS'
-        device_info['hardware'] = account['model']
-        device_info['model'] = IPHONES[account['model']]
+        device_info['hardware'] = account['model'] + '\x00'
+        device_info['model'] = IPHONES[account['model']] + '\x00'
     except (KeyError, AttributeError):
         account = generate_device_info(account)
         return get_device_info(account)
