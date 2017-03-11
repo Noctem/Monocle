@@ -4,13 +4,12 @@ from multiprocessing.managers import BaseManager
 from asyncio import get_event_loop, sleep
 from random import uniform
 from time import time
-from itertools import cycle
 
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from aiopogo import PGoApi, close_sessions, exceptions as ex
+from aiopogo import PGoApi, close_sessions, activate_hash_server, exceptions as ex
 from aiopogo.auth_ptc import AuthPtc
 
 from monocle import sanitized as conf
@@ -52,11 +51,6 @@ async def solve_captcha(url, api, driver, timestamp):
 
 async def main():
     try:
-        if isinstance(conf.HASH_KEY, (set, frozenset, tuple, list)):
-            HASH_KEYS = cycle(conf.HASH_KEY)
-        elif conf.HASH_KEY:
-            HASH_KEYS = cycle((conf.HASH_KEY,))
-
         class AccountManager(BaseManager): pass
         AccountManager.register('captcha_queue')
         AccountManager.register('extra_queue')
@@ -64,6 +58,8 @@ async def main():
         manager.connect()
         captcha_queue = manager.captcha_queue()
         extra_queue = manager.extra_queue()
+
+        activate_hash_server(conf.HASH_KEY)
 
         driver = webdriver.Chrome()
         driver.set_window_size(803, 807)
@@ -87,8 +83,6 @@ async def main():
             try:
                 device_info = get_device_info(account)
                 api = PGoApi(device_info=device_info)
-                if conf.HASH_KEY:
-                    api.activate_hash_server(next(HASH_KEYS))
                 api.set_position(lat, lon, alt)
 
                 authenticated = False
