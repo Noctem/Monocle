@@ -166,7 +166,10 @@ REPORT_MAPS = True  # Show maps on reports
 ## Get new accounts from the CAPTCHA queue first if it's not empty
 #FAVOR_CAPTCHA = True
 
-MAP_WORKERS = True  # allow displaying the live location of workers on the map
+# allow displaying the live location of workers on the map
+MAP_WORKERS = True
+# filter these Pokemon from the map to reduce traffic and browser load
+#MAP_FILTER_IDS = [161, 165, 16, 19, 167]
 
 # unix timestamp of last spawn point migration, spawn times learned before this will be ignored
 LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
