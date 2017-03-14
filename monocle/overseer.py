@@ -365,6 +365,7 @@ class Overseer:
 
     async def _launch(self, bootstrap, pickle):
         initial = True
+        next_mystery_reload = 0
         while True:
             if not initial:
                 pickle = False
@@ -430,7 +431,10 @@ class Overseer:
                         await self.coroutine_semaphore.acquire()
                         LOOP.create_task(self.try_point(mystery_point))
                     except IndexError:
-                        self.mysteries = SPAWNS.get_mysteries()
+                        if next_mystery_reload < time.monotonic():
+                            self.mysteries = SPAWNS.get_mysteries()
+                            next_mystery_reload = time.monotonic() + conf.RESCAN_UNKNOWN
+
                         if not self.mysteries:
                             time_diff = time.time() - spawn_time
                             break
