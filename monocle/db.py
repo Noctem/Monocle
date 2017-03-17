@@ -1,8 +1,8 @@
 from datetime import datetime
 from collections import OrderedDict
 from contextlib import contextmanager
+from enum import Enum
 
-import enum
 import time
 
 from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, ForeignKey, UniqueConstraint, create_engine, cast, func, desc, asc, and_, exists
@@ -11,28 +11,19 @@ from sqlalchemy.types import TypeDecorator, Numeric, Text
 from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT, DOUBLE
 from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm.exc import NoResultFound
 
-from . import utils, spawns, db_proc, sanitized as conf
+from . import utils, bounds, spawns, db_proc, sanitized as conf
 from .shared import call_at
 
-if conf.BOUNDARIES:
-    try:
-        from shapely.geometry import Polygon, Point
-
-        if not isinstance(conf.BOUNDARIES, Polygon):
-            raise TypeError('BOUNDARIES must be a shapely Polygon.')
-    except ImportError as e:
-        raise ImportError('BOUNDARIES is set but shapely is not available.') from e
-
 try:
-    if conf.LAST_MIGRATION > time.time():
-        raise ValueError('LAST_MIGRATION must be a timestamp from the past.')
+    assert conf.LAST_MIGRATION < time.time()
+except AssertionError:
+    raise ValueError('LAST_MIGRATION must be a timestamp from the past.')
 except TypeError as e:
     raise TypeError('LAST_MIGRATION must be a numeric timestamp.') from e
 
 
-class Team(enum.Enum):
+class Team(Enum):
     none = 0
     mystic = 1
     valor = 2
@@ -99,31 +90,7 @@ def combine_key(sighting):
 Base = declarative_base()
 
 
-class Bounds:
-    if conf.BOUNDARIES:
-        boundaries = conf.BOUNDARIES
-
-        @classmethod
-        def contain(cls, p):
-            return cls.boundaries.contains(Point(p))
-    elif conf.STAY_WITHIN_MAP:
-        north = max(conf.MAP_START[0], conf.MAP_END[0])
-        south = min(conf.MAP_START[0], conf.MAP_END[0])
-        east = max(conf.MAP_START[1], conf.MAP_END[1])
-        west = min(conf.MAP_START[1], conf.MAP_END[1])
-
-        @classmethod
-        def contain(cls, p):
-            lat, lon = p
-            return (cls.south <= lat <= cls.north and
-                    cls.west <= lon <= cls.east)
-    else:
-        @staticmethod
-        def contain(p):
-            return True
-
-
-class SightingCache(object):
+class SightingCache:
     """Simple cache for storing actual sightings
 
     It's used in order not to make as many queries to the database.
@@ -154,7 +121,7 @@ class SightingCache(object):
         return within_range
 
 
-class MysteryCache(object):
+class MysteryCache:
     """Simple cache for storing Pokemon with unknown expiration times
 
     It's used in order not to make as many queries to the database.
@@ -196,7 +163,7 @@ class MysteryCache(object):
         return self.store.items()
 
 
-class FortCache(object):
+class FortCache:
     """Simple cache for storing fort sightings"""
     def __init__(self):
         self.store = utils.load_pickle('forts') or {}
@@ -356,12 +323,11 @@ def get_spawns(session):
     spawns_dict = {}
     despawn_times = {}
     altitudes = {}
-    known_points = set()
     for spawn in spawns:
         point = spawn.lat, spawn.lon
 
         # skip if point is not within boundaries (if applicable)
-        if not Bounds.contain(point):
+        if point not in bounds:
             continue
 
         rounded = utils.round_coords(point, 3)
@@ -377,12 +343,10 @@ def get_spawns(session):
             spawn_time = (spawn.despawn_time + 1800) % 3600
 
         despawn_times[spawn.spawn_id] = spawn.despawn_time
-        spawns_dict[spawn.spawn_id] = (point, spawn_time)
-        if conf.MORE_POINTS:
-            known_points.add(point)
+        spawns_dict[point] = (spawn.spawn_id, spawn_time)
 
     spawns = OrderedDict(sorted(spawns_dict.items(), key=lambda k: k[1][1]))
-    return spawns, despawn_times, mysteries, altitudes, known_points
+    return spawns, despawn_times, mysteries, altitudes
 
 
 def get_since():
@@ -432,13 +396,17 @@ def add_spawnpoint(session, pokemon):
     # Check if the same entry already exists
     spawn_id = pokemon['spawn_id']
     new_time = pokemon['expire_timestamp'] % 3600
-    existing_time = spawns.SPAWNS.get_despawn_seconds(spawn_id)
-    if new_time == existing_time:
-        return
+    try:
+        if new_time == spawns.despawn_times[spawn_id]:
+            return
+    except KeyError:
+        pass
     existing = session.query(Spawnpoint) \
         .filter(Spawnpoint.spawn_id == spawn_id) \
         .first()
     now = round(time.time())
+    point = pokemon['lat'], pokemon['lon']
+    spawns.add_known(spawn_id, new_time, point)
     if existing:
         existing.updated = now
 
@@ -451,11 +419,8 @@ def add_spawnpoint(session, pokemon):
             return
 
         existing.despawn_time = new_time
-        spawns.SPAWNS.add_despawn(spawn_id, new_time)
     else:
-        point = (pokemon['lat'], pokemon['lon'])
-        altitude = spawns.SPAWNS.get_altitude(point)
-        spawns.SPAWNS.add_despawn(spawn_id, new_time)
+        altitude = spawns.get_altitude(point)
         widest = get_widest_range(session, spawn_id)
 
         if widest and widest > 1710:
@@ -473,20 +438,19 @@ def add_spawnpoint(session, pokemon):
             duration=duration
         )
         session.add(obj)
-        spawns.SPAWNS.add_known(point)
 
 
 def add_mystery_spawnpoint(session, pokemon):
     # Check if the same entry already exists
     spawn_id = pokemon['spawn_id']
-    point = (pokemon['lat'], pokemon['lon'])
-    if spawns.SPAWNS.db_has(point):
+    point = pokemon['lat'], pokemon['lon']
+    if point in spawns.unknown:
         return
     existing = session.query(exists().where(
         Spawnpoint.spawn_id == spawn_id)).scalar()
     if existing:
         return
-    altitude = spawns.SPAWNS.get_altitude(point)
+    altitude = spawns.get_altitude(point)
 
     obj = Spawnpoint(
         spawn_id=spawn_id,
@@ -499,8 +463,8 @@ def add_mystery_spawnpoint(session, pokemon):
     )
     session.add(obj)
 
-    if Bounds.contain(point):
-        spawns.SPAWNS.add_mystery(point)
+    if point in bounds:
+        spawns.add_unknown(point)
 
 
 def add_mystery(session, pokemon):
@@ -669,14 +633,6 @@ def get_session_stats(session):
         'end': datetime.fromtimestamp(min_max_result[1]),
         'length_hours': length_hours
     }
-
-
-def get_despawn_time(session, spawn_id):
-    spawn_time = session.query(Spawnpoint.despawn_time) \
-        .filter(Spawnpoint.spawn_id == spawn_id) \
-        .filter(Spawnpoint.updated > conf.LAST_MIGRATION) \
-        .scalar()
-    return spawn_time
 
 
 def get_first_last(session, spawn_id):

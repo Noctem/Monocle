@@ -1,22 +1,35 @@
+import sys
+
 from collections import deque, OrderedDict
 from time import time
 from random import shuffle
 from itertools import chain
+from hashlib import sha256
 
+from . import db, sanitized as conf
 from .shared import get_logger
-
-from . import db
+from .bounds import bounds_hash
 from .utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_point_altitudes, random_altitude
 
-class Spawns:
+
+class BaseSpawns:
     """Manage spawn points and times"""
     def __init__(self):
-        self.spawns = OrderedDict()
+        ## Spawns with known times
+        # {(lat, lon): (spawn_id, spawn_seconds)}
+        self.known = OrderedDict()
+        # {spawn_id: despawn_seconds}
         self.despawn_times = {}
-        self.mysteries = set()
-        self.cell_points = set()
+
+        ## Spawns with unknown times
+        # {(lat, lon)}
+        self.unknown = set()
+
+        # {(rounded_lat, rounded_lon): altitude}
         self.altitudes = {}
-        self.known_points = set()
+
+        self.class_version = 2
+        self.db_hash = sha256(conf.DB_ENGINE.encode()).digest()
         self.log = get_logger('spawns')
 
     def __len__(self):
@@ -25,20 +38,13 @@ class Spawns:
     def __bool__(self):
         return len(self.despawn_times) > 0
 
-    def update(self, loadpickle=False):
-        if loadpickle:
-            try:
-                self.spawns, self.despawn_times, self.mysteries, self.altitudes, self.known_points = load_pickle('spawns')
-                if self.mysteries or self.despawn_times:
-                    return
-            except Exception:
-                pass
+    def update(self):
         with db.session_scope() as session:
-            self.spawns, self.despawn_times, self.mysteries, a, self.known_points = db.get_spawns(session)
+            self.known, self.despawn_times, self.unknown, a = db.get_spawns(session)
         self.altitudes.update(a)
         if not self.altitudes:
             self.altitudes = get_point_altitudes()
-        dump_pickle('spawns', self.pickle_objects)
+        self.pickle()
 
     def get_altitude(self, point):
         point = round_coords(point, 3)
@@ -59,80 +65,115 @@ class Spawns:
                 alt = random_altitude()
         return alt
 
-    def items(self):
-        return self.spawns.items()
-
-    def get_mysteries(self):
-        mysteries = deque(self.mysteries | self.cell_points)
-        shuffle(mysteries)
-        return mysteries
-
     def after_last(self):
         try:
-            k = next(reversed(self.spawns))
-            seconds = self.spawns[k][1]
-            current_seconds = time() % 3600
-            return current_seconds > seconds
+            k = next(reversed(self.known))
+            seconds = self.known[k][1]
+            return time() % 3600 > seconds
         except (StopIteration, KeyError, TypeError):
             return False
 
-    def add_despawn(self, spawn_id, despawn_time):
-        self.despawn_times[spawn_id] = despawn_time
-
-    def add_known(self, point):
-        self.known_points.add(point)
-        self.remove_mystery(point)
-
-    def add_mystery(self, point):
-        self.mysteries.add(point)
-        self.cell_points.discard(point)
-
-    def add_cell_point(self, point):
-        self.cell_points.add(point)
-
-    def remove_mystery(self, point):
-        self.mysteries.discard(point)
-        self.cell_points.discard(point)
-
-    def get_despawn_seconds(self, spawn_id):
-        return self.despawn_times.get(spawn_id)
-
-    def db_has(self, point):
-        return point in chain(self.known_points, self.mysteries)
-
-    def have_point(self, point):
-        return point in chain(self.cell_points, self.known_points, self.mysteries)
-
-    def get_despawn_time(self, spawn_id, seen=None):
-        now = seen or time()
-        hour = get_current_hour(now=now)
+    def get_despawn_time(self, spawn_id, seen):
+        hour = get_current_hour(now=seen)
         try:
-            despawn_time = self.get_despawn_seconds(spawn_id) + hour
-            if now > despawn_time:
+            despawn_time = self.despawn_times[spawn_id] + hour
+            if seen > despawn_time:
                 despawn_time += 3600
             return despawn_time
-        except TypeError:
+        except KeyError:
             return None
 
-    def get_time_till_hidden(self, spawn_id):
-        if spawn_id not in self.despawn_times:
-            return None
-        return time_until_time(self.despawn_times[spawn_id])
+    def unpickle(self):
+        try:
+            state = load_pickle('spawns', raise_exception=True)
+            if all((state['class_version'] == self.class_version,
+                    state['db_hash'] == self.db_hash,
+                    state['bounds_hash'] == bounds_hash,
+                    state['last_migration'] == conf.LAST_MIGRATION)):
+                self.__dict__.update(state)
+                return True
+            else:
+                self.log.warning('Configuration changed, reloading spawns from DB.')
+        except FileNotFoundError:
+            self.log.warning('No spawns pickle found, will create one.')
+        except (TypeError, KeyError):
+            self.log.warning('Obsolete or invalid spawns pickle type, reloading from DB.')
+        return False
 
-    @property
-    def pickle_objects(self):
-        return self.spawns, self.despawn_times, self.mysteries, self.altitudes, self.known_points
+    def pickle(self):
+        state = self.__dict__.copy()
+        del state['log']
+        state.pop('cells_count', None)
+        state['bounds_hash'] = bounds_hash
+        state['last_migration'] = conf.LAST_MIGRATION
+        dump_pickle('spawns', state)
 
     @property
     def total_length(self):
-        return len(self.despawn_times) + self.mysteries_count + self.cells_count
+        return len(self.despawn_times) + len(self.unknown) + self.cells_count
 
-    @property
-    def mysteries_count(self):
-        return len(self.mysteries)
+
+class Spawns(BaseSpawns):
+    def __init__(self):
+        super().__init__()
+        self.cells_count = 0
+
+    def items(self):
+        return self.known.items()
+
+    def add_known(self, spawn_id, despawn_time, point):
+        self.despawn_times[spawn_id] = despawn_time
+        self.unknown.discard(point)
+
+    def add_unknown(self, point):
+        self.unknown.add(point)
+
+    def unpickle(self):
+        result = super().unpickle()
+        try:
+            del self.cell_points
+        except AttributeError:
+            pass
+        return result
+
+    def mystery_gen(self):
+        for mystery in self.unknown:
+            yield mystery
+
+
+class MoreSpawns(BaseSpawns):
+    def __init__(self):
+        super().__init__()
+
+        ## Coordinates mentioned as "spawn_points" in GetMapObjects response
+        ## May or may not be actual spawn points, more research is needed.
+        # {(lat, lon)}
+        self.cell_points = set()
+
+    def items(self):
+        # return a copy since it may be modified
+        return self.known.copy().items()
+
+    def add_known(self, spawn_id, despawn_time, point):
+        self.despawn_times[spawn_id] = despawn_time
+        # add so that have_point() will be up to date
+        self.known[point] = None
+        self.unknown.discard(point)
+        self.cell_points.discard(point)
+
+    def add_unknown(self, point):
+        self.unknown.add(point)
+        self.cell_points.discard(point)
+
+    def have_point(self, point):
+        return point in chain(self.cell_points, self.known, self.unknown)
+
+    def mystery_gen(self):
+        for mystery in chain(self.unknown, self.cell_points):
+            yield mystery
 
     @property
     def cells_count(self):
         return len(self.cell_points)
 
-SPAWNS = Spawns()
+sys.modules[__name__] = MoreSpawns() if conf.MORE_POINTS else Spawns()

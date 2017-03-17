@@ -338,13 +338,16 @@ def get_address():
     return ('127.0.0.1', 5001)
 
 
-def load_pickle(name):
+def load_pickle(name, raise_exception=False):
     location = join(conf.DIRECTORY, 'pickles', '{}.pickle'.format(name))
     try:
         with open(location, 'rb') as f:
             return pickle.load(f)
     except (FileNotFoundError, EOFError):
-        return None
+        if raise_exception:
+            raise FileNotFoundError
+        else:
+            return None
 
 
 def dump_pickle(name, var):

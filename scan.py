@@ -31,7 +31,7 @@ from monocle.worker import Worker
 from monocle.overseer import Overseer
 from monocle.db_proc import DB_PROC
 from monocle.db import FORT_CACHE
-from monocle.spawns import SPAWNS
+from monocle import spawns
 
 
 class AccountManager(BaseManager):
@@ -159,7 +159,7 @@ def cleanup(overseer, manager):
         DB_PROC.stop()
         print("Updating spawns pickle...")
         try:
-            SPAWNS.update()
+            spawns.update()
         except Exception as e:
             log.warning('A wild {} appeared while updating spawns during exit!', e.__class__.__name__)
         while not DB_PROC.queue.empty():

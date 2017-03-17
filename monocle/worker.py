@@ -11,12 +11,11 @@ from aiopogo.auth_ptc import AuthPtc
 from aiopogo.hash_server import HashServer
 from pogeo import get_distance
 
-from .db import SIGHTING_CACHE, MYSTERY_CACHE, Bounds
+from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import round_coords, load_pickle, get_device_info, get_spawn_id, get_start_coords, Units, randomize_point
 from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS
-from .spawns import SPAWNS
 from .db_proc import DB_PROC
-from . import avatar, sanitized as conf
+from . import avatar, bounds, spawns, sanitized as conf
 
 if conf.NOTIFY:
     from .notification import Notifier
@@ -39,12 +38,11 @@ elif _unit is Units.meters:
     UNIT_STRING = "m/h"
 _UNIT = _unit.value
 
-VERSIONS = ('0.57.4', '0.57.3', '0.57.2', '0.55.0')
-
 
 class Worker:
     """Single worker walking on the map"""
 
+    versions = ('0.57.4', '0.57.3', '0.57.2', '0.55.0')
     download_hash = "7b9c5056799a2c5c7d48a62c497736cbcf8c4acb"
     g = {'seen': 0, 'captchas': 0}
 
@@ -543,7 +541,7 @@ class Worker:
                 try:
                     if (not dl_hash
                             and conf.FORCED_KILL
-                            and dl_settings['settings']['minimum_client_version'] not in VERSIONS):
+                            and dl_settings['settings']['minimum_client_version'] not in self.versions):
                         err = 'A new version is being forced, exiting.'
                         self.log.error(err)
                         print(err)
@@ -579,7 +577,7 @@ class Worker:
         """
         visited = False
         try:
-            self.altitude = SPAWNS.get_altitude(point)
+            self.altitude = spawns.get_altitude(point)
             self.altitude = uniform(self.altitude - 1, self.altitude + 1)
             self.location = point
             self.api.set_position(*self.location, self.altitude)
@@ -786,13 +784,12 @@ class Worker:
                 for point in map_cell.get('spawn_points', []):
                     points_seen += 1
                     try:
-                        p = (point['latitude'], point['longitude'])
-                        if SPAWNS.have_point(p) or not Bounds.contain(p):
+                        p = point['latitude'], point['longitude']
+                        if spawns.have_point(p) or p not in bounds:
                             continue
-                        SPAWNS.add_cell_point(p)
+                        spawns.cell_points.add(p)
                     except (KeyError, TypeError):
                         self.log.warning('Spawn point exception ignored. {}', point)
-                        pass
 
         if (conf.INCUBATE_EGGS and self.unused_incubators
                 and self.eggs and self.smart_throttle()):
@@ -1177,7 +1174,7 @@ class Worker:
             norm['time_till_hidden'] = tth / 1000
             norm['inferred'] = False
         else:
-            despawn = SPAWNS.get_despawn_time(norm['spawn_id'], tss)
+            despawn = spawns.get_despawn_time(norm['spawn_id'], tss)
             if despawn:
                 norm['expire_timestamp'] = despawn
                 norm['time_till_hidden'] = despawn - tss
