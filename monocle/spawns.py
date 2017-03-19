@@ -2,14 +2,13 @@ import sys
 
 from collections import deque, OrderedDict
 from time import time
-from random import shuffle
+from random import uniform
 from itertools import chain
 from hashlib import sha256
 
-from . import db, sanitized as conf
+from . import bounds, db, sanitized as conf
 from .shared import get_logger
-from .bounds import bounds_hash
-from .utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_point_altitudes, random_altitude
+from .utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_all_altitudes, random_altitude
 
 
 class BaseSpawns:
@@ -39,17 +38,55 @@ class BaseSpawns:
         return len(self.despawn_times) > 0
 
     def update(self):
-        with db.session_scope() as session:
-            self.known, self.despawn_times, self.unknown, a = db.get_spawns(session)
-        self.altitudes.update(a)
         if not self.altitudes:
-            self.altitudes = get_point_altitudes()
-        self.pickle()
+            alts = True
+            precision = conf.ALT_PRECISION
+        else:
+            alts = False
 
-    def get_altitude(self, point):
-        point = round_coords(point, 3)
+        bound = bool(conf.BOUNDARIES)
+        last_migration = conf.LAST_MIGRATION
+
+        with db.session_scope() as session:
+            query = session.query(db.Spawnpoint)
+            if bound or conf.STAY_WITHIN_MAP:
+                query = query.filter(db.Spawnpoint.lat >= bounds.south,
+                                     db.Spawnpoint.lat <= bounds.north,
+                                     db.Spawnpoint.lon >= bounds.west,
+                                     db.Spawnpoint.lon <= bounds.east)
+            known = {}
+            for spawn in query:
+                point = spawn.lat, spawn.lon
+
+                # skip if point is not within boundaries (if applicable)
+                if bound and point not in bounds:
+                    continue
+
+                if alts and spawn.alt is not None:
+                    self.altitudes[round_coords(point, precision)] = spawn.alt
+
+                if not spawn.updated or spawn.updated <= last_migration:
+                    self.unknown.add(point)
+                    continue
+
+                if spawn.duration == 60:
+                    spawn_time = spawn.despawn_time
+                else:
+                    spawn_time = (spawn.despawn_time + 1800) % 3600
+
+                self.despawn_times[spawn.spawn_id] = spawn.despawn_time
+                known[point] = spawn.spawn_id, spawn_time
+        self.known = OrderedDict(sorted(known.items(), key=lambda k: k[1][1]))
+
+        if not self.altitudes:
+            self.altitudes = get_all_altitudes(bound)
+
+    def get_altitude(self, point, randomize=0):
+        point = round_coords(point, conf.ALT_PRECISION)
         try:
             alt = self.altitudes[point]
+            if randomize:
+                alt = uniform(alt - randomize, alt + randomize)
         except KeyError:
             try:
                 alt = get_altitude(point)
@@ -88,9 +125,12 @@ class BaseSpawns:
             state = load_pickle('spawns', raise_exception=True)
             if all((state['class_version'] == self.class_version,
                     state['db_hash'] == self.db_hash,
-                    state['bounds_hash'] == bounds_hash,
+                    state['bounds_hash'] == hash(bounds),
                     state['last_migration'] == conf.LAST_MIGRATION)):
                 self.__dict__.update(state)
+                if state['alt_precision'] != conf.ALT_PRECISION:
+                    self.log.warning('ALT_PRECISION changed, replacing altitudes.')
+                    self.altitudes = get_all_altitudes()
                 return True
             else:
                 self.log.warning('Configuration changed, reloading spawns from DB.')
@@ -104,7 +144,8 @@ class BaseSpawns:
         state = self.__dict__.copy()
         del state['log']
         state.pop('cells_count', None)
-        state['bounds_hash'] = bounds_hash
+        state['bounds_hash'] = hash(bounds)
+        state['alt_precision'] = conf.ALT_PRECISION
         state['last_migration'] = conf.LAST_MIGRATION
         dump_pickle('spawns', state)
 
@@ -137,7 +178,7 @@ class Spawns(BaseSpawns):
         return result
 
     def mystery_gen(self):
-        for mystery in self.unknown:
+        for mystery in self.unknown.copy():
             yield mystery
 
 
@@ -169,7 +210,7 @@ class MoreSpawns(BaseSpawns):
         return point in chain(self.cell_points, self.known, self.unknown)
 
     def mystery_gen(self):
-        for mystery in chain(self.unknown, self.cell_points):
+        for mystery in chain(self.unknown.copy(), self.cell_points.copy()):
             yield mystery
 
     @property

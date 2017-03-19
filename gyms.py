@@ -6,9 +6,10 @@ import argparse
 
 from flask import Flask, render_template
 
-from monocle import db, utils, sanitized as conf
+from monocle import db, sanitized as conf
 from monocle.names import POKEMON_NAMES
 from monocle.web_utils import get_args
+from monocle.bounds import area
 
 
 app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'))
@@ -101,7 +102,7 @@ def index():
     return render_template(
         'gyms.html',
         area_name=conf.AREA_NAME,
-        area_size=utils.get_scan_area(),
+        area_size=area,
         minutes_ago=int((datetime.now() - stats['generated_at']).seconds / 60),
         last_date_minutes_ago=int((time.time() - stats['last_date']) / 60),
         team_names=team_names,

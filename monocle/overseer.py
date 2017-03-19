@@ -349,7 +349,8 @@ class Overseer:
     async def update_spawns(self, initial=False):
         while True:
             try:
-                await run_threaded(spawns.update)
+                await run_threaded(spawns.update())
+                LOOP.create_task(run_threaded(spawns.pickle()))
             except OperationalError as e:
                 self.log.exception('Operational error while trying to update spawns.')
                 if initial:
@@ -393,8 +394,8 @@ class Overseer:
     async def _launch(self, update_spawns):
         if update_spawns:
             await self.update_spawns()
+            LOOP.create_task(run_threaded(dump_pickle, 'accounts', ACCOUNTS))
             spawns_iter = iter(spawns.items())
-            await run_threaded(dump_pickle, 'accounts', ACCOUNTS)
         else:
             start_point = self.get_start_point()
             if start_point and not spawns.after_last():
@@ -407,9 +408,11 @@ class Overseer:
         if spawns.after_last():
             current_hour += 3600
 
+        captcha_limit = conf.MAX_CAPTCHAS
+        skip_spawn = conf.SKIP_SPAWN
         for point, (spawn_id, spawn_seconds) in spawns_iter:
             try:
-                if self.captcha_queue.qsize() > conf.MAX_CAPTCHAS:
+                if self.captcha_queue.qsize() > captcha_limit:
                     self.paused = True
                     self.idle_seconds += await run_threaded(self.captcha_queue.full_wait, conf.MAX_CAPTCHAS)
                     self.paused = False
@@ -440,7 +443,7 @@ class Overseer:
             elif time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
                 self.redundant += 1
                 continue
-            elif time_diff > conf.SKIP_SPAWN:
+            elif time_diff > skip_spawn:
                 self.skipped += 1
                 continue
 

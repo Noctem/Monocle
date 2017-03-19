@@ -13,49 +13,40 @@ from sanic.response import html, json
 from jinja2 import Environment, PackageLoader, Markup
 from asyncpg import create_pool
 
-from monocle import db, utils, sanitized as conf
+from monocle import db, sanitized as conf
+from monocle.bounds import center
 from monocle.names import POKEMON_NAMES, MOVES, POKEMON_MOVES
 from monocle.web_utils import get_scan_coords, get_worker_markers, Workers, get_args
 
 
 GOOGLE_MAPS_KEY = conf.GOOGLE_MAPS_KEY if conf.REPORT_MAPS else None
+MAPFILE = 'custom.html' if conf.LOAD_CUSTOM_HTML_FILE else 'newmap.html'
+
+CSS_JS = ''
+SOCIAL_LINKS = ''
+JS_VARS = Markup(
+    "_defaultSettings['FIXED_OPACITY'] = '{:d}'; "
+    "_defaultSettings['SHOW_TIMER'] = '{:d}'; "
+    "_defaultSettings['TRASH_IDS'] = [{}]; ".format(conf.FIXED_OPACITY, conf.SHOW_TIMER, ', '.join(str(p_id) for p_id in conf.TRASH_IDS))
+)
+if conf.LOAD_CUSTOM_CSS_FILE:
+    CSS_JS += '<link rel="stylesheet" href="static/css/custom.css">'
+if conf.LOAD_CUSTOM_JS_FILE:
+    CSS_JS += '<script type="text/javascript" src="static/js/custom.js"></script>'
+if conf.FB_PAGE_ID:
+    SOCIAL_LINKS += '<a class="map_btn facebook-icon" target="_blank" href="https://www.facebook.com/' + conf.FB_PAGE_ID + '"></a>'
+if conf.TWITTER_SCREEN_NAME:
+    SOCIAL_LINKS += '<a class="map_btn twitter-icon" target="_blank" href="https://www.twitter.com/' + conf.TWITTER_SCREEN_NAME + '"></a>'
+if conf.DISCORD_INVITE_ID:
+    SOCIAL_LINKS += '<a class="map_btn discord-icon" target="_blank" href="https://discord.gg/' + conf.DISCORD_INVITE_ID + '"></a>'
+if conf.TELEGRAM_USERNAME:
+    SOCIAL_LINKS += '<a class="map_btn telegram-icon" target="_blank" href="https://www.telegram.me/' + conf.TELEGRAM_USERNAME + '"></a>'
+CSS_JS = Markup(CSS_JS)
+SOCIAL_LINKS = Markup(SOCIAL_LINKS)
 
 env = Environment(loader=PackageLoader('monocle', 'templates'), enable_async=True)
-
 app = Sanic(__name__)
 app.static('/static', resource_filename('monocle', 'static'))
-
-
-extra_css_js = ''
-social_links = ''
-init_js_vars = (
-    "_defaultSettings['FIXED_OPACITY'] = '{}'; "
-    "_defaultSettings['SHOW_TIMER'] = '{}'; "
-    "_defaultSettings['TRASH_IDS'] = [{}]; ".format(int(conf.FIXED_OPACITY), int(conf.SHOW_TIMER), ', '.join(str(p_id) for p_id in conf.TRASH_IDS))
-)
-
-if conf.LOAD_CUSTOM_HTML_FILE:
-    mapfile = 'custom.html'
-else:
-    mapfile = 'newmap.html'
-
-if conf.LOAD_CUSTOM_CSS_FILE:
-    extra_css_js += '<link rel="stylesheet" href="static/css/custom.css">'
-
-if conf.LOAD_CUSTOM_JS_FILE:
-    extra_css_js += '<script type="text/javascript" src="static/js/custom.js"></script>'
-
-if conf.FB_PAGE_ID:
-    social_links += '<a class="map_btn facebook-icon" target="_blank" href="https://www.facebook.com/' + conf.FB_PAGE_ID + '"></a>'
-
-if conf.TWITTER_SCREEN_NAME:
-    social_links += '<a class="map_btn twitter-icon" target="_blank" href="https://www.twitter.com/' + conf.TWITTER_SCREEN_NAME + '"></a>'
-
-if conf.DISCORD_INVITE_ID:
-    social_links += '<a class="map_btn discord-icon" target="_blank" href="https://discord.gg/' + conf.DISCORD_INVITE_ID + '"></a>'
-
-if conf.TELEGRAM_USERNAME:
-    social_links += '<a class="map_btn telegram-icon" target="_blank" href="https://www.telegram.me/' + conf.TELEGRAM_USERNAME + '"></a>'
 
 
 def jsonify(records):
@@ -68,15 +59,15 @@ def jsonify(records):
 
 @app.route('/')
 async def fullmap(request):
-    template = env.get_template(mapfile)
+    template = env.get_template(MAPFILE)
     html_content = await template.render_async(
         area_name=conf.AREA_NAME,
-        map_center=utils.MAP_CENTER,
+        map_center=center,
         map_provider_url=conf.MAP_PROVIDER_URL,
         map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION,
-        social_links=Markup(social_links),
-        init_js_vars=Markup(init_js_vars),
-        extra_css_js=Markup(extra_css_js)
+        social_links=SOCIAL_LINKS,
+        init_js_vars=JS_VARS,
+        extra_css_js=CSS_JS
     )
     return html(html_content)
 
@@ -122,7 +113,7 @@ if conf.MAP_WORKERS:
 
         html_content = await template.render_async(
             area_name=conf.AREA_NAME,
-            map_center = utils.MAP_CENTER,
+            map_center=center,
             map_provider_url=conf.MAP_PROVIDER_URL,
             map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION
         )

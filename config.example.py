@@ -160,8 +160,14 @@ REPORT_SINCE = datetime(2017, 2, 17)  # base reports on data from after this dat
 
 # used for altitude queries and maps in reports
 GOOGLE_MAPS_KEY = 'OYOgW1wryrp2RKJ81u7BLvHfYUA6aArIyuQCXu4'  # this key is fake
-#ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
 REPORT_MAPS = True  # Show maps on reports
+#ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
+
+## Round altitude coordinates to this many decimal places
+## More precision will lead to larger caches and more Google API calls
+## Maximum distance from coords to rounded coords for precisions (at Lat40):
+## 1: 7KM, 2: 700M, 3: 70M, 4: 7M
+#ALT_PRECISION = 2
 
 ## Automatically resolve captchas using 2Captcha key.
 #CAPTCHA_KEY = '1abc234de56fab7c89012d34e56fa7b8'

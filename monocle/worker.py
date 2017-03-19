@@ -577,8 +577,7 @@ class Worker:
         """
         visited = False
         try:
-            self.altitude = spawns.get_altitude(point)
-            self.altitude = uniform(self.altitude - 1, self.altitude + 1)
+            self.altitude = spawns.get_altitude(point, randomize=5)
             self.location = point
             self.api.set_position(*self.location, self.altitude)
             if not self.authenticated:
@@ -906,7 +905,7 @@ class Worker:
                 self.location[0] - lat_change,
                 self.location[1] - lon_change,
             )
-            self.altitude = uniform(self.altitude - 3, self.altitude + 3)
+            self.altitude = uniform(self.altitude - 2, self.altitude + 2)
             self.api.set_position(*self.location, self.altitude)
             delay_required = (distance_to_pokemon * percent) / 8
             if delay_required < 1.5:

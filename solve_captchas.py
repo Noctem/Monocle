@@ -13,7 +13,8 @@ from aiopogo import PGoApi, close_sessions, activate_hash_server, exceptions as 
 from aiopogo.auth_ptc import AuthPtc
 
 from monocle import sanitized as conf
-from monocle.utils import random_altitude, get_device_info, get_address, LAT_MEAN, LON_MEAN
+from monocle.utils import random_altitude, get_device_info, get_address, randomize_point
+from monocle.bounds import center
 
 
 async def solve_captcha(url, api, driver, timestamp):
@@ -76,8 +77,7 @@ async def main():
                 except IndexError:
                     alt = random_altitude()
             else:
-                lat = uniform(LAT_MEAN - 0.0001, LAT_MEAN + 0.0001)
-                lon = uniform(LON_MEAN - 0.0001, LON_MEAN + 0.0001)
+                lat, lon = randomize_point(center, 0.0001)
                 alt = random_altitude()
 
             try:

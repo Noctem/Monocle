@@ -317,38 +317,6 @@ def session_scope(autoflush=False):
         session.close()
 
 
-def get_spawns(session):
-    spawns = session.query(Spawnpoint)
-    mysteries = set()
-    spawns_dict = {}
-    despawn_times = {}
-    altitudes = {}
-    for spawn in spawns:
-        point = spawn.lat, spawn.lon
-
-        # skip if point is not within boundaries (if applicable)
-        if point not in bounds:
-            continue
-
-        rounded = utils.round_coords(point, 3)
-        altitudes[rounded] = spawn.alt
-
-        if not spawn.updated or spawn.updated <= conf.LAST_MIGRATION:
-            mysteries.add(point)
-            continue
-
-        if spawn.duration == 60:
-            spawn_time = spawn.despawn_time
-        else:
-            spawn_time = (spawn.despawn_time + 1800) % 3600
-
-        despawn_times[spawn.spawn_id] = spawn.despawn_time
-        spawns_dict[point] = (spawn.spawn_id, spawn_time)
-
-    spawns = OrderedDict(sorted(spawns_dict.items(), key=lambda k: k[1][1]))
-    return spawns, despawn_times, mysteries, altitudes
-
-
 def get_since():
     """Returns 'since' timestamp that should be used for filtering"""
     return time.mktime(conf.REPORT_SINCE.timetuple())
@@ -566,10 +534,8 @@ def update_mystery(session, mystery):
 
 def get_sightings(session, after_id=0):
     q = session.query(Sighting) \
-        .filter(and_( \
-            Sighting.expire_timestamp > time.time(), \
-            Sighting.id > after_id \
-        ))
+        .filter(Sighting.expire_timestamp > time.time(),
+                Sighting.id > after_id)
     if conf.MAP_FILTER_IDS:
         q = q.filter(~Sighting.pokemon_id.in_(conf.MAP_FILTER_IDS))
     return q.all()

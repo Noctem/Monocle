@@ -26,7 +26,7 @@ except ImportError:
     def jit(func):
         return func
 
-from . import sanitized as conf
+from . import bounds, sanitized as conf
 
 IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone5,2': 'N42AP',
@@ -44,14 +44,6 @@ IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone9,3': 'D101AP',
            'iPhone9,4': 'D111AP'}
 
-if conf.BOUNDARIES:
-    MAP_CENTER = conf.BOUNDARIES.centroid.coords[0]
-    LAT_MEAN, LON_MEAN = MAP_CENTER
-else:
-    LAT_MEAN = (conf.MAP_END[0] + conf.MAP_START[0]) / 2
-    LON_MEAN = (conf.MAP_END[1] + conf.MAP_START[1]) / 2
-    MAP_CENTER = LAT_MEAN, LON_MEAN
-
 
 log = getLogger(__name__)
 
@@ -60,14 +52,6 @@ class Units(Enum):
     miles = 1
     kilometers = 2
     meters = 3
-
-
-def get_scan_area():
-    """Returns the square kilometers for configured scan area"""
-    width = get_distance(conf.MAP_START, (conf.MAP_START[0], conf.MAP_END[1]), Units.kilometers.value)
-    height = get_distance(conf.MAP_START, (conf.MAP_END[0], conf.MAP_START[1]), Units.kilometers.value)
-    area = round(width * height)
-    return area
 
 
 @jit
@@ -79,10 +63,10 @@ def get_start_coords(worker_no):
 
     column = worker_no % per_column
     row = int(worker_no / per_column)
-    part_lat = (conf.MAP_END[0] - conf.MAP_START[0]) / grid[0]
-    part_lon = (conf.MAP_END[1] - conf.MAP_START[1]) / grid[1]
-    start_lat = conf.MAP_START[0] + part_lat * row + part_lat / 2
-    start_lon = conf.MAP_START[1] + part_lon * column + part_lon / 2
+    part_lat = (bounds.south - bounds.north) / grid[0]
+    part_lon = (bounds.east - bounds.west) / grid[1]
+    start_lat = bounds.north + part_lat * row + part_lat / 2
+    start_lon = bounds.west + part_lon * column + part_lon / 2
     return start_lat, start_lon
 
 
@@ -103,7 +87,7 @@ def get_gains(dist=70):
 
     Gain is space between circles.
     """
-    start = Point(*MAP_CENTER)
+    start = Point(*bounds.center)
     base = dist * sqrt(3)
     height = base * sqrt(3) / 2
     dis_a = distance(meters=base)
@@ -134,16 +118,17 @@ def get_altitude(point):
     return altitude
 
 
-def get_altitudes(coords, precision=3):
+def get_altitudes(coords):
     def chunks(l, n):
         """Yield successive n-sized chunks from l."""
         for i in range(0, len(l), n):
             yield l[i:i + n]
 
-    altitudes = dict()
     if len(coords) > 300:
-        for chunk in tuple(chunks(coords, 300)):
-            altitudes.update(get_altitudes(chunk, precision))
+        altitudes = {}
+        for chunk in chunks(coords, 300):
+            altitudes.update(get_altitudes(chunk))
+        return altitudes
     else:
         try:
             params = {'locations': 'enc:' + polyline.encode(coords)}
@@ -152,33 +137,23 @@ def get_altitudes(coords, precision=3):
             r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
                              params=params).json()
 
-            for result in r['results']:
-                point = (result['location']['lat'], result['location']['lng'])
-                key = round_coords(point, precision)
-                altitudes[key] = result['elevation']
+            return {round_coords((x['location']['lat'], x['location']['lng']), conf.ALT_PRECISION):
+                    x['elevation'] for x in r['results']}
         except Exception:
             log.exception('Error fetching altitudes.')
-    return altitudes
+            return {}
 
 
-def get_point_altitudes(precision=3):
-    rounded_coords = set()
-    lat_gain, lon_gain = get_gains(100)
-    for map_row, lat in enumerate(
-        float_range(conf.MAP_START[0], conf.MAP_END[0], lat_gain)
-    ):
-        row_start_lon = conf.MAP_START[1]
-        odd = map_row % 2 != 0
-        if odd:
-            row_start_lon -= 0.5 * lon_gain
-        for map_col, lon in enumerate(
-            float_range(row_start_lon, conf.MAP_END[1], lon_gain)
-        ):
-            key = round_coords((lat, lon), precision)
-            rounded_coords.add(key)
-    rounded_coords = tuple(rounded_coords)
-    altitudes = get_altitudes(rounded_coords, precision)
-    return altitudes
+def get_all_altitudes(bound=False):
+    coords = []
+    precision = conf.ALT_PRECISION
+    gain = 1 / (10 ** precision)
+    for lat in float_range(bounds.south, bounds.north, gain):
+        for lon in float_range(bounds.west, bounds.east, gain):
+            point = lat, lon
+            if not bound or point not in bounds:
+                coords.append(round_coords(point, precision))
+    return get_altitudes(coords)
 
 
 def get_bootstrap_points():
@@ -194,7 +169,7 @@ def get_bootstrap_points():
         for map_col, lon in enumerate(
             float_range(row_start_lon, conf.MAP_END[1], lon_gain)
         ):
-            coords.append([lat,lon])
+            coords.append((lat, lon))
     random.shuffle(coords)
     return coords
 

@@ -7,58 +7,50 @@ import json
 
 from flask import Flask, request, render_template, jsonify, Markup
 
-from monocle import db, utils, sanitized as conf
-from monocle.names import POKEMON_NAMES, MOVES, POKEMON_MOVES
-
+from monocle import db, sanitized as conf
+from monocle.names import POKEMON_NAMES, MOVES
 from monocle.web_utils import *
+from monocle.bounds import area, center
 
 
 GOOGLE_MAPS_KEY = conf.GOOGLE_MAPS_KEY if conf.REPORT_MAPS else None
+MAPFILE = 'custom.html' if conf.LOAD_CUSTOM_HTML_FILE else 'newmap.html'
+
+CSS_JS = ''
+SOCIAL_LINKS = ''
+JS_VARS = Markup(
+    "_defaultSettings['FIXED_OPACITY'] = '{:d}'; "
+    "_defaultSettings['SHOW_TIMER'] = '{:d}'; "
+    "_defaultSettings['TRASH_IDS'] = [{}]; ".format(conf.FIXED_OPACITY, conf.SHOW_TIMER, ', '.join(str(p_id) for p_id in conf.TRASH_IDS))
+)
+if conf.LOAD_CUSTOM_CSS_FILE:
+    CSS_JS += '<link rel="stylesheet" href="static/css/custom.css">'
+if conf.LOAD_CUSTOM_JS_FILE:
+    CSS_JS += '<script type="text/javascript" src="static/js/custom.js"></script>'
+if conf.FB_PAGE_ID:
+    SOCIAL_LINKS += '<a class="map_btn facebook-icon" target="_blank" href="https://www.facebook.com/' + conf.FB_PAGE_ID + '"></a>'
+if conf.TWITTER_SCREEN_NAME:
+    SOCIAL_LINKS += '<a class="map_btn twitter-icon" target="_blank" href="https://www.twitter.com/' + conf.TWITTER_SCREEN_NAME + '"></a>'
+if conf.DISCORD_INVITE_ID:
+    SOCIAL_LINKS += '<a class="map_btn discord-icon" target="_blank" href="https://discord.gg/' + conf.DISCORD_INVITE_ID + '"></a>'
+if conf.TELEGRAM_USERNAME:
+    SOCIAL_LINKS += '<a class="map_btn telegram-icon" target="_blank" href="https://www.telegram.me/' + conf.TELEGRAM_USERNAME + '"></a>'
+CSS_JS = Markup(CSS_JS)
+SOCIAL_LINKS = Markup(SOCIAL_LINKS)
 
 app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'), static_folder=resource_filename('monocle', 'static'))
-
-extra_css_js = ''
-social_links = ''
-init_js_vars = (
-    "_defaultSettings['FIXED_OPACITY'] = '{}'; "
-    "_defaultSettings['SHOW_TIMER'] = '{}'; "
-    "_defaultSettings['TRASH_IDS'] = [{}]; ".format(int(conf.FIXED_OPACITY), int(conf.SHOW_TIMER), ', '.join(str(p_id) for p_id in conf.TRASH_IDS))
-)
-
-if conf.LOAD_CUSTOM_HTML_FILE:
-    mapfile = 'custom.html'
-else:
-    mapfile = 'newmap.html'
-
-if conf.LOAD_CUSTOM_CSS_FILE:
-    extra_css_js += '<link rel="stylesheet" href="static/css/custom.css">'
-
-if conf.LOAD_CUSTOM_JS_FILE:
-    extra_css_js += '<script type="text/javascript" src="static/js/custom.js"></script>'
-
-if conf.FB_PAGE_ID:
-    social_links += '<a class="map_btn facebook-icon" target="_blank" href="https://www.facebook.com/' + conf.FB_PAGE_ID + '"></a>'
-
-if conf.TWITTER_SCREEN_NAME:
-    social_links += '<a class="map_btn twitter-icon" target="_blank" href="https://www.twitter.com/' + conf.TWITTER_SCREEN_NAME + '"></a>'
-
-if conf.DISCORD_INVITE_ID:
-    social_links += '<a class="map_btn discord-icon" target="_blank" href="https://discord.gg/' + conf.DISCORD_INVITE_ID + '"></a>'
-
-if conf.TELEGRAM_USERNAME:
-    social_links += '<a class="map_btn telegram-icon" target="_blank" href="https://www.telegram.me/' + conf.TELEGRAM_USERNAME + '"></a>'
 
 @app.route('/')
 def fullmap():
     return render_template(
-        mapfile,
-        area_name=conf.AREA_NAME,
-        map_center=utils.MAP_CENTER,
+        MAPFILE,
+        area_name=area,
+        map_center=center,
         map_provider_url=conf.MAP_PROVIDER_URL,
         map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION,
-        social_links=Markup(social_links),
-        init_js_vars=Markup(init_js_vars),
-        extra_css_js=Markup(extra_css_js)
+        social_links=SOCIAL_LINKS,
+        init_js_vars=JS_VARS,
+        extra_css_js=CSS_JS
     )
 
 
@@ -102,7 +94,7 @@ if conf.MAP_WORKERS:
         return render_template(
             'workersmap.html',
             area_name=conf.AREA_NAME,
-            map_center=utils.MAP_CENTER,
+            map_center=center,
             map_provider_url=conf.MAP_PROVIDER_URL,
             map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION
         )
@@ -141,7 +133,7 @@ def report_main():
             'maps_data': {
                 'rare': [sighting_to_marker(s) for s in rare_sightings],
             },
-            'map_center': utils.MAP_CENTER,
+            'map_center': center,
             'zoom': 13,
         }
     icons = {
@@ -150,8 +142,6 @@ def report_main():
         'rare': [(r[0], POKEMON_NAMES[r[0]]) for r in rare_pokemon],
         'nonexistent': nonexistent
     }
-
-    area = utils.get_scan_area()
 
     return render_template(
         'report.html',
@@ -177,14 +167,14 @@ def report_single(pokemon_id):
             'charts_data': {
                 'hours': db.get_spawns_per_hour(session, pokemon_id),
             },
-            'map_center': utils.MAP_CENTER,
+            'map_center': center,
             'zoom': 13,
         }
         return render_template(
             'report_single.html',
             current_date=datetime.now(),
             area_name=conf.AREA_NAME,
-            area_size=utils.get_scan_area(),
+            area_size=area,
             pokemon_id=pokemon_id,
             pokemon_name=POKEMON_NAMES[pokemon_id],
             total_spawn_count=db.get_total_spawns_count(session, pokemon_id),
