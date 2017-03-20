@@ -349,8 +349,8 @@ class Overseer:
     async def update_spawns(self, initial=False):
         while True:
             try:
-                await run_threaded(spawns.update())
-                LOOP.create_task(run_threaded(spawns.pickle()))
+                await run_threaded(spawns.update)
+                LOOP.create_task(run_threaded(spawns.pickle))
             except OperationalError as e:
                 self.log.exception('Operational error while trying to update spawns.')
                 if initial:

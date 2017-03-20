@@ -160,6 +160,7 @@ def cleanup(overseer, manager):
         print("Updating spawns pickle...")
         try:
             spawns.update()
+            spawns.pickle()
         except Exception as e:
             log.warning('A wild {} appeared while updating spawns during exit!', e.__class__.__name__)
         while not DB_PROC.queue.empty():
