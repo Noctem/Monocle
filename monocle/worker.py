@@ -58,7 +58,7 @@ class Worker:
         def cell_ids(self, lat, lon, radius):
             rounded = round_coords((lat, lon), 4)
             try:
-                return self.cell_ids[rounded]
+                return self.cells[rounded]
             except KeyError:
                 cells = get_cell_ids(*rounded, radius)
                 self.cells[rounded] = cells
@@ -790,7 +790,7 @@ class Worker:
                             continue
                         spawns.cell_points.add(p)
                 except KeyError:
-                    self.log.warning('No cell points listed at {}.', point)
+                    pass
 
         if (conf.INCUBATE_EGGS and self.unused_incubators
                 and self.eggs and self.smart_throttle()):

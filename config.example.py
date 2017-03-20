@@ -28,7 +28,8 @@ MAP_END = (40.7143, -111.8046)
 STAY_WITHIN_MAP = True
 
 # ensure that you visit within this many meters of every part of your map during bootstrap
-#BOOTSTRAP_RADIUS = 240
+# lower values are more thorough but will take longer
+BOOTSTRAP_RADIUS = 120
 
 GIVE_UP_KNOWN = 75   # try to find a worker for a known spawn for this many seconds before giving up
 GIVE_UP_UNKNOWN = 60 # try to find a worker for an unknown point for this many seconds before giving up
@@ -57,7 +58,7 @@ SIMULTANEOUS_SIMULATION = 10
 # Immediately select workers whose speed are below (SPEED_UNIT)p/h instead of
 # continuing to try to find the worker with the lowest speed.
 # May increase clustering if you have a high density of workers.
-#GOOD_ENOUGH = 4
+GOOD_ENOUGH = 0.1
 
 # Seconds to sleep after failing to find an eligible worker before trying again.
 SEARCH_SLEEP = 2.5
@@ -124,7 +125,7 @@ ITEM_LIMITS = {
 '''
 
 # Update the console output every x seconds
-REFRESH_RATE = 0.6  # 600ms
+REFRESH_RATE = 0.75  # 750ms
 # Update the seen/speed/visit/speed stats every x seconds
 STAT_REFRESH = 5
 
@@ -138,8 +139,7 @@ MAX_RETRIES = 3
 LOGIN_TIMEOUT = 2.5
 
 # add spawn points reported in cell_ids to the unknown spawns list
-# disable if your workers already have more than enough points to visit
-MORE_POINTS = True
+#MORE_POINTS = False
 
 # Set to True to kill the scanner when a newer version is forced
 #FORCED_KILL = False
@@ -159,7 +159,7 @@ from datetime import datetime
 REPORT_SINCE = datetime(2017, 2, 17)  # base reports on data from after this date
 
 # used for altitude queries and maps in reports
-GOOGLE_MAPS_KEY = 'OYOgW1wryrp2RKJ81u7BLvHfYUA6aArIyuQCXu4'  # this key is fake
+#GOOGLE_MAPS_KEY = 'OYOgW1wryrp2RKJ81u7BLvHfYUA6aArIyuQCXu4'  # this key is fake
 REPORT_MAPS = True  # Show maps on reports
 #ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
 

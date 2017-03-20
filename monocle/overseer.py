@@ -4,15 +4,14 @@ from datetime import datetime
 from statistics import median
 from os import system
 from sys import platform
-from random import uniform
+from random import shuffle, uniform
 from collections import deque
 from concurrent.futures import CancelledError
 from itertools import dropwhile
+from time import time, monotonic
 
 from aiopogo.hash_server import HashServer
 from sqlalchemy.exc import OperationalError
-
-import time
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point
@@ -43,7 +42,7 @@ BAD_STATUSES = (
     'TIMEOUT'
 )
 
-START_TIME = time.monotonic()
+START_TIME = monotonic()
 
 
 class Overseer:
@@ -149,7 +148,7 @@ class Overseer:
 
     def get_visit_stats(self):
         visits = []
-        seconds_since_start = time.monotonic() - START_TIME - self.idle_seconds
+        seconds_since_start = monotonic() - START_TIME - self.idle_seconds
         hours_since_start = seconds_since_start / 3600
         seconds_per_visit = []
         seen_per_worker = []
@@ -228,7 +227,7 @@ class Overseer:
     def get_status_message(self):
         running_for = datetime.now() - self.start_date
 
-        seconds_since_start = time.monotonic() - START_TIME - self.idle_seconds
+        seconds_since_start = monotonic() - START_TIME - self.idle_seconds
         hours_since_start = seconds_since_start / 3600
         visits_per_second = self.visits / seconds_since_start
 
@@ -286,7 +285,7 @@ class Overseer:
 
         if conf.HASH_KEY:
             try:
-                refresh = HashServer.status['period'] - time.time()
+                refresh = HashServer.status['period'] - time()
                 output.append('Hashes: {r}/{m}, refresh in {t:.0f}'.format(
                     r=HashServer.status['remaining'],
                     m=HashServer.status['maximum'],
@@ -329,12 +328,12 @@ class Overseer:
             if w.start_time < earliest:
                 worker = w
                 earliest = w.start_time
-        minutes = ((time.time() * 1000) - earliest) / 60000
+        minutes = ((time() * 1000) - earliest) / 60000
         return worker, minutes
 
     def get_start_point(self):
         smallest_diff = float('inf')
-        now = time.time() % 3600
+        now = time() % 3600
         closest = None
 
         for spawn_id, spawn_time in spawns.known.values():
@@ -372,7 +371,11 @@ class Overseer:
             await self.update_spawns(initial=True)
 
         if not spawns or bootstrap:
-            await self.bootstrap()
+            try:
+                await self.bootstrap()
+                await self.update_spawns()
+            except CancelledError:
+                return
 
         update_spawns = False
         self.mysteries = spawns.mystery_gen()
@@ -423,24 +426,23 @@ class Overseer:
 
             # negative = hasn't happened yet
             # positive = already happened
-            time_diff = time.time() - spawn_time
+            time_diff = time() - spawn_time
 
-            while time_diff < 0:
+            while time_diff < -0.5:
                 try:
                     mystery_point = next(self.mysteries)
 
                     await self.coroutine_semaphore.acquire()
                     LOOP.create_task(self.try_point(mystery_point))
                 except StopIteration:
-                    if self.next_mystery_reload < time.monotonic():
+                    if self.next_mystery_reload < monotonic():
                         self.mysteries = spawns.mystery_gen()
-                        self.next_mystery_reload = time.monotonic() + conf.RESCAN_UNKNOWN
-                    await asyncio.sleep(.25, loop=LOOP)
-                time_diff = time.time() - spawn_time
+                        self.next_mystery_reload = monotonic() + conf.RESCAN_UNKNOWN
+                    else:
+                        await asyncio.sleep(min(spawn_time - time(), self.next_mystery_reload - monotonic()) + .5, loop=LOOP)
+                time_diff = time() - spawn_time
 
-            if time_diff < -1:
-                await asyncio.sleep(time_diff * -1, loop=LOOP)
-            elif time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
+            if time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
                 self.redundant += 1
                 continue
             elif time_diff > skip_spawn:
@@ -451,9 +453,13 @@ class Overseer:
             LOOP.create_task(self.try_point(point, spawn_time))
 
     async def bootstrap(self):
+        async def mystery_visit(point):
+            async with self.coroutine_semaphore:
+                await self.try_point(point)
+
         try:
+            self.log.warning('Starting bootstrap phase 1.')
             await self.bootstrap_one()
-            await asyncio.sleep(15, loop=LOOP)
         except CancelledError:
             raise
         except Exception:
@@ -462,34 +468,46 @@ class Overseer:
         try:
             self.log.warning('Starting bootstrap phase 2.')
             await self.bootstrap_two()
-            self.log.warning('Finished bootstrapping.')
         except CancelledError:
             raise
         except Exception:
             self.log.exception('An exception occurred during bootstrap phase 2.')
 
+        self.log.warning('Starting bootstrap phase 3.')
+        unknowns = list(spawns.unknown)
+        shuffle(unknowns)
+        tasks = (mystery_visit(point) for point in unknowns)
+        await asyncio.gather(*tasks, loop=LOOP)
+        self.log.warning('Finished bootstrapping.')
+
     async def bootstrap_one(self):
-        async def visit_release(worker, point):
+        async def visit_release(worker):
             async with self.coroutine_semaphore:
                 async with worker.busy:
-                    if await worker.bootstrap_visit(point):
-                        self.visits += 1
+                    point = get_start_coords(worker.worker_no)
+                    self.visits += await worker.bootstrap_visit(point)
 
-        for worker in self.workers:
-            number = worker.worker_no
-            worker.bootstrap = True
-            point = get_start_coords(number)
-            await asyncio.sleep(.25, loop=LOOP)
-            LOOP.create_task(visit_release(worker, point))
+        tasks = (visit_release(w) for w in self.workers)
+        await asyncio.gather(*tasks, loop=LOOP)
 
     async def bootstrap_two(self):
+        async def try_again(point):
+            async with self.coroutine_semaphore:
+                worker = await self.best_worker(point, skippable=False)
+                async with worker.busy:
+                    self.log.info('Visiting bootstrap point {} again.', point)
+                    self.visits += await worker.bootstrap_visit(point)
+
         async def bootstrap_try(point):
             async with self.coroutine_semaphore:
-                worker = await self.best_worker(point, must_visit=True)
+                randomized = randomize_point(point, randomization)
+                LOOP.call_later(1790, LOOP.create_task, try_again(randomized))
+                worker = await self.best_worker(point, skippable=False)
                 async with worker.busy:
-                    if await worker.bootstrap_visit(point):
-                        self.visits += 1
+                    self.visits += await worker.bootstrap_visit(point)
 
+        # randomize to within ~140m of the nearest neighbor on the second visit
+        randomization = conf.BOOTSTRAP_RADIUS / 155555 - 0.00045
         tasks = (bootstrap_try(x) for x in get_bootstrap_points())
         await asyncio.gather(*tasks, loop=LOOP)
 
@@ -503,7 +521,7 @@ class Overseer:
                 return
             async with worker.busy:
                 if spawn_time:
-                    worker.after_spawn = time.time() - spawn_time
+                    worker.after_spawn = time() - spawn_time
 
                 if await worker.visit(point):
                     self.visits += 1
@@ -514,30 +532,30 @@ class Overseer:
         finally:
             self.coroutine_semaphore.release()
 
-    async def best_worker(self, point, spawn_time=None, must_visit=False):
-        if spawn_time:
-            skip_time = max(time.monotonic() + conf.GIVE_UP_KNOWN, spawn_time)
-        elif must_visit:
-            skip_time = float('inf')
-        else:
-            skip_time = time.monotonic() + conf.GIVE_UP_UNKNOWN
+    async def best_worker(self, point, skippable=True):
+        if skippable:
+            skip_time = monotonic() + conf.GIVE_UP_UNKNOWN
 
+        good_enough = conf.GOOD_ENOUGH
         while self.running:
-            speed = None
-            lowest_speed = float('inf')
-            for w in (x for x in self.workers if not x.busy.locked()):
+            gen = (w for w in self.workers if not w.busy.locked())
+            try:
+                worker = next(gen)
+                lowest_speed = worker.travel_speed(point)
+            except StopIteration:
+                lowest_speed = float('inf')
+            for w in gen:
                 speed = w.travel_speed(point)
                 if speed < lowest_speed:
                     lowest_speed = speed
                     worker = w
-                    if conf.GOOD_ENOUGH and speed < conf.GOOD_ENOUGH:
+                    if speed < good_enough:
                         break
             if lowest_speed < conf.SPEED_LIMIT:
                 worker.speed = lowest_speed
                 return worker
-            if time.monotonic() > skip_time:
+            if skippable and monotonic() > skip_time:
                 return None
-            worker = None
             await asyncio.sleep(conf.SEARCH_SLEEP, loop=LOOP)
 
     def refresh_dict(self):

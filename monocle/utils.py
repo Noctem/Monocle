@@ -1,10 +1,10 @@
 import random
 import requests
-import polyline
 import time
 import socket
 import pickle
 
+from polyline import encode as polyencode
 from os import mkdir
 from os.path import join, exists
 from sys import platform
@@ -109,13 +109,13 @@ def random_altitude():
 
 
 def get_altitude(point):
-    params = {'locations': 'enc:' + polyline.encode((point,))}
-    if conf.GOOGLE_MAPS_KEY:
-        params['key'] = conf.GOOGLE_MAPS_KEY
+    params = {
+        'locations': 'enc:' + polyencode((point,)),
+        'key': conf.GOOGLE_MAPS_KEY
+    }
     r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
                      params=params).json()
-    altitude = r['results'][0]['elevation']
-    return altitude
+    return r['results'][0]['elevation']
 
 
 def get_altitudes(coords):
@@ -131,7 +131,7 @@ def get_altitudes(coords):
         return altitudes
     else:
         try:
-            params = {'locations': 'enc:' + polyline.encode(coords)}
+            params = {'locations': 'enc:' + polyencode(coords)}
             if conf.GOOGLE_MAPS_KEY:
                 params['key'] = conf.GOOGLE_MAPS_KEY
             r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
@@ -163,8 +163,7 @@ def get_bootstrap_points():
         float_range(conf.MAP_START[0], conf.MAP_END[0], lat_gain)
     ):
         row_start_lon = conf.MAP_START[1]
-        odd = map_row % 2 != 0
-        if odd:
+        if map_row % 2 != 0:
             row_start_lon -= 0.5 * lon_gain
         for map_col, lon in enumerate(
             float_range(row_start_lon, conf.MAP_END[1], lon_gain)
