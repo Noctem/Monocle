@@ -428,7 +428,7 @@ class Overseer:
             # positive = already happened
             time_diff = time() - spawn_time
 
-            while time_diff < -0.5:
+            while time_diff < 0.5:
                 try:
                     mystery_point = next(self.mysteries)
 
@@ -439,7 +439,7 @@ class Overseer:
                         self.mysteries = spawns.mystery_gen()
                         self.next_mystery_reload = monotonic() + conf.RESCAN_UNKNOWN
                     else:
-                        await asyncio.sleep(min(spawn_time - time(), self.next_mystery_reload - monotonic()) + .5, loop=LOOP)
+                        await asyncio.sleep(min(spawn_time - time() + .5, self.next_mystery_reload - monotonic()), loop=LOOP)
                 time_diff = time() - spawn_time
 
             if time_diff > 5 and spawn_id in SIGHTING_CACHE.store:
@@ -452,11 +452,14 @@ class Overseer:
             await self.coroutine_semaphore.acquire()
             LOOP.create_task(self.try_point(point, spawn_time))
 
-    async def bootstrap(self):
-        async def mystery_visit(point):
-            async with self.coroutine_semaphore:
-                await self.try_point(point)
+    async def try_again(self, point):
+        async with self.coroutine_semaphore:
+            worker = await self.best_worker(point, skippable=False)
+            async with worker.busy:
+                if await worker.visit(point):
+                    self.visits += 1
 
+    async def bootstrap(self):
         try:
             self.log.warning('Starting bootstrap phase 1.')
             await self.bootstrap_one()
@@ -476,7 +479,7 @@ class Overseer:
         self.log.warning('Starting bootstrap phase 3.')
         unknowns = list(spawns.unknown)
         shuffle(unknowns)
-        tasks = (mystery_visit(point) for point in unknowns)
+        tasks = (self.try_again(point) for point in unknowns)
         await asyncio.gather(*tasks, loop=LOOP)
         self.log.warning('Finished bootstrapping.')
 
@@ -491,17 +494,10 @@ class Overseer:
         await asyncio.gather(*tasks, loop=LOOP)
 
     async def bootstrap_two(self):
-        async def try_again(point):
-            async with self.coroutine_semaphore:
-                worker = await self.best_worker(point, skippable=False)
-                async with worker.busy:
-                    self.log.info('Visiting bootstrap point {} again.', point)
-                    self.visits += await worker.bootstrap_visit(point)
-
         async def bootstrap_try(point):
             async with self.coroutine_semaphore:
                 randomized = randomize_point(point, randomization)
-                LOOP.call_later(1790, LOOP.create_task, try_again(randomized))
+                LOOP.call_later(1790, LOOP.create_task, self.try_again(randomized))
                 worker = await self.best_worker(point, skippable=False)
                 async with worker.busy:
                     self.visits += await worker.bootstrap_visit(point)
