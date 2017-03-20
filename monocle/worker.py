@@ -21,42 +21,58 @@ if conf.NOTIFY:
     from .notification import Notifier
 
 if conf.CACHE_CELLS:
-    from aiopogo.utilities import get_cell_ids
     from array import typecodes
+    if 'Q' in typecodes:
+        from aiopogo.utilities import get_cell_ids_compact as get_cell_ids
+    else:
+        from pogeo import get_cell_ids
 else:
     from pogeo import get_cell_ids
 
 _unit = getattr(Units, conf.SPEED_UNIT.lower())
-if _unit is Units.miles:
-    SPINNING_SPEED_LIMIT = 21
-    UNIT_STRING = "MPH"
-elif _unit is Units.kilometers:
-    SPINNING_SPEED_LIMIT = 34
-    UNIT_STRING = "KMH"
-elif _unit is Units.meters:
-    SPINNING_SPEED_LIMIT = 34000
-    UNIT_STRING = "m/h"
-_UNIT = _unit.value
+if conf.SPIN_POKESTOPS:
+    if _unit is Units.miles:
+        SPINNING_SPEED_LIMIT = 21
+        UNIT_STRING = "MPH"
+    elif _unit is Units.kilometers:
+        SPINNING_SPEED_LIMIT = 34
+        UNIT_STRING = "KMH"
+    elif _unit is Units.meters:
+        SPINNING_SPEED_LIMIT = 34000
+        UNIT_STRING = "m/h"
+UNIT = _unit.value
+del _unit
 
 
 class Worker:
     """Single worker walking on the map"""
 
-    versions = ('0.57.4', '0.57.3', '0.57.2', '0.55.0')
+    if conf.FORCED_KILL:
+        versions = ('0.57.4', '0.57.3', '0.57.2', '0.55.0')
     download_hash = "7b9c5056799a2c5c7d48a62c497736cbcf8c4acb"
+    scan_delay = conf.SCAN_DELAY if conf.SCAN_DELAY >= 10 else 10
     g = {'seen': 0, 'captchas': 0}
 
     if conf.CACHE_CELLS:
-        cell_ids = load_pickle('cells') or {}
-        COMPACT = 'Q' in typecodes
+        cells = load_pickle('cells') or {}
+        def cell_ids(self, lat, lon, radius):
+            rounded = round_coords((lat, lon), 4)
+            try:
+                return self.cell_ids[rounded]
+            except KeyError:
+                cells = get_cell_ids(*rounded, radius)
+                self.cells[rounded] = cells
+                return cells
+    else:
+        cell_ids = get_cell_ids
 
     login_semaphore = Semaphore(conf.SIMULTANEOUS_LOGINS, loop=LOOP)
     sim_semaphore = Semaphore(conf.SIMULTANEOUS_SIMULATION, loop=LOOP)
 
-    MULTIPROXY = False
+    multiproxy = False
     if conf.PROXIES:
         if len(conf.PROXIES) > 1:
-            MULTIPROXY = True
+            multiproxy = True
         proxies = cycle(conf.PROXIES)
     else:
         proxies = None
@@ -501,7 +517,7 @@ class Worker:
                     err = e
                 self.error_code = 'PROXY ERROR'
 
-                if self.MULTIPROXY:
+                if self.multiproxy:
                     self.log.error('{}, swapping proxy.', e)
                     self.swap_proxy()
                 else:
@@ -556,8 +572,8 @@ class Worker:
 
     def travel_speed(self, point):
         '''Fast calculation of travel speed to point'''
-        time_diff = max(time() - self.last_request, conf.SCAN_DELAY)
-        distance = get_distance(self.location, point, _UNIT)
+        time_diff = max(time() - self.last_request, self.scan_delay)
+        distance = get_distance(self.location, point, UNIT)
         # conversion from seconds to hours
         speed = (distance / time_diff) * 3600
         return speed
@@ -575,7 +591,6 @@ class Worker:
 
         Also is capable of restarting in case an error occurs.
         """
-        visited = False
         try:
             self.altitude = spawns.get_altitude(point, randomize=5)
             self.location = point
@@ -615,7 +630,7 @@ class Worker:
         except ex.ProxyException as e:
             self.error_code = 'PROXY ERROR'
 
-            if self.MULTIPROXY:
+            if self.multiproxy:
                 self.log.error('{} Swapping proxy.', e)
                 self.swap_proxy()
             else:
@@ -625,7 +640,7 @@ class Worker:
         except ex.NianticIPBannedException:
             self.error_code = 'IP BANNED'
 
-            if self.MULTIPROXY:
+            if self.multiproxy:
                 self.log.warning('Swapping out {} due to IP ban.', self.api.proxy)
                 self.swap_proxy()
             else:
@@ -665,33 +680,21 @@ class Worker:
 
     async def visit_point(self, point, bootstrap=False):
         self.handle.cancel()
-        if bootstrap:
-            self.error_code = '∞'
-        else:
-            self.error_code = '!'
+        self.error_code = '∞' if bootstrap else '!'
+
         latitude, longitude = point
         self.log.info('Visiting {0[0]:.4f},{0[1]:.4f}', point)
         start = time()
 
-        if conf.CACHE_CELLS:
-            rounded = round_coords(point, 4)
-            try:
-                cell_ids = self.cell_ids[rounded]
-            except KeyError:
-                cell_ids = get_cell_ids(*rounded, compact=self.COMPACT)
-                self.cell_ids[rounded] = cell_ids
-        else:
-            cell_ids = get_cell_ids(latitude, longitude, 500)
-
+        cell_ids = self.cell_ids(latitude, longitude, 500)
         since_timestamp_ms = (0,) * len(cell_ids)
-
         request = self.api.create_request()
         request.get_map_objects(cell_id=cell_ids,
                                 since_timestamp_ms=since_timestamp_ms,
                                 latitude=latitude,
                                 longitude=longitude)
 
-        diff = self.last_gmo + conf.SCAN_DELAY - time()
+        diff = self.last_gmo + self.scan_delay - time()
         if diff > 0:
             await sleep(diff, loop=LOOP)
         responses = await self.call(request)
@@ -717,12 +720,11 @@ class Worker:
         forts_seen = 0
         points_seen = 0
 
-        if conf.NOTIFY:
-            try:
-                time_of_day = map_objects['time_of_day']
-            except KeyError:
-                self.empty_visits += 1
-                raise EmptyGMOException
+        try:
+            time_of_day = map_objects['time_of_day']
+        except KeyError:
+            self.empty_visits += 1
+            raise EmptyGMOException
 
         if conf.ITEM_LIMITS and self.bag_full():
             await self.clean_bag()
@@ -779,16 +781,16 @@ class Worker:
                 else:
                     DB_PROC.add(self.normalize_gym(fort))
 
-            if conf.MORE_POINTS or bootstrap:
-                for point in map_cell.get('spawn_points', []):
-                    points_seen += 1
-                    try:
+            if conf.MORE_POINTS:
+                try:
+                    for point in map_cell['spawn_points']:
+                        points_seen += 1
                         p = point['latitude'], point['longitude']
                         if spawns.have_point(p) or p not in bounds:
                             continue
                         spawns.cell_points.add(p)
-                    except (KeyError, TypeError):
-                        self.log.warning('Spawn point exception ignored. {}', point)
+                except KeyError:
+                    self.log.warning('No cell points listed at {}.', point)
 
         if (conf.INCUBATE_EGGS and self.unused_incubators
                 and self.eggs and self.smart_throttle()):
@@ -806,7 +808,7 @@ class Worker:
                 self.error_code = '0 SEEN'
             else:
                 self.error_code = ','
-            if self.empty_visits > 3:
+            if self.empty_visits > 3 and not bootstrap:
                 reason = '{} empty visits'.format(self.empty_visits)
                 await self.swap_account(reason)
         self.visits += 1
