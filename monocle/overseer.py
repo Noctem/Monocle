@@ -454,7 +454,7 @@ class Overseer:
 
     async def try_again(self, point):
         async with self.coroutine_semaphore:
-            worker = await self.best_worker(point, skippable=False)
+            worker = await self.best_worker(point, False)
             async with worker.busy:
                 if await worker.visit(point):
                     self.visits += 1
@@ -498,7 +498,7 @@ class Overseer:
             async with self.coroutine_semaphore:
                 randomized = randomize_point(point, randomization)
                 LOOP.call_later(1790, LOOP.create_task, self.try_again(randomized))
-                worker = await self.best_worker(point, skippable=False)
+                worker = await self.best_worker(point, False)
                 async with worker.busy:
                     self.visits += await worker.bootstrap_visit(point)
 
@@ -510,7 +510,8 @@ class Overseer:
     async def try_point(self, point, spawn_time=None):
         try:
             point = randomize_point(point)
-            worker = await self.best_worker(point, spawn_time)
+            skip_time = monotonic() + (conf.GIVE_UP_KNOWN if spawn_time else conf.GIVE_UP_UNKNOWN)
+            worker = await self.best_worker(point, skip_time)
             if not worker:
                 if spawn_time:
                     self.skipped += 1
@@ -528,10 +529,7 @@ class Overseer:
         finally:
             self.coroutine_semaphore.release()
 
-    async def best_worker(self, point, skippable=True):
-        if skippable:
-            skip_time = monotonic() + conf.GIVE_UP_UNKNOWN
-
+    async def best_worker(self, point, skip_time):
         good_enough = conf.GOOD_ENOUGH
         while self.running:
             gen = (w for w in self.workers if not w.busy.locked())
@@ -550,7 +548,7 @@ class Overseer:
             if lowest_speed < conf.SPEED_LIMIT:
                 worker.speed = lowest_speed
                 return worker
-            if skippable and monotonic() > skip_time:
+            if skip_time and monotonic() > skip_time:
                 return None
             await asyncio.sleep(conf.SEARCH_SLEEP, loop=LOOP)
 
