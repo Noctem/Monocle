@@ -473,24 +473,24 @@ class Worker:
                 await self.login(reauth=True)
             except ex.TimeoutException as e:
                 self.error_code = 'TIMEOUT'
-                if err != e:
+                if not isinstance(e, type(err)):
                     err = e
                     self.log.warning('{}', e)
                 await sleep(10, loop=LOOP)
             except ex.HashingOfflineException as e:
-                if err != e:
+                if not isinstance(e, type(err)):
                     err = e
                     self.log.warning('{}', e)
                 self.error_code = 'HASHING OFFLINE'
                 await sleep(5, loop=LOOP)
             except ex.NianticOfflineException as e:
-                if err != e:
+                if not isinstance(e, type(err)):
                     err = e
                     self.log.warning('{}', e)
                 self.error_code = 'NIANTIC OFFLINE'
                 await self.random_sleep()
             except ex.HashingQuotaExceededException as e:
-                if err != e:
+                if not isinstance(e, type(err)):
                     err = e
                     self.log.warning('Exceeded your hashing quota, sleeping.')
                 self.error_code = 'QUOTA EXCEEDED'
@@ -507,13 +507,13 @@ class Worker:
                 raise
             except ex.InvalidRPCException as e:
                 self.last_request = time()
-                if err != e:
+                if not isinstance(e, type(err)):
                     err = e
                     self.log.warning('{}', e)
                 self.error_code = 'INVALID REQUEST'
                 await self.random_sleep()
             except ex.ProxyException as e:
-                if err != e:
+                if not isinstance(e, type(err)):
                     err = e
                 self.error_code = 'PROXY ERROR'
 
@@ -521,12 +521,12 @@ class Worker:
                     self.log.error('{}, swapping proxy.', e)
                     self.swap_proxy()
                 else:
-                    if err != e:
+                    if not isinstance(e, type(err)):
                         self.log.error('{}', e)
                     await sleep(5, loop=LOOP)
             except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
                 self.last_request = time()
-                if err != e:
+                if not isinstance(e, type(err)):
                     self.log.warning('{}', e)
                 self.error_code = 'MALFORMED RESPONSE'
                 await self.random_sleep()
@@ -645,6 +645,9 @@ class Worker:
                 self.swap_proxy()
             else:
                 self.log.error('IP banned.')
+        except ex.NianticOfflineException as e:
+            await self.swap_account(reason='Niantic endpoint failure')
+            self.log.warning('{}. Giving up.', e)
         except ex.ServerBusyOrOfflineException as e:
             self.log.warning('{} Giving up.', e)
         except ex.BadRPCException:
@@ -653,9 +656,9 @@ class Worker:
             await self.new_account()
         except ex.InvalidRPCException as e:
             self.log.warning('{} Giving up.', e)
-        except ex.ExpiredHashKeyException:
+        except ex.ExpiredHashKeyException as e:
             self.error_code = 'KEY EXPIRED'
-            err = 'Hash key has expired: {}'.format(conf.HASH_KEY)
+            err = str(e)
             self.log.error(err)
             print(err)
             exit()
