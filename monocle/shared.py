@@ -4,6 +4,7 @@ from time import time
 from asyncio import get_event_loop
 
 from aiohttp import ClientSession
+from aiopogo import json_dumps
 
 from .utils import load_accounts
 
@@ -18,7 +19,11 @@ class SessionManager:
         try:
             return cls._session
         except AttributeError:
-            cls._session = ClientSession(loop=LOOP)
+            cls._session = ClientSession(loop=LOOP,
+                                         conn_timeout=5.0,
+                                         read_timeout=30.0,
+                                         raise_for_status=True,
+                                         json_serialize=json_dumps)
             return cls._session
 
     @classmethod

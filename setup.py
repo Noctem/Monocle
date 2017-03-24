@@ -19,19 +19,18 @@ setup(
     install_requires=[
         'geopy>=1.11.0',
         'protobuf>=3.0.0',
-        'requests>=2.10.0',
         'flask>=0.11.1',
         'gpsoauth>=0.4.0',
         'werkzeug>=0.11.15',
         'sqlalchemy>=1.1.0',
-        'aiopogo>=1.7.2',
+        'aiopogo>=1.8.0',
         'polyline>=1.3.1',
-        'aiohttp==1.3.*',
+        'aiohttp>=2.0.7,<2.1',
         'pogeo>=0.3',
         'cyrandom>=0.1.2'
     ],
     extras_require={
-        'twitter': ['peony-twitter>=0.9'],
+        'twitter': ['peony-twitter>=0.9.3'],
         'pushbullet': ['asyncpushbullet>=0.12'],
         'landmarks': ['shapely>=1.3.0'],
         'boundaries': ['shapely>=1.3.0'],
