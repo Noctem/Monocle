@@ -100,7 +100,7 @@ INCUBATE_EGGS = False        # incubate eggs if available
 ENCOUNTER = None
 
 # PokéStops
-SPIN_POKESTOPS = False # spin all PokéStops that are within range
+SPIN_POKESTOPS = True  # spin all PokéStops that are within range
 SPIN_COOLDOWN = 300    # spin only one PokéStop every n seconds (default 300)
 
 # minimum number of each item to keep if the bag is cleaned
@@ -205,7 +205,7 @@ LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 #MANAGER_ADDRESS = ('127.0.0.1', 5002)  # could be used for CAPTCHA solving and live worker maps on remote systems
 
 # Store the cell IDs so that they don't have to be recalculated every visit.
-# Enabling will increase memory usage.
+# Enabling will (potentially drastically) increase memory usage.
 #CACHE_CELLS = False
 
 # Only for use with web-sanic (requires PostgreSQL)

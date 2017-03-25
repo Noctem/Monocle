@@ -208,7 +208,7 @@ _defaults = {
     'SPEED_LIMIT': 19.5,
     'SPEED_UNIT': 'miles',
     'SPIN_COOLDOWN': 300,
-    'SPIN_POKESTOPS': False,
+    'SPIN_POKESTOPS': True,
     'STAT_REFRESH': 5,
     'STAY_WITHIN_MAP': True,
     'SWAP_OLDEST': 21600 / worker_count,
