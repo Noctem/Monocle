@@ -14,8 +14,7 @@ from pogeo import get_distance
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import round_coords, load_pickle, get_device_info, get_spawn_id, get_start_coords, Units, randomize_point
 from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS
-from .db_proc import DB_PROC
-from . import avatar, bounds, spawns, sanitized as conf
+from . import avatar, bounds, db_proc, spawns, sanitized as conf
 
 if conf.NOTIFY:
     from .notification import Notifier
@@ -749,7 +748,7 @@ class Worker:
                         try:
                             await self.encounter(normalized, pokemon['spawn_point_id'])
                         except CancelledError:
-                            DB_PROC.add(normalized)
+                            db_proc.add(normalized)
                             raise
                         except Exception as e:
                             self.log.warning('{} during encounter', e.__class__.__name__)
@@ -759,12 +758,12 @@ class Worker:
                         try:
                             await self.encounter(normalized, pokemon['spawn_point_id'])
                         except CancelledError:
-                            DB_PROC.add(normalized)
+                            db_proc.add(normalized)
                             raise
                         except Exception as e:
                             self.log.warning('{} during encounter', e.__class__.__name__)
                     LOOP.create_task(self.notifier.notify(normalized, time_of_day))
-                DB_PROC.add(normalized)
+                db_proc.add(normalized)
 
             for fort in map_cell.get('forts', ()):
                 if not fort.get('enabled'):
@@ -775,9 +774,9 @@ class Worker:
                         norm = self.normalize_lured(fort, request_time_ms)
                         pokemon_seen += 1
                         if norm not in SIGHTING_CACHE:
-                            DB_PROC.add(norm)
+                            db_proc.add(norm)
                     pokestop = self.normalize_pokestop(fort)
-                    DB_PROC.add(pokestop)
+                    db_proc.add(pokestop)
                     if (self.pokestops and not self.bag_full()
                             and time() > self.next_spin
                             and (not conf.SMART_THROTTLE or
@@ -786,7 +785,7 @@ class Worker:
                         if not cooldown or time() > cooldown / 1000:
                             await self.spin_pokestop(pokestop)
                 else:
-                    DB_PROC.add(self.normalize_gym(fort))
+                    db_proc.add(self.normalize_gym(fort))
 
             if more_points:
                 try:
@@ -1180,7 +1179,6 @@ class Worker:
 
     @staticmethod
     def normalize_lured(raw, now):
-        spawn_id = -1 if conf.SPAWN_ID_INT else 'LURED'
         return {
             'type': 'pokemon',
             'encounter_id': raw['lure_info']['encounter_id'],
@@ -1188,7 +1186,7 @@ class Worker:
             'expire_timestamp': raw['lure_info']['lure_expires_timestamp_ms'] // 1000,
             'lat': raw['latitude'],
             'lon': raw['longitude'],
-            'spawn_id': spawn_id,
+            'spawn_id': -1 if conf.SPAWN_ID_INT else 'LURED',
             'time_till_hidden': (raw['lure_info']['lure_expires_timestamp_ms'] - now) // 1000,
             'inferred': 'pokestop'
         }

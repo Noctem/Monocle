@@ -29,9 +29,8 @@ from monocle.shared import LOOP, get_logger, SessionManager, ACCOUNTS
 from monocle.utils import get_address, dump_pickle
 from monocle.worker import Worker
 from monocle.overseer import Overseer
-from monocle.db_proc import DB_PROC
 from monocle.db import FORT_CACHE
-from monocle import spawns
+from monocle import spawns, db_proc
 
 
 class AccountManager(BaseManager):
@@ -157,15 +156,15 @@ def cleanup(overseer, manager):
         if conf.CACHE_CELLS:
             dump_pickle('cells', Worker.cells)
 
-        DB_PROC.stop()
+        db_proc.stop()
         print("Updating spawns pickle...")
         try:
             spawns.update()
             spawns.pickle()
         except Exception as e:
             log.warning('A wild {} appeared while updating spawns during exit!', e.__class__.__name__)
-        while not DB_PROC.queue.empty():
-            pending = DB_PROC.queue.qsize()
+        while not db_proc.queue.empty():
+            pending = db_proc.queue.qsize()
             # Spaces at the end are important, as they clear previously printed
             # output - \r doesn't clean whole line
             print('{} DB items pending     '.format(pending), end='\r')

@@ -62,7 +62,7 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
     * *cchardet* and *aiodns* provide better performance with aiohttp
     * *sanic* and *asyncpg* (and a Postgres DB) are required for web-sanic
     * *ujson* for better JSON encoding and decoding performance
-6. Run `python3 create_db.py` from the command line
+6. Run `python3 scripts/create_db.py` from the command line
 7. Run `python3 scan.py`
   * Optionally run the live map interface and reporting system: `python3 web.py`
 

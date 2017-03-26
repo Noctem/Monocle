@@ -13,8 +13,7 @@ from sqlalchemy.exc import OperationalError
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point, best_factors, percentage_split
 from .shared import get_logger, LOOP, run_threaded, ACCOUNTS
-from .db_proc import DB_PROC
-from . import bounds, spawns, sanitized as conf
+from . import bounds, db_proc, spawns, sanitized as conf
 from .worker import Worker
 
 ANSI = '\x1b[2J\x1b[H'
@@ -91,7 +90,7 @@ class Overseer:
                 self.extra_queue.put(account)
 
         self.workers = tuple(Worker(worker_no=x) for x in range(conf.GRID[0] * conf.GRID[1]))
-        DB_PROC.start()
+        db_proc.start()
         LOOP.call_later(10, self.update_count)
         LOOP.call_later(max(conf.SWAP_OLDEST, conf.MINIMUM_RUNTIME), self.swap_oldest)
         LOOP.call_soon(self.update_stats)
@@ -99,7 +98,7 @@ class Overseer:
             LOOP.call_soon(self.print_status)
 
     def update_count(self):
-        self.things_count.append(str(DB_PROC.count))
+        self.things_count.append(str(db_proc.count))
         self.pokemon_found = (
             'Pokemon found count (10s interval):\n'
             + ' '.join(self.things_count)
@@ -126,7 +125,7 @@ class Overseer:
         while self.coroutines_count > 2:
             try:
                 self.update_coroutines_count(simple=False)
-                pending = len(DB_PROC)
+                pending = len(db_proc)
                 # Spaces at the end are important, as they clear previously printed
                 # output - \r doesn't clean whole line
                 print(
@@ -177,7 +176,7 @@ class Overseer:
         ).format(
             len(spawns), len(spawns.unknown), spawns.cells_count,
             count, self.coroutines_count,
-            len(SIGHTING_CACHE), len(MYSTERY_CACHE), len(DB_PROC)
+            len(SIGHTING_CACHE), len(MYSTERY_CACHE), len(db_proc)
         )
         LOOP.call_later(refresh, self.update_stats)
 

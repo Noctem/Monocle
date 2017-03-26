@@ -8,7 +8,7 @@ import json
 from flask import Flask, request, render_template, jsonify, Markup
 
 from monocle import db, sanitized as conf
-from monocle.names import POKEMON, MOVES
+from monocle.names import POKEMON
 from monocle.web_utils import *
 from monocle.bounds import area, center
 
@@ -66,7 +66,7 @@ def gym_data():
 
 
 @app.route('/spawnpoints')
-def get_spawn_points():
+def spawn_points():
     return jsonify(get_spawnpoint_markers())
 
 
@@ -82,7 +82,6 @@ def scan_coords():
 
 if conf.MAP_WORKERS:
     workers = Workers()
-
 
     @app.route('/workers_data')
     def workers_data():
@@ -102,14 +101,13 @@ if conf.MAP_WORKERS:
 
 
 @app.route('/report')
-def report_main():
+def report_main(names=POKEMON):
     with db.session_scope() as session:
         counts = db.get_sightings_per_pokemon(session)
-        pokemon_names = POKEMON
 
         count = sum(counts.values())
         counts_tuple = tuple(counts.items())
-        nonexistent = [(x, pokemon_names[x]) for x in range(1, 252) if x not in counts]
+        nonexistent = [(x, names[x]) for x in range(1, 252) if x not in counts]
         del counts
 
         top_pokemon = list(counts_tuple[-30:])
@@ -125,24 +123,24 @@ def report_main():
         js_data = {
             'charts_data': {
                 'punchcard': db.get_punch_card(session),
-                'top30': [(pokemon_names[r[0]], r[1]) for r in top_pokemon],
+                'top30': [(names[r[0]], r[1]) for r in top_pokemon],
                 'bottom30': [
-                    (pokemon_names[r[0]], r[1]) for r in bottom_pokemon
+                    (names[r[0]], r[1]) for r in bottom_pokemon
                 ],
                 'rare': [
-                    (pokemon_names[r[0]], r[1]) for r in rare_pokemon
+                    (names[r[0]], r[1]) for r in rare_pokemon
                 ],
             },
             'maps_data': {
-                'rare': [sighting_to_marker(s) for s in rare_sightings],
+                'rare': [sighting_to_report_marker(s) for s in rare_sightings],
             },
             'map_center': center,
             'zoom': 13,
         }
     icons = {
-        'top30': [(r[0], pokemon_names[r[0]]) for r in top_pokemon],
-        'bottom30': [(r[0], pokemon_names[r[0]]) for r in bottom_pokemon],
-        'rare': [(r[0], pokemon_names[r[0]]) for r in rare_pokemon],
+        'top30': [(r[0], names[r[0]]) for r in top_pokemon],
+        'bottom30': [(r[0], names[r[0]]) for r in bottom_pokemon],
+        'rare': [(r[0], names[r[0]]) for r in rare_pokemon],
         'nonexistent': nonexistent
     }
     session_stats = db.get_session_stats(session)

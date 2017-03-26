@@ -28,5 +28,5 @@ install:
 
 script:
   - cp accounts.example.csv accounts.csv
-  - python3 create_db.py
+  - python3 scripts/create_db.py
   - python3 -c 'from monocle import avatar, bounds, db_proc, db, names, notification, overseer, sanitized, shared, spawns, utils, web_utils, worker'
