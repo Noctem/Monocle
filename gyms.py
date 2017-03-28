@@ -9,7 +9,7 @@ import argparse
 from flask import Flask, render_template
 
 from monocle import db, sanitized as conf
-from monocle.names import POKEMON_NAMES
+from monocle.names import POKEMON
 from monocle.web_utils import get_args
 from monocle.bounds import area
 
@@ -40,6 +40,7 @@ def get_stats():
     prestige_percent = {}
     total_prestige = 0
     last_date = 0
+    pokemon_names = POKEMON
     for fort in forts:
         if fort['last_modified'] > last_date:
             last_date = fort['last_modified']
@@ -58,7 +59,7 @@ def get_stats():
                 strongest[team] = (
                     fort['prestige'],
                     pokemon_id,
-                    POKEMON_NAMES[pokemon_id],
+                    pokemon_names[pokemon_id],
                 )
             # Guardians
             guardian_value = guardians[team].get(pokemon_id, 0)
@@ -79,7 +80,7 @@ def get_stats():
                 key=guardians[team.value].__getitem__,
                 reverse=True
             )[0]
-            top_guardians[team.value] = POKEMON_NAMES[pokemon_id]
+            top_guardians[team.value] = pokemon_names[pokemon_id]
     CACHE['generated_at'] = datetime.now()
     CACHE['data'] = {
         'order': sorted(count, key=count.__getitem__, reverse=True),

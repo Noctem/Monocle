@@ -8,7 +8,7 @@ import json
 from flask import Flask, request, render_template, jsonify, Markup
 
 from monocle import db, sanitized as conf
-from monocle.names import POKEMON_NAMES, MOVES
+from monocle.names import POKEMON, MOVES
 from monocle.web_utils import *
 from monocle.bounds import area, center
 
@@ -104,14 +104,16 @@ if conf.MAP_WORKERS:
 def report_main():
     with db.session_scope() as session:
         counts = db.get_sightings_per_pokemon(session)
-        session_stats = db.get_session_stats(session)
+        pokemon_names = POKEMON
 
         count = sum(counts.values())
         counts_tuple = tuple(counts.items())
+        nonexistent = [(x, pokemon_names[x]) for x in range(1, 252) if x not in counts]
+        del counts
+
         top_pokemon = list(counts_tuple[-30:])
         top_pokemon.reverse()
         bottom_pokemon = counts_tuple[:30]
-        nonexistent = [(x, POKEMON_NAMES[x]) for x in range(1, 252) if x not in counts]
         rare_pokemon = [r for r in counts_tuple if r[0] in conf.RARE_IDS]
         if rare_pokemon:
             rare_sightings = db.get_all_sightings(
@@ -122,12 +124,12 @@ def report_main():
         js_data = {
             'charts_data': {
                 'punchcard': db.get_punch_card(session),
-                'top30': [(POKEMON_NAMES[r[0]], r[1]) for r in top_pokemon],
+                'top30': [(pokemon_names[r[0]], r[1]) for r in top_pokemon],
                 'bottom30': [
-                    (POKEMON_NAMES[r[0]], r[1]) for r in bottom_pokemon
+                    (pokemon_names[r[0]], r[1]) for r in bottom_pokemon
                 ],
                 'rare': [
-                    (POKEMON_NAMES[r[0]], r[1]) for r in rare_pokemon
+                    (pokemon_names[r[0]], r[1]) for r in rare_pokemon
                 ],
             },
             'maps_data': {
@@ -137,12 +139,12 @@ def report_main():
             'zoom': 13,
         }
     icons = {
-        'top30': [(r[0], POKEMON_NAMES[r[0]]) for r in top_pokemon],
-        'bottom30': [(r[0], POKEMON_NAMES[r[0]]) for r in bottom_pokemon],
-        'rare': [(r[0], POKEMON_NAMES[r[0]]) for r in rare_pokemon],
+        'top30': [(r[0], pokemon_names[r[0]]) for r in top_pokemon],
+        'bottom30': [(r[0], pokemon_names[r[0]]) for r in bottom_pokemon],
+        'rare': [(r[0], pokemon_names[r[0]]) for r in rare_pokemon],
         'nonexistent': nonexistent
     }
-
+    session_stats = db.get_session_stats(session)
     return render_template(
         'report.html',
         current_date=datetime.now(),
@@ -176,7 +178,7 @@ def report_single(pokemon_id):
             area_name=conf.AREA_NAME,
             area_size=area,
             pokemon_id=pokemon_id,
-            pokemon_name=POKEMON_NAMES[pokemon_id],
+            pokemon_name=POKEMON[pokemon_id],
             total_spawn_count=db.get_total_spawns_count(session, pokemon_id),
             session_start=session_stats['start'],
             session_end=session_stats['end'],

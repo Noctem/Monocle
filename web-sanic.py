@@ -15,7 +15,7 @@ from asyncpg import create_pool
 
 from monocle import db, sanitized as conf
 from monocle.bounds import center
-from monocle.names import POKEMON_NAMES, MOVES, POKEMON_MOVES
+from monocle.names import DAMAGE, MOVES, POKEMON
 from monocle.web_utils import get_scan_coords, get_worker_markers, Workers, get_args
 
 
@@ -122,7 +122,8 @@ if conf.MAP_WORKERS:
 
 async def get_pokemarkers_async(after_id):
     markers = []
-
+    pokemon_names = POKEMON
+    damage = DAMAGE
     async with create_pool(**conf.DB) as pool:
         async with pool.acquire() as conn:
             async with conn.transaction():
@@ -136,7 +137,7 @@ async def get_pokemarkers_async(after_id):
                     content = {
                         'id': 'pokemon-{}'.format(row[0]),
                         'trash': row[1] in conf.TRASH_IDS,
-                        'name': POKEMON_NAMES[row[1]],
+                        'name': pokemon_names[row[1]],
                         'pokemon_id': row[1],
                         'lat': row[3],
                         'lon': row[4],
@@ -149,8 +150,8 @@ async def get_pokemarkers_async(after_id):
                             'sta': row[7],
                             'move1': row[8],
                             'move2': row[9],
-                            'damage1': MOVES.get(row[8], {}).get('damage'),
-                            'damage2': MOVES.get(row[9], {}).get('damage')
+                            'damage1': damage[row[8]],
+                            'damage2': damage[row[9]]
                         })
                     markers.append(content)
     return markers
@@ -158,7 +159,7 @@ async def get_pokemarkers_async(after_id):
 
 async def get_gyms_async():
     markers = []
-
+    pokemon_names = POKEMON
     async with create_pool(**conf.DB) as pool:
         async with pool.acquire() as conn:
             async with conn.transaction():
@@ -182,7 +183,7 @@ async def get_gyms_async():
                 ''')
                 for row in results:
                     if row[4]:
-                        pokemon_name = POKEMON_NAMES[row[4]]
+                        pokemon_name = pokemon_names[row[4]]
                     else:
                         pokemon_name = 'Empty'
                     markers.append({

@@ -10,14 +10,14 @@ from aiohttp import ClientError, DisconnectedError, HttpProcessingError
 
 from .utils import load_pickle, dump_pickle
 from .db import session_scope, get_pokemon_ranking, estimate_remaining_time
-from .names import POKEMON_NAMES, POKEMON_MOVES
+from .names import MOVES, POKEMON
 from .shared import get_logger, SessionManager, LOOP, run_threaded
 
 from . import sanitized as conf
 
 
+WEBHOOK = False
 if conf.NOTIFY:
-    WEBHOOK = False
     TWITTER = False
     PUSHBULLET = False
     TELEGRAM = False
@@ -103,7 +103,7 @@ class NotificationCache:
 class PokeImage:
     def __init__(self, pokemon, move1, move2, time_of_day=0):
         self.pokemon_id = pokemon['pokemon_id']
-        self.name = POKEMON_NAMES[self.pokemon_id]
+        self.name = POKEMON[self.pokemon_id]
         try:
             self.attack = pokemon['individual_attack']
             self.defense = pokemon['individual_defense']
@@ -230,21 +230,18 @@ class PokeImage:
 class Notification:
     def __init__(self, pokemon, score, time_of_day):
         self.pokemon = pokemon
-        self.name = POKEMON_NAMES[pokemon['pokemon_id']]
+        self.name = POKEMON[pokemon['pokemon_id']]
         self.coordinates = pokemon['lat'], pokemon['lon']
         self.score = score
         self.time_of_day = time_of_day
         self.log = get_logger('notifier')
         self.description = 'wild'
         try:
-            _m1 = pokemon['move_1']
-            _m2 = pokemon['move_2']
+            self.move1 = MOVES[pokemon['move_1']]
+            self.move2 = MOVES[pokemon['move_2']]
         except KeyError:
             self.move1 = None
             self.move2 = None
-        else:
-            self.move1 = POKEMON_MOVES.get(_m1, _m1)
-            self.move2 = POKEMON_MOVES.get(_m2, _m2)
 
         try:
             if self.score == 1:
@@ -687,7 +684,7 @@ class Notifier:
         notified = False
 
         pokemon_id = pokemon['pokemon_id']
-        name = POKEMON_NAMES[pokemon_id]
+        name = POKEMON[pokemon_id]
 
         encounter_id = pokemon['encounter_id']
         if encounter_id in self.cache:

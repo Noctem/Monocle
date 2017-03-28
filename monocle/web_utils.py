@@ -4,7 +4,7 @@ from multiprocessing.managers import BaseManager, RemoteError
 from contextlib import contextmanager
 
 from monocle import db, utils, sanitized as conf
-from monocle.names import POKEMON_NAMES, MOVES, POKEMON_MOVES
+from monocle.names import DAMAGE, MOVES, POKEMON
 
 if conf.BOUNDARIES:
     from shapely.geometry import mapping
@@ -101,11 +101,14 @@ def get_pokemarkers(after_id=0):
     markers = []
     with db.session_scope() as session:
         pokemons = db.get_sightings(session, after_id)
+        pokemon_names = POKEMON
+        move_names = MOVES
+        damage = DAMAGE
         for pokemon in pokemons:
             content = {
                 'id': 'pokemon-{}'.format(pokemon.id),
                 'trash': pokemon.pokemon_id in conf.TRASH_IDS,
-                'name': POKEMON_NAMES[pokemon.pokemon_id],
+                'name': pokemon_names[pokemon.pokemon_id],
                 'pokemon_id': pokemon.pokemon_id,
                 'lat': pokemon.lat,
                 'lon': pokemon.lon,
@@ -116,10 +119,10 @@ def get_pokemarkers(after_id=0):
                     'atk': pokemon.atk_iv,
                     'def': pokemon.def_iv,
                     'sta': pokemon.sta_iv,
-                    'move1': POKEMON_MOVES.get(pokemon.move_1, pokemon.move_1),
-                    'move2': POKEMON_MOVES.get(pokemon.move_2, pokemon.move_2),
-                    'damage1': MOVES.get(pokemon.move_1, {}).get('damage'),
-                    'damage2': MOVES.get(pokemon.move_2, {}).get('damage'),
+                    'move1': move_names[pokemon.move_1],
+                    'move2': move_names[pokemon.move_2],
+                    'damage1': damage[pokemon.move_1],
+                    'damage2': damage[pokemon.move_2],
                 }
                 content.update(iv)
             markers.append(content)
@@ -130,9 +133,10 @@ def get_gym_markers():
     markers = []
     with db.session_scope() as session:
         forts = db.get_forts(session)
+    pokemon_names = POKEMON
     for fort in forts:
         if fort['guard_pokemon_id']:
-            pokemon_name = POKEMON_NAMES[fort['guard_pokemon_id']]
+            pokemon_name = pokemon_names[fort['guard_pokemon_id']]
         else:
             pokemon_name = 'Empty'
         markers.append({
