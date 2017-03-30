@@ -160,15 +160,16 @@ def get_bootstrap_points():
     lat_gain, lon_gain = get_gains(conf.BOOTSTRAP_RADIUS)
     coords = []
     for map_row, lat in enumerate(
-        float_range(conf.MAP_START[0], conf.MAP_END[0], lat_gain)
+        float_range(bounds.south, bounds.north, lat_gain)
     ):
-        row_start_lon = conf.MAP_START[1]
+        row_start_lon = bounds.west
         if map_row % 2 != 0:
             row_start_lon -= 0.5 * lon_gain
         for map_col, lon in enumerate(
-            float_range(row_start_lon, conf.MAP_END[1], lon_gain)
+            float_range(row_start_lon, bounds.east, lon_gain)
         ):
-            coords.append((lat, lon))
+            if (lat, lon) in bounds:
+                coords.append((lat, lon))
     random.shuffle(coords)
     return coords
 
