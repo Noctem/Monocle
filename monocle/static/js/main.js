@@ -1,12 +1,10 @@
 var _last_pokemon_id = 0;
 var _pokemon_count = 251;
 var _WorkerIconUrl = 'static/monocle-icons/assets/ball.png';
-var _NotificationIconUrl = 'static/monocle-icons/assets/ultra.png';
 var _PokestopIconUrl = 'static/monocle-icons/assets/stop.png';
 
 var PokemonIcon = L.Icon.extend({
     options: {
-        //iconSize: [30, 30],
         popupAnchor: [0, -15]
     },
     createIcon: function() {
@@ -34,13 +32,6 @@ var WorkerIcon = L.Icon.extend({
         iconSize: [20, 20],
         className: 'worker-icon',
         iconUrl: _WorkerIconUrl
-    }
-});
-var NotificationIcon = L.Icon.extend({
-    options: {
-        iconSize: [30, 30],
-        className: 'notification-icon',
-        iconUrl: _NotificationIconUrl
     }
 });
 var PokestopIcon = L.Icon.extend({
