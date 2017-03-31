@@ -87,6 +87,10 @@ The gyms statistics server is in a separate file, because it's intended to be sh
 
 [![gyms](https://i.imgur.com/MWpHAEWm.jpg)](monocle/static/demo/gyms.png)
 
+## Getting Started Tips & FAQs
+
+Visit our [Wiki](https://github.com/Noctem/Monocle/wiki) for more info.
+
 ## License
 
 See [LICENSE](LICENSE).
