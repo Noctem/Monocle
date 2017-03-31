@@ -44,7 +44,7 @@ class BaseSpawns:
         else:
             alts = False
 
-        bound = bool(conf.BOUNDARIES)
+        bound = bool(bounds)
         last_migration = conf.LAST_MIGRATION
 
         with db.session_scope() as session:
@@ -79,7 +79,7 @@ class BaseSpawns:
         self.known = OrderedDict(sorted(known.items(), key=lambda k: k[1][1]))
 
         if not self.altitudes:
-            self.altitudes = get_all_altitudes(bound)
+            self.altitudes = get_all_altitudes()
 
     def get_altitude(self, point, randomize=0):
         point = round_coords(point, conf.ALT_PRECISION)

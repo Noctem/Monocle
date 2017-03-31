@@ -54,12 +54,25 @@ class Units(Enum):
     meters = 3
 
 
-@jit
-def get_start_coords(worker_no):
+def best_factors(n):
+    return next(((i, n//i) for i in range(int(n**0.5), 0, -1) if n % i == 0))
+
+
+def percentage_split(seq, percentages):
+    percentages[-1] += 1.0 - sum(percentages)
+    prv = 0
+    size = len(seq)
+    cum_percentage = 0
+    for p in percentages:
+        cum_percentage += p
+        nxt = int(cum_percentage * size)
+        yield seq[prv:nxt]
+        prv = nxt
+
+
+def get_start_coords(worker_no, grid=conf.GRID, bounds=bounds):
     """Returns center of square for given worker"""
-    grid = conf.GRID
-    total_workers = grid[0] * grid[1]
-    per_column = int(total_workers / grid[0])
+    per_column = int((grid[0] * grid[1]) / grid[0])
 
     column = worker_no % per_column
     row = int(worker_no / per_column)
@@ -144,32 +157,44 @@ def get_altitudes(coords):
             return {}
 
 
-def get_all_altitudes(bound=False):
+def get_altitude_coords(bound=bool(bounds), bounds=bounds, multi=bounds.multi):
     coords = []
+    if multi:
+        for b in bounds.polygons:
+            coords.extend(get_altitude_coords(bounds=b, multi=False))
+        return coords
     precision = conf.ALT_PRECISION
     gain = 1 / (10 ** precision)
+    west, east = bounds.west, bounds.east
     for lat in float_range(bounds.south, bounds.north, gain):
-        for lon in float_range(bounds.west, bounds.east, gain):
+        for lon in float_range(west, east, gain):
             point = lat, lon
-            if not bound or point not in bounds:
-                coords.append(round_coords(point, precision))
-    return get_altitudes(coords)
+            coords.append(round_coords(point, precision))
+    return coords
 
 
-def get_bootstrap_points():
-    lat_gain, lon_gain = get_gains(conf.BOOTSTRAP_RADIUS)
+def get_all_altitudes():
+    return get_altitudes(get_altitude_coords())
+
+
+def get_bootstrap_points(bound=bool(bounds), bounds=bounds, multi=bounds.multi):
     coords = []
+    if multi:
+        for b in bounds.polygons:
+            coords.extend(get_bootstrap_points(bounds=b, multi=False))
+        return coords
+    lat_gain, lon_gain = get_gains(conf.BOOTSTRAP_RADIUS)
+    west, east = bounds.west, bounds.east
     for map_row, lat in enumerate(
         float_range(bounds.south, bounds.north, lat_gain)
     ):
-        row_start_lon = bounds.west
+        row_start_lon = west
         if map_row % 2 != 0:
             row_start_lon -= 0.5 * lon_gain
-        for map_col, lon in enumerate(
-            float_range(row_start_lon, bounds.east, lon_gain)
-        ):
-            if (lat, lon) in bounds:
-                coords.append((lat, lon))
+        for lon in float_range(row_start_lon, east, lon_gain):
+            point = lat, lon
+            if not bound or point in bounds:
+                coords.append(point)
     random.shuffle(coords)
     return coords
 

@@ -14,10 +14,10 @@ from aiopogo.hash_server import HashServer
 from sqlalchemy.exc import OperationalError
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
-from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point
+from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point, best_factors, percentage_split
 from .shared import get_logger, LOOP, run_threaded, ACCOUNTS
 from .db_proc import DB_PROC
-from . import spawns, sanitized as conf
+from . import spawns, bounds, sanitized as conf
 from .worker import Worker
 
 BAD_STATUSES = (
@@ -484,13 +484,25 @@ class Overseer:
         self.log.warning('Finished bootstrapping.')
 
     async def bootstrap_one(self):
-        async def visit_release(worker):
+        async def visit_release(worker, num, *args):
             async with self.coroutine_semaphore:
                 async with worker.busy:
-                    point = get_start_coords(worker.worker_no)
+                    point = get_start_coords(num, *args)
+                    self.log.warning('start_coords: {}', point)
                     self.visits += await worker.bootstrap_visit(point)
 
-        tasks = (visit_release(w) for w in self.workers)
+        if bounds.multi:
+            areas = [poly.boundaries.area for poly in bounds.polygons]
+            area_sum = sum(areas)
+            percentages = [area / area_sum for area in areas]
+            tasks = []
+            for i, workers in enumerate(percentage_split(
+                    self.workers, percentages)):
+                grid = best_factors(len(workers))
+                tasks.extend(visit_release(w, n, grid, bounds.polygons[i])
+                             for n, w in enumerate(workers))
+        else:
+            tasks = (visit_release(w, n) for n, w in enumerate(self.workers))
         await asyncio.gather(*tasks, loop=LOOP)
 
     async def bootstrap_two(self):
