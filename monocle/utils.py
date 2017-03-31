@@ -157,15 +157,16 @@ def get_altitudes(coords):
             return {}
 
 
-def get_altitude_coords(bound=bool(bounds), bounds=bounds, multi=bounds.multi):
+def get_altitude_coords(bounds):
     coords = []
-    if multi:
+    if bounds.multi:
         for b in bounds.polygons:
-            coords.extend(get_altitude_coords(bounds=b, multi=False))
+            coords.extend(get_altitude_coords(b))
         return coords
     precision = conf.ALT_PRECISION
     gain = 1 / (10 ** precision)
     west, east = bounds.west, bounds.east
+    bound = bool(bounds)
     for lat in float_range(bounds.south, bounds.north, gain):
         for lon in float_range(west, east, gain):
             point = lat, lon
@@ -174,17 +175,18 @@ def get_altitude_coords(bound=bool(bounds), bounds=bounds, multi=bounds.multi):
 
 
 def get_all_altitudes():
-    return get_altitudes(get_altitude_coords())
+    return get_altitudes(get_altitude_coords(bounds))
 
 
-def get_bootstrap_points(bound=bool(bounds), bounds=bounds, multi=bounds.multi):
+def get_bootstrap_points(bounds):
     coords = []
-    if multi:
+    if bounds.multi:
         for b in bounds.polygons:
-            coords.extend(get_bootstrap_points(bounds=b, multi=False))
+            coords.extend(get_bootstrap_points(b))
         return coords
     lat_gain, lon_gain = get_gains(conf.BOOTSTRAP_RADIUS)
     west, east = bounds.west, bounds.east
+    bound = bool(bounds)
     for map_row, lat in enumerate(
         float_range(bounds.south, bounds.north, lat_gain)
     ):

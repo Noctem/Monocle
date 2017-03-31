@@ -17,7 +17,7 @@ from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point, best_factors, percentage_split
 from .shared import get_logger, LOOP, run_threaded, ACCOUNTS
 from .db_proc import DB_PROC
-from . import spawns, bounds, sanitized as conf
+from . import bounds, spawns, sanitized as conf
 from .worker import Worker
 
 BAD_STATUSES = (
@@ -516,7 +516,7 @@ class Overseer:
 
         # randomize to within ~140m of the nearest neighbor on the second visit
         randomization = conf.BOOTSTRAP_RADIUS / 155555 - 0.00045
-        tasks = (bootstrap_try(x) for x in get_bootstrap_points())
+        tasks = (bootstrap_try(x) for x in get_bootstrap_points(bounds))
         await asyncio.gather(*tasks, loop=LOOP)
 
     async def try_point(self, point, spawn_time=None):
