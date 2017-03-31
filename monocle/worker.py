@@ -48,7 +48,7 @@ class Worker:
     """Single worker walking on the map"""
 
     if conf.FORCED_KILL:
-        versions = ('0.57.4', '0.57.3', '0.57.2', '0.55.0')
+        versions = ('0.59.1', '0.57.4', '0.57.3', '0.57.2', '0.55.0')
     download_hash = "7b9c5056799a2c5c7d48a62c497736cbcf8c4acb"
     scan_delay = conf.SCAN_DELAY if conf.SCAN_DELAY >= 10 else 10
     g = {'seen': 0, 'captchas': 0}
@@ -180,7 +180,7 @@ class Worker:
             raise err
 
         self.error_code = '°'
-        version = 5704
+        version = 5901
         async with self.sim_semaphore:
             self.error_code = 'APP SIMULATION'
             if conf.APP_SIMULATION:
