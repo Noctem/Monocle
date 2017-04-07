@@ -430,7 +430,7 @@ class Overseer:
                 continue
 
             await self.coroutine_semaphore.acquire()
-            LOOP.create_task(self.try_point(point, spawn_time))
+            LOOP.create_task(self.try_point(point, spawn_time, spawn_id))
 
     async def try_again(self, point):
         async with self.coroutine_semaphore:
@@ -499,7 +499,7 @@ class Overseer:
         tasks = (bootstrap_try(x) for x in get_bootstrap_points(bounds))
         await gather(*tasks, loop=LOOP)
 
-    async def try_point(self, point, spawn_time=None):
+    async def try_point(self, point, spawn_time=None, spawn_id=None):
         try:
             point = randomize_point(point)
             skip_time = monotonic() + (conf.GIVE_UP_KNOWN if spawn_time else conf.GIVE_UP_UNKNOWN)
@@ -512,7 +512,7 @@ class Overseer:
                 if spawn_time:
                     worker.after_spawn = time() - spawn_time
 
-                if await worker.visit(point):
+                if await worker.visit(point, spawn_id):
                     self.visits += 1
         except CancelledError:
             raise

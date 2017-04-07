@@ -13,15 +13,14 @@ from sqlalchemy.ext.declarative import declarative_base
 
 from . import bounds, spawns, db_proc, sanitized as conf
 from .utils import time_until_time, dump_pickle, load_pickle
-from .shared import call_at
+from .shared import call_at, get_logger
 
 try:
     assert conf.LAST_MIGRATION < time()
 except AssertionError:
     raise ValueError('LAST_MIGRATION must be a timestamp from the past.')
-except TypeError as e:
-    raise TypeError('LAST_MIGRATION must be a numeric timestamp.') from e
 
+log = get_logger(__name__)
 
 if conf.DB_ENGINE.startswith('mysql'):
     TINY_TYPE = TINYINT(unsigned=True)          # 0 to 255
@@ -273,6 +272,7 @@ class Spawnpoint(Base):
     alt = Column(SmallInteger)
     updated = Column(Integer, index=True)
     duration = Column(TINY_TYPE)
+    failures = Column(TINY_TYPE)
 
 
 class Fort(Base):
@@ -376,6 +376,7 @@ def add_spawnpoint(session, pokemon):
     spawns.add_known(spawn_id, new_time, point)
     if existing:
         existing.updated = now
+        existing.failures = 0
 
         if (existing.despawn_time is None or
                 existing.updated < conf.LAST_MIGRATION):
@@ -392,16 +393,16 @@ def add_spawnpoint(session, pokemon):
 
         duration = 60 if widest and widest > 1800 else None
 
-        obj = Spawnpoint(
+        session.add(Spawnpoint(
             spawn_id=spawn_id,
             despawn_time=new_time,
             lat=pokemon['lat'],
             lon=pokemon['lon'],
             alt=altitude,
             updated=now,
-            duration=duration
-        )
-        session.add(obj)
+            duration=duration,
+            failures=0
+        ))
 
 
 def add_mystery_spawnpoint(session, pokemon):
@@ -413,16 +414,16 @@ def add_mystery_spawnpoint(session, pokemon):
         return
     altitude = spawns.get_altitude(point)
 
-    obj = Spawnpoint(
+    session.add(Spawnpoint(
         spawn_id=spawn_id,
         despawn_time=None,
         lat=pokemon['lat'],
         lon=pokemon['lon'],
         alt=altitude,
         updated=0,
-        duration=None
-    )
-    session.add(obj)
+        duration=None,
+        failures=0
+    ))
 
     if point in bounds:
         spawns.add_unknown(point)
@@ -509,6 +510,31 @@ def add_pokestop(session, raw_pokestop):
     )
     session.add(pokestop)
     FORT_CACHE.pokestops.add(pokestop_id)
+
+
+def update_failures(session, spawn_id, success, allowed=conf.FAILURES_ALLOWED):
+    spawnpoint = session.query(Spawnpoint) \
+        .filter(Spawnpoint.spawn_id == spawn_id) \
+        .first()
+    try:
+        if success:
+            spawnpoint.failures = 0
+        elif spawnpoint.failures >= allowed:
+            if spawnpoint.duration == 60:
+                spawnpoint.duration = None
+                log.warning('{} consecutive failures on {}, no longer treating as an hour spawn.', allowed + 1, spawn_id)
+            else:
+                spawnpoint.updated = 0
+                try:
+                    del spawns.despawn_times[spawn_id]
+                except KeyError:
+                    pass
+                log.warning('{} consecutive failures on {}, will treat as an unknown from now on.', allowed + 1, spawn_id)
+            spawnpoint.failures = 0
+        else:
+            spawnpoint.failures += 1
+    except TypeError:
+        spawnpoint.failures = 1
 
 
 def update_mystery(session, mystery):

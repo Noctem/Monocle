@@ -184,6 +184,9 @@ MAP_WORKERS = True
 # unix timestamp of last spawn point migration, spawn times learned before this will be ignored
 LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
 
+# Treat a spawn point's expiration time as unknown if nothing is seen at it on more than x consecutive visits
+FAILURES_ALLOWED = 2
+
 ## Map data provider and appearance, previews available at:
 ## https://leaflet-extras.github.io/leaflet-providers/preview/
 #MAP_PROVIDER_URL = '//{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'

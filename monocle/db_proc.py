@@ -48,6 +48,8 @@ class DatabaseProcessor(Thread):
                     db.add_fort_sighting(session, item)
                 elif item_type == 'pokestop':
                     db.add_pokestop(session, item)
+                elif item_type == 'target':
+                    db.update_failures(session, item['spawn_id'], item['seen'])
                 elif item_type == 'mystery-update':
                     db.update_mystery(session, item)
                 elif item_type is False:
