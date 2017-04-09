@@ -90,14 +90,16 @@ SEARCH_SLEEP = 2.5
 ### these next 6 options use more requests but look more like the real client
 APP_SIMULATION = True     # mimic the actual app's login requests
 COMPLETE_TUTORIAL = True  # complete the tutorial process and configure avatar for all accounts that haven't yet
-INCUBATE_EGGS = False        # incubate eggs if available
+INCUBATE_EGGS = False     # incubate eggs if available
 
 ## encounter Pokémon to store IVs.
 ## valid options:
 # 'all' will encounter every Pokémon that hasn't been already been encountered
+# 'some' will encounter Pokémon if they are in ENCOUNTER_IDS or eligible for notification
 # 'notifying' will encounter Pokémon that are eligible for notifications
 # None will never encounter Pokémon
 ENCOUNTER = None
+#ENCOUNTER_IDS = (3, 6, 9, 45, 62, 71, 80, 85, 87, 89, 91, 94, 114, 130, 131, 134)
 
 # PokéStops
 SPIN_POKESTOPS = True  # spin all PokéStops that are within range
@@ -151,9 +153,7 @@ TRASH_IDS = (
 )
 
 # include these Pokémon on the "rare" report
-RARE_IDS = (
-    3, 6, 9, 45, 62, 71, 80, 85, 87, 89, 91, 94, 114, 130, 131, 134
-)
+RARE_IDS = (3, 6, 9, 45, 62, 71, 80, 85, 87, 89, 91, 94, 114, 130, 131, 134)
 
 from datetime import datetime
 REPORT_SINCE = datetime(2017, 2, 17)  # base reports on data from after this date

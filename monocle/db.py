@@ -114,11 +114,9 @@ class SightingCache:
             expire_timestamp = self.store[raw_sighting['spawn_id']]
         except KeyError:
             return False
-        within_range = (
+        return (
             expire_timestamp > raw_sighting['expire_timestamp'] - 2 and
-            expire_timestamp < raw_sighting['expire_timestamp'] + 2
-        )
-        return within_range
+            expire_timestamp < raw_sighting['expire_timestamp'] + 2)
 
 
 class MysteryCache:
