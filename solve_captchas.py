@@ -86,14 +86,16 @@ async def main():
                 api.set_position(lat, lon, alt)
 
                 authenticated = False
-                if account.get('provider') == 'ptc' and account.get('refresh'):
-                    api._auth_provider = AuthPtc()
-                    api._auth_provider.set_refresh_token(account.get('refresh'))
-                    api._auth_provider._access_token = account.get('auth')
-                    api._auth_provider._access_token_expiry = account.get('expiry')
-                    if api._auth_provider.check_access_token():
-                        api._auth_provider._login = True
-                        authenticated = True
+                try:
+                    if account['provider'] == 'ptc':
+                        api.auth_provider = AuthPtc()
+                        api.auth_provider._access_token = account['auth']
+                        api.auth_provider._access_token_expiry = account['expiry']
+                        if api.auth_provider.check_access_token():
+                            api.auth_provider.authenticated = True
+                            authenticated = True
+                except KeyError:
+                    pass
 
                 if not authenticated:
                     await api.set_authentication(username=username,
