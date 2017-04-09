@@ -50,14 +50,8 @@ if conf.NOTIFY:
         PUSHBULLET=True
 
     if conf.WEBHOOKS:
-        try:
-            import ujson as json
-            jargs = {'double_precision': 17}
-        except ImportError:
-            import json
-            jargs = {}
+        from aiopogo import json_dumps, json_loads
 
-        HEADERS = {'content-type': 'application/json'}
         if len(conf.WEBHOOKS) == 1:
             HOOK_POINT = next(iter(conf.WEBHOOKS))
             WEBHOOK = 1
@@ -358,7 +352,7 @@ class Notification:
                     resp.raise_for_status()
                 except HttpProcessingError as e:
                     try:
-                        response = await resp.json()
+                        response = await resp.json(loads=json_loads)
                         self.log.error('Error {} from Telegram: {}', e.code, response['description'])
                     except Exception:
                         self.log.error('Error {} from Telegram: {}', e.code, e.message)
@@ -799,7 +793,7 @@ class Notifier:
         except KeyError:
             pass
 
-        payload = json.dumps(data, **jargs)
+        payload = json_dumps(data)
         session = SessionManager.get()
         return await self.wh_send(session, payload)
 
@@ -811,9 +805,9 @@ class Notifier:
         async def wh_send(self, session, payload):
             return await self.hook_post(HOOK_POINT, session, payload)
 
-    async def hook_post(self, w, session, payload):
+    async def hook_post(self, w, session, payload, headers={'content-type': 'application/json'}):
         try:
-            async with session.post(w, data=payload, timeout=3, headers=HEADERS) as resp:
+            async with session.post(w, data=payload, timeout=3, headers=headers) as resp:
                 resp.raise_for_status()
                 return True
         except HttpProcessingError as e:

@@ -24,7 +24,7 @@ setup(
         'gpsoauth>=0.4.0',
         'werkzeug>=0.11.15',
         'sqlalchemy>=1.1.0',
-        'aiopogo>=1.6.2',
+        'aiopogo>=1.7.0',
         'polyline>=1.3.1',
         'aiohttp==1.3.*',
         'pogeo>=0.2'
