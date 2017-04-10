@@ -492,7 +492,7 @@ class Overseer:
                     self.visits += await worker.bootstrap_visit(point)
 
         if bounds.multi:
-            areas = [poly.boundaries.area for poly in bounds.polygons]
+            areas = [poly.polygon.area for poly in bounds.polygons]
             area_sum = sum(areas)
             percentages = [area / area_sum for area in areas]
             tasks = []
