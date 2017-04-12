@@ -34,10 +34,11 @@ class Bounds:
 
 class PolyBounds(Bounds):
     def __init__(self, polygon=conf.BOUNDARIES):
-        self.boundaries = polygon
+        self.boundaries = prep(polygon)
         self.south, self.west, self.north, self.east = polygon.bounds
         self.center = polygon.centroid.coords[0]
         self.multi = False
+        self.polygon = polygon
 
     def __bool__(self):
         """Are boundaries a polygon?"""
@@ -54,7 +55,7 @@ class MultiPolyBounds(PolyBounds):
     def __init__(self):
         super().__init__()
         self.multi = True
-        self.polygons = [PolyBounds(polygon) for polygon in self.boundaries]
+        self.polygons = [PolyBounds(polygon) for polygon in self.polygon]
 
     def __hash__(self):
         return hash(tuple(hash(x) for x in self.polygons))
@@ -77,6 +78,7 @@ class RectBounds(Bounds):
 if conf.BOUNDARIES:
     try:
         from shapely.geometry import MultiPolygon, Point, Polygon
+        from shapely.prepared import prep
     except ImportError as e:
         raise ImportError('BOUNDARIES is set but shapely is not available.') from e
 
