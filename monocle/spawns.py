@@ -2,7 +2,7 @@ import sys
 
 from collections import deque, OrderedDict
 from time import time
-from random import uniform
+from cyrandom import uniform
 from itertools import chain
 from hashlib import sha256
 

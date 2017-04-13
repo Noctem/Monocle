@@ -2,7 +2,6 @@
 
 from multiprocessing.managers import BaseManager
 from asyncio import get_event_loop, sleep
-from random import uniform
 from time import time
 
 from selenium import webdriver

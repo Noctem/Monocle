@@ -27,7 +27,8 @@ setup(
         'aiopogo>=1.7.0',
         'polyline>=1.3.1',
         'aiohttp==1.3.*',
-        'pogeo>=0.2'
+        'pogeo>=0.2',
+        'cyrandom>=0.1.2'
     ],
     extras_require={
         'twitter': ['peony-twitter>=0.9'],
@@ -35,7 +36,7 @@ setup(
         'landmarks': ['shapely>=1.3.0'],
         'boundaries': ['shapely>=1.3.0'],
         'manual_captcha': ['selenium>=3.0'],
-        'performance': ['uvloop>=0.7.0', 'numba>=0.30', 'cchardet>=1.1.0', 'aiodns>=1.1.0', 'ujson>=1.35'],
+        'performance': ['uvloop>=0.7.0', 'cchardet>=1.1.0', 'aiodns>=1.1.0', 'ujson>=1.35'],
         'mysql': ['mysqlclient>=1.3'],
         'postgres': ['psycopg2>=2.6'],
         'images': ['pycairo>=1.10.0'],

@@ -1,8 +1,5 @@
-import random
 import requests
-import time
 import socket
-import pickle
 
 from polyline import encode as polyencode
 from os import mkdir
@@ -14,19 +11,17 @@ from uuid import uuid4
 from enum import Enum
 from logging import getLogger
 from csv import DictReader
+from cyrandom import choice, shuffle, uniform
+from time import time
+from pickle import dump as pickle_dump, load as pickle_load, HIGHEST_PROTOCOL
 
 from geopy import Point
 from geopy.distance import distance
 from aiopogo import utilities as pgoapi_utils
 from pogeo import get_distance
 
-try:
-    from numba import jit
-except ImportError:
-    def jit(func):
-        return func
-
 from . import bounds, sanitized as conf
+
 
 IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone5,2': 'N42AP',
@@ -43,7 +38,6 @@ IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone9,2': 'D11AP',
            'iPhone9,3': 'D101AP',
            'iPhone9,4': 'D111AP'}
-
 
 log = getLogger(__name__)
 
@@ -110,15 +104,12 @@ def get_gains(dist=70):
     return abs(start.latitude - lat_gain), abs(start.longitude - lon_gain)
 
 
-@jit
-def round_coords(point, precision):
-    return round(point[0], precision), round(point[1], precision)
+def round_coords(point, precision, _round=round):
+    return _round(point[0], precision), _round(point[1], precision)
 
 
-@jit
 def random_altitude():
-    altitude = random.uniform(*conf.ALT_RANGE)
-    return altitude
+    return uniform(*conf.ALT_RANGE)
 
 
 def get_altitude(point):
@@ -197,7 +188,7 @@ def get_bootstrap_points(bounds):
             point = lat, lon
             if not bound or point in bounds:
                 coords.append(point)
-    random.shuffle(coords)
+    shuffle(coords)
     return coords
 
 
@@ -226,17 +217,17 @@ def generate_device_info(account):
     ios10 = ('10.0', '10.0.1', '10.0.2', '10.0.3', '10.1', '10.1.1', '10.2', '10.2.1')
 
     devices = tuple(IPHONES.keys())
-    account['model'] = random.choice(devices)
+    account['model'] = choice(devices)
 
     account['id'] = uuid4().hex
 
     if account['model'] in ('iPhone9,1', 'iPhone9,2',
                             'iPhone9,3', 'iPhone9,4'):
-        account['iOS'] = random.choice(ios10)
+        account['iOS'] = choice(ios10)
     elif account['model'] in ('iPhone8,1', 'iPhone8,2', 'iPhone8,4'):
-        account['iOS'] = random.choice(ios9 + ios10)
+        account['iOS'] = choice(ios9 + ios10)
     else:
-        account['iOS'] = random.choice(ios8 + ios9 + ios10)
+        account['iOS'] = choice(ios8 + ios9 + ios10)
 
     return account
 
@@ -308,20 +299,20 @@ def accounts_from_csv(new_accounts, pickled_accounts):
 
 
 if conf.SPAWN_ID_INT:
-    def get_spawn_id(pokemon):
-        return int(pokemon['spawn_point_id'], 16)
+    def get_spawn_id(pokemon, _int=int):
+        return _int(pokemon['spawn_point_id'], 16)
 else:
     def get_spawn_id(pokemon):
         return pokemon['spawn_point_id']
 
 
-def get_current_hour(now=None):
-    now = now or time.time()
+def get_current_hour(now=None, _time=time):
+    now = now or _time()
     return round(now - (now % 3600))
 
 
-def time_until_time(seconds, seen=None):
-    current_seconds = seen or time.time() % 3600
+def time_until_time(seconds, seen=None, _time=time):
+    current_seconds = seen or _time() % 3600
     if current_seconds > seconds:
         return seconds + 3600 - current_seconds
     elif current_seconds + 3600 < seconds:
@@ -344,7 +335,7 @@ def load_pickle(name, raise_exception=False):
     location = join(conf.DIRECTORY, 'pickles', '{}.pickle'.format(name))
     try:
         with open(location, 'rb') as f:
-            return pickle.load(f)
+            return pickle_load(f)
     except (FileNotFoundError, EOFError):
         if raise_exception:
             raise FileNotFoundError
@@ -363,7 +354,7 @@ def dump_pickle(name, var):
 
     location = join(folder, '{}.pickle'.format(name))
     with open(location, 'wb') as f:
-        pickle.dump(var, f, pickle.HIGHEST_PROTOCOL)
+        pickle_dump(var, f, HIGHEST_PROTOCOL)
 
 
 def load_accounts():
@@ -397,11 +388,10 @@ def load_accounts_csv():
     return accounts
 
 
-@jit
-def randomize_point(point, amount=0.0003):
+def randomize_point(point, amount=0.0003, randomize=uniform):
     '''Randomize point, by up to ~47 meters by default.'''
     lat, lon = point
     return (
-        random.uniform(lat - amount, lat + amount),
-        random.uniform(lon - amount, lon + amount)
+        randomize(lat - amount, lat + amount),
+        randomize(lon - amount, lon + amount)
     )

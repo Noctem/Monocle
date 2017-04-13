@@ -2,7 +2,7 @@
 
 from asyncio import get_event_loop, set_event_loop_policy
 from pathlib import Path
-from random import uniform, randint, choice
+from cyrandom import uniform, randint, choice
 from argparse import ArgumentParser
 
 try:

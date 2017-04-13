@@ -1,4 +1,4 @@
-from random import choice, randint
+from cyrandom import choice, randint
 
 class MaleAvatar:
     hats = (

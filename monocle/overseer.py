@@ -4,7 +4,7 @@ from datetime import datetime
 from statistics import median
 from os import system
 from sys import platform
-from random import shuffle, uniform
+from cyrandom import shuffle
 from collections import deque
 from concurrent.futures import CancelledError
 from itertools import dropwhile

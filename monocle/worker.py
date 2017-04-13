@@ -1,5 +1,5 @@
 from asyncio import sleep, Lock, Semaphore, gather
-from random import choice, randint, uniform, triangular
+from cyrandom import choice, randint, uniform
 from time import time, monotonic
 from queue import Empty
 from itertools import cycle
