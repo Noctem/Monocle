@@ -14,6 +14,9 @@ class DatabaseProcessor(Thread):
         self.count = 0
         self._commit = False
 
+    def __len__(self):
+        return self.queue.qsize()
+
     def stop(self):
         self.update_mysteries()
         self.running = False

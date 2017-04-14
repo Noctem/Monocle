@@ -99,6 +99,9 @@ class SightingCache:
     def __init__(self):
         self.store = {}
 
+    def __len__(self):
+        return len(self.store)
+
     def add(self, sighting):
         self.store[sighting['spawn_id']] = sighting['expire_timestamp']
         call_at(sighting['expire_timestamp'], self.remove, sighting['spawn_id'])
@@ -127,6 +130,9 @@ class MysteryCache:
     """
     def __init__(self):
         self.store = {}
+
+    def __len__(self):
+        return len(self.store)
 
     def add(self, sighting):
         key = combine_key(sighting)
@@ -165,6 +171,9 @@ class FortCache:
     """Simple cache for storing fort sightings"""
     def __init__(self):
         self.store = utils.load_pickle('forts') or {}
+
+    def __len__(self):
+        return len(self.store)
 
     def add(self, sighting):
         if sighting['type'] == 'pokestop':

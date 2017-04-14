@@ -1,10 +1,9 @@
-from asyncio import sleep, Lock, Semaphore, gather
+from asyncio import gather, Lock, Semaphore, sleep, CancelledError
 from cyrandom import choice, randint, uniform
 from time import time, monotonic
 from queue import Empty
 from itertools import cycle
 from sys import exit
-from concurrent.futures import CancelledError
 from distutils.version import StrictVersion
 
 from aiopogo import PGoApi, json_loads, exceptions as ex
@@ -29,6 +28,7 @@ if conf.CACHE_CELLS:
         from pogeo import get_cell_ids
 else:
     from pogeo import get_cell_ids
+
 
 _unit = getattr(Units, conf.SPEED_UNIT.lower())
 if conf.SPIN_POKESTOPS:
@@ -112,7 +112,7 @@ class Worker:
         # State variables
         self.busy = Lock(loop=LOOP)
         # Other variables
-        self.after_spawn = None
+        self.after_spawn = 0
         self.speed = 0
         self.total_seen = 0
         self.error_code = 'INIT'
