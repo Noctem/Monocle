@@ -60,7 +60,7 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
     * *psycopg2* is required for using a PostgreSQL database
     * *aiosocks* is required for using SOCKS proxies
     * *cchardet* and *aiodns* provide better performance with aiohttp
-    * *sanic* and *asyncpg* (and a Postgres DB) are required for web-sanic
+    * *sanic* and *asyncpg* (and a Postgres DB) are required for web_sanic
     * *ujson* for better JSON encoding and decoding performance
 6. Run `python3 scripts/create_db.py` from the command line
 7. Run `python3 scan.py`

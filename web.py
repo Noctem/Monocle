@@ -3,7 +3,12 @@
 from datetime import datetime
 from pkg_resources import resource_filename
 
-import json
+try:
+    from ujson import dumps
+    from flask import json as flask_json
+    flask_json.dumps = lambda obj, **kwargs: dumps(obj, double_precision=6)
+except ImportError:
+    from json import dumps
 
 from flask import Flask, request, render_template, jsonify, Markup
 
@@ -13,45 +18,65 @@ from monocle.web_utils import *
 from monocle.bounds import area, center
 
 
-GOOGLE_MAPS_KEY = conf.GOOGLE_MAPS_KEY if conf.REPORT_MAPS else None
-MAPFILE = 'custom.html' if conf.LOAD_CUSTOM_HTML_FILE else 'newmap.html'
-
-CSS_JS = ''
-SOCIAL_LINKS = ''
-JS_VARS = Markup(
-    "_defaultSettings['FIXED_OPACITY'] = '{:d}'; "
-    "_defaultSettings['SHOW_TIMER'] = '{:d}'; "
-    "_defaultSettings['TRASH_IDS'] = [{}]; ".format(conf.FIXED_OPACITY, conf.SHOW_TIMER, ', '.join(str(p_id) for p_id in conf.TRASH_IDS))
-)
-if conf.LOAD_CUSTOM_CSS_FILE:
-    CSS_JS += '<link rel="stylesheet" href="static/css/custom.css">'
-if conf.LOAD_CUSTOM_JS_FILE:
-    CSS_JS += '<script type="text/javascript" src="static/js/custom.js"></script>'
-if conf.FB_PAGE_ID:
-    SOCIAL_LINKS += '<a class="map_btn facebook-icon" target="_blank" href="https://www.facebook.com/' + conf.FB_PAGE_ID + '"></a>'
-if conf.TWITTER_SCREEN_NAME:
-    SOCIAL_LINKS += '<a class="map_btn twitter-icon" target="_blank" href="https://www.twitter.com/' + conf.TWITTER_SCREEN_NAME + '"></a>'
-if conf.DISCORD_INVITE_ID:
-    SOCIAL_LINKS += '<a class="map_btn discord-icon" target="_blank" href="https://discord.gg/' + conf.DISCORD_INVITE_ID + '"></a>'
-if conf.TELEGRAM_USERNAME:
-    SOCIAL_LINKS += '<a class="map_btn telegram-icon" target="_blank" href="https://www.telegram.me/' + conf.TELEGRAM_USERNAME + '"></a>'
-CSS_JS = Markup(CSS_JS)
-SOCIAL_LINKS = Markup(SOCIAL_LINKS)
-
 app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'), static_folder=resource_filename('monocle', 'static'))
 
-@app.route('/')
-def fullmap():
+
+def social_links():
+    social_links = ''
+
+    if conf.FB_PAGE_ID:
+        social_links = '<a class="map_btn facebook-icon" target="_blank" href="https://www.facebook.com/' + conf.FB_PAGE_ID + '"></a>'
+    if conf.TWITTER_SCREEN_NAME:
+        social_links += '<a class="map_btn twitter-icon" target="_blank" href="https://www.twitter.com/' + conf.TWITTER_SCREEN_NAME + '"></a>'
+    if conf.DISCORD_INVITE_ID:
+        social_links += '<a class="map_btn discord-icon" target="_blank" href="https://discord.gg/' + conf.DISCORD_INVITE_ID + '"></a>'
+    if conf.TELEGRAM_USERNAME:
+        social_links += '<a class="map_btn telegram-icon" target="_blank" href="https://www.telegram.me/' + conf.TELEGRAM_USERNAME + '"></a>'
+
+    return Markup(social_links)
+
+
+def render_map():
+    mapfile = 'custom.html' if conf.LOAD_CUSTOM_HTML_FILE else 'newmap.html'
+
+    css_js = ''
+
+    if conf.LOAD_CUSTOM_CSS_FILE:
+        css_js = '<link rel="stylesheet" href="static/css/custom.css">'
+    if conf.LOAD_CUSTOM_JS_FILE:
+        css_js += '<script type="text/javascript" src="static/js/custom.js"></script>'
+
+    js_vars = Markup(
+        "_defaultSettings['FIXED_OPACITY'] = '{:d}'; "
+        "_defaultSettings['SHOW_TIMER'] = '{:d}'; "
+        "_defaultSettings['TRASH_IDS'] = [{}]; ".format(conf.FIXED_OPACITY, conf.SHOW_TIMER, ', '.join(str(p_id) for p_id in conf.TRASH_IDS)))
+
     return render_template(
-        MAPFILE,
+        mapfile,
         area_name=conf.AREA_NAME,
         map_center=center,
         map_provider_url=conf.MAP_PROVIDER_URL,
         map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION,
-        social_links=SOCIAL_LINKS,
-        init_js_vars=JS_VARS,
-        extra_css_js=CSS_JS
+        social_links=social_links(),
+        init_js_vars=js_vars,
+        extra_css_js=Markup(css_js)
     )
+
+
+def render_worker_map():
+    return render_template(
+        'workersmap.html',
+        area_name=conf.AREA_NAME,
+        map_center=center,
+        map_provider_url=conf.MAP_PROVIDER_URL,
+        map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION,
+        social_links=social_links()
+    )
+
+
+@app.route('/')
+def fullmap(map_html=render_map()):
+    return map_html
 
 
 @app.route('/data')
@@ -89,19 +114,15 @@ if conf.MAP_WORKERS:
 
 
     @app.route('/workers')
-    def workers_map():
-        return render_template(
-            'workersmap.html',
-            area_name=conf.AREA_NAME,
-            map_center=center,
-            map_provider_url=conf.MAP_PROVIDER_URL,
-            map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION,
-            social_links=SOCIAL_LINKS
-        )
+    def workers_map(map_html=render_worker_map()):
+        return map_html
+
 
 
 @app.route('/report')
-def report_main(names=POKEMON):
+def report_main(area_name=conf.AREA_NAME,
+                names=POKEMON,
+                key=conf.GOOGLE_MAPS_KEY if conf.REPORT_MAPS else None):
     with db.session_scope() as session:
         counts = db.get_sightings_per_pokemon(session)
 
@@ -147,7 +168,7 @@ def report_main(names=POKEMON):
     return render_template(
         'report.html',
         current_date=datetime.now(),
-        area_name=conf.AREA_NAME,
+        area_name=area_name,
         area_size=area,
         total_spawn_count=count,
         spawns_per_hour=count // session_stats['length_hours'],
@@ -156,12 +177,14 @@ def report_main(names=POKEMON):
         session_length_hours=session_stats['length_hours'],
         js_data=js_data,
         icons=icons,
-        google_maps_key=GOOGLE_MAPS_KEY,
+        google_maps_key=key,
     )
 
 
 @app.route('/report/<int:pokemon_id>')
-def report_single(pokemon_id):
+def report_single(pokemon_id,
+                  area_name=conf.AREA_NAME
+                  key=conf.GOOGLE_MAPS_KEY if conf.REPORT_MAPS else None):
     with db.session_scope() as session:
         session_stats = db.get_session_stats(session)
         js_data = {
@@ -174,7 +197,7 @@ def report_single(pokemon_id):
         return render_template(
             'report_single.html',
             current_date=datetime.now(),
-            area_name=conf.AREA_NAME,
+            area_name=area_name,
             area_size=area,
             pokemon_id=pokemon_id,
             pokemon_name=POKEMON[pokemon_id],
@@ -182,7 +205,7 @@ def report_single(pokemon_id):
             session_start=session_stats['start'],
             session_end=session_stats['end'],
             session_length_hours=int(session_stats['length_hours']),
-            google_maps_key=GOOGLE_MAPS_KEY,
+            google_maps_key=key,
             js_data=js_data,
         )
 
@@ -191,7 +214,7 @@ def report_single(pokemon_id):
 def report_heatmap():
     pokemon_id = request.args.get('id')
     with db.session_scope() as session:
-        return json.dumps(db.get_all_spawn_coords(session, pokemon_id=pokemon_id))
+        return dumps(db.get_all_spawn_coords(session, pokemon_id=pokemon_id))
 
 
 def main():

@@ -26,7 +26,7 @@ def get_args():
         '-H',
         '--host',
         help='Set web server listening host',
-        default='127.0.0.1'
+        default='0.0.0.0'
     )
     parser.add_argument(
         '-P',
