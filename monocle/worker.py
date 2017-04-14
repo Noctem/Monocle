@@ -159,6 +159,8 @@ class Worker:
                         provider=self.account.get('provider') or 'ptc',
                         timeout=conf.LOGIN_TIMEOUT
                     )
+            except ex.UnexpectedAuthError as e:
+                await self.swap_account('unexpected auth error')
             except ex.AuthException as e:
                 err = e
                 await sleep(2, loop=LOOP)
@@ -466,7 +468,8 @@ class Worker:
                 self.log.info('Auth error on {}: {}', self.username, e)
                 err = e
                 await sleep(3, loop=LOOP)
-                await self.login(reauth=True)
+                if not await self.login(reauth=True):
+                    await self.swap_account(reason='reauth failed')
             except ex.TimeoutException as e:
                 self.error_code = 'TIMEOUT'
                 if not isinstance(e, type(err)):
