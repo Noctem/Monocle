@@ -412,7 +412,7 @@ class Overseer:
             while time_diff < 0.5:
                 try:
                     mystery_point = next(self.mysteries)
-
+                    self.log.info('Visiting mystery because time diff is {}', time_diff)
                     await self.coroutine_semaphore.acquire()
                     LOOP.create_task(self.try_point(mystery_point))
                 except StopIteration:
@@ -427,6 +427,7 @@ class Overseer:
                 self.redundant += 1
                 continue
             elif time_diff > skip_spawn:
+                self.log.info('Skipping spawn {}, diff: {}', spawn_id, time_diff)
                 self.skipped += 1
                 continue
 
@@ -503,16 +504,17 @@ class Overseer:
     async def try_point(self, point, spawn_time=None):
         try:
             point = randomize_point(point)
-            skip_time = monotonic() + (conf.GIVE_UP_KNOWN if spawn_time else conf.GIVE_UP_UNKNOWN)
-            worker = await self.best_worker(point, skip_time)
-            if not worker:
-                if spawn_time:
+            if spawn_time:
+                worker = await self.best_worker(point, monotonic() + conf.GIVE_UP_KNOWN)
+                if not worker:
                     self.skipped += 1
-                return
+                    return
+                worker.after_spawn = time() - spawn_time
+            else:
+                worker = await self.best_worker(point, monotonic() + conf.GIVE_UP_UNKNOWN, conf.SEARCH_SLEEP_UNKNOWN)
+                if not worker:
+                    return
             async with worker.busy:
-                if spawn_time:
-                    worker.after_spawn = time() - spawn_time
-
                 if await worker.visit(point):
                     self.visits += 1
         except CancelledError:
@@ -522,8 +524,9 @@ class Overseer:
         finally:
             self.coroutine_semaphore.release()
 
-    async def best_worker(self, point, skip_time):
-        good_enough = conf.GOOD_ENOUGH
+    async def best_worker(self, point, skip_time,
+            _sleep=conf.SEARCH_SLEEP, limit=conf.SPEED_LIMIT,
+            enough=conf.GOOD_ENOUGH):
         while self.running:
             gen = (w for w in self.workers if not w.busy.locked())
             try:
@@ -536,14 +539,14 @@ class Overseer:
                 if speed < lowest_speed:
                     lowest_speed = speed
                     worker = w
-                    if speed < good_enough:
+                    if speed < enough:
                         break
-            if lowest_speed < conf.SPEED_LIMIT:
+            if lowest_speed < limit:
                 worker.speed = lowest_speed
                 return worker
             if skip_time and monotonic() > skip_time:
                 return None
-            await sleep(conf.SEARCH_SLEEP, loop=LOOP)
+            await sleep(_sleep, loop=LOOP)
 
     def refresh_dict(self):
         while not self.extra_queue.empty():

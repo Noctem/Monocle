@@ -31,9 +31,9 @@ STAY_WITHIN_MAP = True
 # lower values are more thorough but will take longer
 BOOTSTRAP_RADIUS = 120
 
-GIVE_UP_KNOWN = 75   # try to find a worker for a known spawn for this many seconds before giving up
-GIVE_UP_UNKNOWN = 60 # try to find a worker for an unknown point for this many seconds before giving up
-SKIP_SPAWN = 90      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
+GIVE_UP_KNOWN = 75    # try to find a worker for a known spawn for this many seconds before giving up
+GIVE_UP_UNKNOWN = 25  # try to find a worker for an unknown point for this many seconds before giving up
+SKIP_SPAWN = 60       # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
 
 # How often should the mystery queue be reloaded (default 90s)
 # this will reduce the grouping of workers around the last few mysteries
@@ -58,10 +58,11 @@ SIMULTANEOUS_SIMULATION = 10
 # Immediately select workers whose speed are below (SPEED_UNIT)p/h instead of
 # continuing to try to find the worker with the lowest speed.
 # May increase clustering if you have a high density of workers.
-GOOD_ENOUGH = 0.1
+GOOD_ENOUGH = 1.5
 
 # Seconds to sleep after failing to find an eligible worker before trying again.
-SEARCH_SLEEP = 2.5
+SEARCH_SLEEP = 1.5
+SEARCH_SLEEP_UNKNOWN = 3.0
 
 ## alternatively define a Polygon to use as boundaries (requires shapely)
 ## if BOUNDARIES is set, STAY_WITHIN_MAP will be ignored
