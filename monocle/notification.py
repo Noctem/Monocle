@@ -715,7 +715,7 @@ class Notifier:
             try:
                 self.log.info("{}'s score was {:.3f} (iv: {:.3f}),"
                                  " but {:.3f} was required.",
-                                 name, score, iv_score, score_required)
+                                 name, score, iv_score if iv_score is not None else -1, score_required)
             except TypeError:
                 pass
             return False
