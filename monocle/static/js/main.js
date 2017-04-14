@@ -133,9 +133,11 @@ function PokemonMarker (raw) {
     marker.raw = raw;
     markers[raw.id] = marker;
     marker.on('popupopen',function popupopen (event) {
+        event.popup.options.autoPan = true; // Pan into view once
         event.popup.setContent(getPopupContent(event.target.raw));
         event.target.popupInterval = setInterval(function () {
             event.popup.setContent(getPopupContent(event.target.raw));
+            event.popup.options.autoPan = false; // Don't fight user panning
         }, 1000);
     });
     marker.on('popupclose', function (event) {
