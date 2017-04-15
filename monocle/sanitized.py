@@ -232,6 +232,9 @@ _defaults = {
 
 
 class Config:
+    __spec__ = __spec__
+    __slots__ = tuple(_valid_types.keys()) + ('log',)
+
     def __init__(self):
         self.log = getLogger('sanitizer')
         for key, value in (x for x in vars(config).items() if x[0].isupper()):
@@ -262,6 +265,8 @@ class Config:
             setattr(self, name, default)
             return default
         except KeyError:
+            if name == '__path__':
+                return
             err = '{} not in config, and no default has been set.'.format(name)
             self.log.error(err)
             raise AttributeError(err)
