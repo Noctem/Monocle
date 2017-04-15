@@ -10,7 +10,7 @@ try:
 except ImportError:
     from json import dumps
 
-from flask import Flask, request, render_template, jsonify, Markup
+from flask import Flask, jsonify, Markup, render_template, request
 
 from monocle import db, sanitized as conf
 from monocle.names import POKEMON
@@ -37,8 +37,6 @@ def social_links():
 
 
 def render_map():
-    mapfile = 'custom.html' if conf.LOAD_CUSTOM_HTML_FILE else 'newmap.html'
-
     css_js = ''
 
     if conf.LOAD_CUSTOM_CSS_FILE:
@@ -51,8 +49,8 @@ def render_map():
         "_defaultSettings['SHOW_TIMER'] = '{:d}'; "
         "_defaultSettings['TRASH_IDS'] = [{}]; ".format(conf.FIXED_OPACITY, conf.SHOW_TIMER, ', '.join(str(p_id) for p_id in conf.TRASH_IDS)))
 
-    return render_template(
-        mapfile,
+    template = app.jinja_env.get_template('custom.html' if conf.LOAD_CUSTOM_HTML_FILE else 'newmap.html')
+    return template.render(
         area_name=conf.AREA_NAME,
         map_center=center,
         map_provider_url=conf.MAP_PROVIDER_URL,
@@ -64,8 +62,8 @@ def render_map():
 
 
 def render_worker_map():
-    return render_template(
-        'workersmap.html',
+    template = app.jinja_env.get_template('workersmap.html')
+    return template.render(
         area_name=conf.AREA_NAME,
         map_center=center,
         map_provider_url=conf.MAP_PROVIDER_URL,
@@ -183,7 +181,7 @@ def report_main(area_name=conf.AREA_NAME,
 
 @app.route('/report/<int:pokemon_id>')
 def report_single(pokemon_id,
-                  area_name=conf.AREA_NAME
+                  area_name=conf.AREA_NAME,
                   key=conf.GOOGLE_MAPS_KEY if conf.REPORT_MAPS else None):
     with db.session_scope() as session:
         session_stats = db.get_session_stats(session)
