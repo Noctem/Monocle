@@ -631,7 +631,7 @@ def get_punch_card(session):
         .order_by('ts_date')
     if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > SINCE_TIME)
-    results = query.fetchall()
+    results = query.all()
     results_dict = {r[0]: r[1] for r in results}
     filled = []
     for row_no, i in enumerate(range(int(results[0][0]), int(results[-1][0]))):
