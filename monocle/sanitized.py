@@ -159,7 +159,7 @@ _defaults = {
     'GIVE_UP_KNOWN': 75,
     'GIVE_UP_UNKNOWN': 60,
     'GOOD_ENOUGH': 0.1,
-    'GOOGLE_MAPS_KEY': None,
+    'GOOGLE_MAPS_KEY': '',
     'HASHTAGS': None,
     'IGNORE_IVS': False,
     'IGNORE_RARITY': False,

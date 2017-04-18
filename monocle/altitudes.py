@@ -1,7 +1,7 @@
 import sys
 
 from asyncio import gather, CancelledError
-from statistics import mean, StatisticsError
+from statistics import mean
 
 from aiohttp import ClientSession
 from polyline import encode as polyencode
@@ -15,12 +15,16 @@ from .utils import dump_pickle, float_range, load_pickle, round_coords
 
 class Altitudes:
     """Manage altitudes"""
-    __slots__ = ('altitudes', 'changed', 'log')
+    __slots__ = ('altitudes', 'changed', 'fallback', 'log', 'mean')
 
     def __init__(self):
         self.log = get_logger('altitudes')
         self.changed = False
         self.load()
+        if len(self.altitudes) > 5:
+            self.fallback = self.average
+        else:
+            self.fallback = self.random
 
     async def get_all(self):
         self.log.info('Fetching all altitudes')
@@ -50,7 +54,7 @@ class Altitudes:
                 self.altitudes[coords] = r['elevation']
             if not self.altitudes:
                 self.log.error(response['error_message'])
-        except Exception as e:
+        except Exception:
             self.log.exception('Error fetching altitudes.')
 
     def get(self, point, randomize=uniform):
@@ -58,13 +62,15 @@ class Altitudes:
         alt = self.altitudes[point]
         return randomize(alt - 2.5, alt + 2.5)
 
-    async def fetch(self, point):
+    async def fetch(self, point, key=conf.GOOGLE_MAPS_KEY):
+        if not key:
+            return self.fallback()
         try:
             async with ClientSession(loop=LOOP) as session:
                 async with session.get(
                         'https://maps.googleapis.com/maps/api/elevation/json',
                         params={'locations': '{0[0]},{0[1]}'.format(point),
-                                'key': conf.GOOGLE_MAPS_KEY},
+                                'key': key},
                         timeout=10) as resp:
                     response = await resp.json(loads=json_loads)
                     altitude = response['results'][0]['elevation']
@@ -74,17 +80,23 @@ class Altitudes:
         except CancelledError:
             raise
         except Exception:
-            self.log.exception('Failed to fetch altitude for {}', point)
+            try:
+                self.log.error(response['error_message'])
+            except (KeyError, NameError):
+                self.log.error('Error fetching altitude for {}.', point)
             return self.fallback()
 
-    def fallback(self, randomize=uniform):
+    def average(self, randomize=uniform):
+        self.log.info('Fell back to average altitude.')
         try:
-            average = mean(self.altitudes.values())
-            self.log.warning('Fell back to average altitude.')
-            return randomize(average - 7.5, average + 7.5)
-        except StatisticsError:
-            self.log.warning('Fell back to random altitude.')
-            return randomize(*conf.ALT_RANGE)
+            return randomize(self.mean - 15.0, self.mean + 15.0)
+        except AttributeError:
+            self.mean = mean(self.altitudes.values())
+            return self.average()
+
+    def random(self, alt_range=conf.ALT_RANGE, randomize=uniform):
+        self.log.info('Fell back to random altitude.')
+        return randomize(*conf.ALT_RANGE)
 
     def load(self):
         try:
