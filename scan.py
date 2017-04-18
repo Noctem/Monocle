@@ -138,7 +138,7 @@ def cleanup(overseer, manager):
         LOOP.create_task(overseer.exit_progress())
         pending = gather(*Task.all_tasks(loop=LOOP), return_exceptions=True)
         try:
-            LOOP.run_until_complete(wait_for(*pending, 40))
+            LOOP.run_until_complete(wait_for(pending, 40))
         except TimeoutError as e:
             print('Coroutine completion timed out, moving on.')
         except Exception as e:
