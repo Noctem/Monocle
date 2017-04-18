@@ -1,6 +1,5 @@
 geopy>=1.11.0
 protobuf>=3.0.0
-requests>=2.10.0
 flask>=0.11.1
 gpsoauth>=0.4.0
 werkzeug>=0.11.15

@@ -1,7 +1,5 @@
-import requests
 import socket
 
-from polyline import encode as polyencode
 from os import mkdir
 from os.path import join, exists
 from sys import platform
@@ -9,7 +7,6 @@ from asyncio import sleep
 from math import sqrt
 from uuid import uuid4
 from enum import Enum
-from logging import getLogger
 from csv import DictReader
 from cyrandom import choice, shuffle, uniform
 from time import time
@@ -38,8 +35,6 @@ IPHONES = {'iPhone5,1': 'N41AP',
            'iPhone9,2': 'D11AP',
            'iPhone9,3': 'D101AP',
            'iPhone9,4': 'D111AP'}
-
-log = getLogger(__name__)
 
 
 class Units(Enum):
@@ -78,13 +73,13 @@ def get_start_coords(worker_no, grid=conf.GRID, bounds=bounds):
 
 
 def float_range(start, end, step):
-    """xrange for floats, also capable of iterating backwards"""
+    """range for floats, also capable of iterating backwards"""
     if start > end:
-        while end < start:
+        while end <= start:
             yield start
             start += -step
     else:
-        while start < end:
+        while start <= end:
             yield start
             start += step
 
@@ -106,67 +101,6 @@ def get_gains(dist=70):
 
 def round_coords(point, precision, _round=round):
     return _round(point[0], precision), _round(point[1], precision)
-
-
-def random_altitude():
-    return uniform(*conf.ALT_RANGE)
-
-
-def get_altitude(point):
-    params = {
-        'locations': 'enc:' + polyencode((point,)),
-        'key': conf.GOOGLE_MAPS_KEY
-    }
-    r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
-                     params=params).json()
-    return r['results'][0]['elevation']
-
-
-def get_altitudes(coords):
-    def chunks(l, n):
-        """Yield successive n-sized chunks from l."""
-        for i in range(0, len(l), n):
-            yield l[i:i + n]
-
-    if len(coords) > 300:
-        altitudes = {}
-        for chunk in chunks(coords, 300):
-            altitudes.update(get_altitudes(chunk))
-        return altitudes
-    else:
-        try:
-            params = {'locations': 'enc:' + polyencode(coords)}
-            if conf.GOOGLE_MAPS_KEY:
-                params['key'] = conf.GOOGLE_MAPS_KEY
-            r = requests.get('https://maps.googleapis.com/maps/api/elevation/json',
-                             params=params).json()
-
-            return {round_coords((x['location']['lat'], x['location']['lng']), conf.ALT_PRECISION):
-                    x['elevation'] for x in r['results']}
-        except Exception:
-            log.exception('Error fetching altitudes.')
-            return {}
-
-
-def get_altitude_coords(bounds):
-    coords = []
-    if bounds.multi:
-        for b in bounds.polygons:
-            coords.extend(get_altitude_coords(b))
-        return coords
-    precision = conf.ALT_PRECISION
-    gain = 1 / (10 ** precision)
-    west, east = bounds.west, bounds.east
-    bound = bool(bounds)
-    for lat in float_range(bounds.south, bounds.north, gain):
-        for lon in float_range(west, east, gain):
-            point = lat, lon
-            coords.append(round_coords(point, precision))
-    return coords
-
-
-def get_all_altitudes():
-    return get_altitudes(get_altitude_coords(bounds))
 
 
 def get_bootstrap_points(bounds):

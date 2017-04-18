@@ -269,7 +269,6 @@ class Spawnpoint(Base):
     despawn_time = Column(SmallInteger, index=True)
     lat = Column(FLOAT_TYPE)
     lon = Column(FLOAT_TYPE)
-    alt = Column(SmallInteger)
     updated = Column(Integer, index=True)
     duration = Column(TINY_TYPE)
     failures = Column(TINY_TYPE)
@@ -388,7 +387,6 @@ def add_spawnpoint(session, pokemon):
 
         existing.despawn_time = new_time
     else:
-        altitude = spawns.get_altitude(point)
         widest = get_widest_range(session, spawn_id)
 
         duration = 60 if widest and widest > 1800 else None
@@ -398,7 +396,6 @@ def add_spawnpoint(session, pokemon):
             despawn_time=new_time,
             lat=pokemon['lat'],
             lon=pokemon['lon'],
-            alt=altitude,
             updated=now,
             duration=duration,
             failures=0
@@ -412,14 +409,12 @@ def add_mystery_spawnpoint(session, pokemon):
     if point in spawns.unknown or session.query(exists().where(
             Spawnpoint.spawn_id == spawn_id)).scalar():
         return
-    altitude = spawns.get_altitude(point)
 
     session.add(Spawnpoint(
         spawn_id=spawn_id,
         despawn_time=None,
         lat=pokemon['lat'],
         lon=pokemon['lon'],
-        alt=altitude,
         updated=0,
         duration=None,
         failures=0

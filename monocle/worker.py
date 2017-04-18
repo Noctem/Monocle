@@ -14,7 +14,7 @@ from pogeo import get_distance
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import round_coords, load_pickle, get_device_info, get_spawn_id, get_start_coords, Units, randomize_point
 from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS
-from . import avatar, bounds, db_proc, spawns, sanitized as conf
+from . import altitudes, avatar, bounds, db_proc, spawns, sanitized as conf
 
 if conf.NOTIFY:
     from .notification import Notifier
@@ -595,7 +595,10 @@ class Worker:
         Also is capable of restarting in case an error occurs.
         """
         try:
-            self.altitude = spawns.get_altitude(point, randomize=5)
+            try:
+                self.altitude = altitudes.get(point)
+            except KeyError:
+                self.altitude = await altitudes.fetch(point)
             self.location = point
             self.api.set_position(*self.location, self.altitude)
             if not self.authenticated:

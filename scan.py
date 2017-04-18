@@ -2,11 +2,11 @@
 
 import monocle.sanitized as conf
 
-import asyncio
+from asyncio import gather, set_event_loop_policy, Task, wait_for, TimeoutError
 try:
     if conf.UVLOOP:
         from uvloop import EventLoopPolicy
-        asyncio.set_event_loop_policy(EventLoopPolicy())
+        set_event_loop_policy(EventLoopPolicy())
 except ImportError:
     pass
 
@@ -18,9 +18,7 @@ from logging import getLogger, basicConfig, WARNING, INFO
 from logging.handlers import RotatingFileHandler
 from os.path import exists, join
 from sys import platform
-from concurrent.futures import TimeoutError
-
-import time
+from time import monotonic, sleep
 
 from sqlalchemy.exc import DBAPIError
 from aiopogo import close_sessions, activate_hash_server
@@ -30,7 +28,7 @@ from monocle.utils import get_address, dump_pickle
 from monocle.worker import Worker
 from monocle.overseer import Overseer
 from monocle.db import FORT_CACHE
-from monocle import spawns, db_proc
+from monocle import altitudes, db_proc, spawns
 
 
 class AccountManager(BaseManager):
@@ -40,7 +38,7 @@ class AccountManager(BaseManager):
 class CustomQueue(Queue):
     def full_wait(self, maxsize=0, timeout=None):
         '''Block until queue size falls below maxsize'''
-        starttime = time.monotonic()
+        starttime = monotonic()
         with self.not_full:
             if maxsize > 0:
                 if timeout is None:
@@ -49,14 +47,14 @@ class CustomQueue(Queue):
                 elif timeout < 0:
                     raise ValueError("'timeout' must be a non-negative number")
                 else:
-                    endtime = time.monotonic() + timeout
+                    endtime = monotonic() + timeout
                     while self._qsize() >= maxsize:
-                        remaining = endtime - time.monotonic()
+                        remaining = endtime - monotonic()
                         if remaining <= 0.0:
                             raise Full
                         self.not_full.wait(remaining)
             self.not_empty.notify()
-        endtime = time.monotonic()
+        endtime = monotonic()
         return endtime - starttime
 
 
@@ -138,37 +136,32 @@ def cleanup(overseer, manager):
         print('Finishing tasks...')
 
         LOOP.create_task(overseer.exit_progress())
-        pending = asyncio.Task.all_tasks(loop=LOOP)
-        gathered = asyncio.gather(*pending, return_exceptions=True)
+        pending = gather(*Task.all_tasks(loop=LOOP), return_exceptions=True)
         try:
-            LOOP.run_until_complete(asyncio.wait_for(gathered, 40))
+            LOOP.run_until_complete(wait_for(*pending, 40))
         except TimeoutError as e:
             print('Coroutine completion timed out, moving on.')
         except Exception as e:
             log = get_logger('cleanup')
             log.exception('A wild {} appeared during exit!', e.__class__.__name__)
 
+        db_proc.stop()
         overseer.refresh_dict()
 
         print('Dumping pickles...')
         dump_pickle('accounts', ACCOUNTS)
         FORT_CACHE.pickle()
+        altitudes.pickle()
         if conf.CACHE_CELLS:
             dump_pickle('cells', Worker.cells)
 
-        db_proc.stop()
-        print("Updating spawns pickle...")
-        try:
-            spawns.update()
-            spawns.pickle()
-        except Exception as e:
-            log.warning('A wild {} appeared while updating spawns during exit!', e.__class__.__name__)
+        spawns.pickle()
         while not db_proc.queue.empty():
             pending = db_proc.queue.qsize()
             # Spaces at the end are important, as they clear previously printed
             # output - \r doesn't clean whole line
             print('{} DB items pending     '.format(pending), end='\r')
-            time.sleep(.5)
+            sleep(.5)
     finally:
         print('Closing pipes, sessions, and event loop...')
         manager.shutdown()

@@ -2,13 +2,12 @@ import sys
 
 from collections import deque, OrderedDict
 from time import time
-from cyrandom import uniform
 from itertools import chain
 from hashlib import sha256
 
 from . import bounds, db, sanitized as conf
 from .shared import get_logger
-from .utils import dump_pickle, load_pickle, get_current_hour, time_until_time, round_coords, get_altitude, get_all_altitudes, random_altitude
+from .utils import dump_pickle, load_pickle, get_current_hour, time_until_time
 
 
 class BaseSpawns:
@@ -24,10 +23,7 @@ class BaseSpawns:
         # {(lat, lon)}
         self.unknown = set()
 
-        # {(rounded_lat, rounded_lon): altitude}
-        self.altitudes = {}
-
-        self.class_version = 2
+        self.class_version = 3
         self.db_hash = sha256(conf.DB_ENGINE.encode()).digest()
         self.log = get_logger('spawns')
 
@@ -38,12 +34,6 @@ class BaseSpawns:
         return len(self.despawn_times) > 0
 
     def update(self):
-        if not self.altitudes:
-            alts = True
-            precision = conf.ALT_PRECISION
-        else:
-            alts = False
-
         bound = bool(bounds)
         last_migration = conf.LAST_MIGRATION
 
@@ -62,9 +52,6 @@ class BaseSpawns:
                 if bound and point not in bounds:
                     continue
 
-                if alts and spawn.alt is not None:
-                    self.altitudes[round_coords(point, precision)] = spawn.alt
-
                 if not spawn.updated or spawn.updated <= last_migration:
                     self.unknown.add(point)
                     continue
@@ -77,30 +64,6 @@ class BaseSpawns:
                 self.despawn_times[spawn.spawn_id] = spawn.despawn_time
                 known[point] = spawn.spawn_id, spawn_time
         self.known = OrderedDict(sorted(known.items(), key=lambda k: k[1][1]))
-
-        if not self.altitudes:
-            self.altitudes = get_all_altitudes()
-
-    def get_altitude(self, point, randomize=0):
-        point = round_coords(point, conf.ALT_PRECISION)
-        try:
-            alt = self.altitudes[point]
-            if randomize:
-                alt = uniform(alt - randomize, alt + randomize)
-        except KeyError:
-            try:
-                alt = get_altitude(point)
-                self.altitudes[point] = alt
-            except IndexError as e:
-                self.log.warning('Empty altitude response for {}, falling back to random.', point)
-                alt = random_altitude()
-            except KeyError as e:
-                self.log.error('Invalid altitude response for {}, falling back to random.', point)
-                alt = random_altitude()
-            except Exception as e:
-                self.log.error('{} while fetching altitude for {}, falling back to random.', e.__class__.__name__, point)
-                alt = random_altitude()
-        return alt
 
     def after_last(self):
         try:
@@ -128,9 +91,6 @@ class BaseSpawns:
                     state['bounds_hash'] == hash(bounds),
                     state['last_migration'] == conf.LAST_MIGRATION)):
                 self.__dict__.update(state)
-                if state['alt_precision'] != conf.ALT_PRECISION:
-                    self.log.warning('ALT_PRECISION changed, replacing altitudes.')
-                    self.altitudes = get_all_altitudes()
                 return True
             else:
                 self.log.warning('Configuration changed, reloading spawns from DB.')
@@ -145,7 +105,6 @@ class BaseSpawns:
         del state['log']
         state.pop('cells_count', None)
         state['bounds_hash'] = hash(bounds)
-        state['alt_precision'] = conf.ALT_PRECISION
         state['last_migration'] = conf.LAST_MIGRATION
         dump_pickle('spawns', state)
 
