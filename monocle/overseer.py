@@ -7,7 +7,7 @@ from collections import deque
 from itertools import dropwhile
 from time import time, monotonic
 
-from aiopogo.hash_server import HashServer
+from aiopogo import HashServer
 from sqlalchemy.exc import OperationalError
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE

@@ -39,7 +39,7 @@ setup(
         'mysql': ['mysqlclient>=1.3'],
         'postgres': ['psycopg2>=2.6'],
         'images': ['pycairo>=1.10.0'],
-        'socks': ['aiosocks>=0.1.7'],
+        'socks': ['aiosocks>=0.2.2'],
         'sanic': ['sanic>=0.4', 'asyncpg>=0.8', 'ujson>=1.35']
     }
 )

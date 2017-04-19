@@ -6,9 +6,8 @@ from itertools import cycle
 from sys import exit
 from distutils.version import StrictVersion
 
-from aiopogo import PGoApi, json_loads, exceptions as ex
+from aiopogo import PGoApi, HashServer, json_loads, exceptions as ex
 from aiopogo.auth_ptc import AuthPtc
-from aiopogo.hash_server import HashServer
 from pogeo import get_distance
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE

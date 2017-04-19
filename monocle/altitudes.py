@@ -122,7 +122,7 @@ class Altitudes:
             for coords in pickled_alts.keys():
                 if coords not in bounds:
                     to_remove.append(coords)
-            for keys in to_remove:
+            for key in to_remove:
                 del pickled_alts[key]
 
             self.altitudes = pickled_alts
