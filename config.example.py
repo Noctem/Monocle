@@ -213,6 +213,8 @@ FAILURES_ALLOWED = 2
 
 # Only for use with web_sanic (requires PostgreSQL)
 #DB = {'host': '127.0.0.1', 'user': 'monocle_role', 'password': 'pik4chu', 'port': '5432', 'database': 'monocle'}
+# Only for use with web_sanic_mysql
+#DB = {'host': '127.0.0.1', 'user': 'monocle_role', 'password': 'pik4chu', 'port': '5432', 'db': 'monocle'}
 
 # Disable to use Python's event loop even if uvloop is installed
 #UVLOOP = True
