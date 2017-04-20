@@ -145,7 +145,7 @@ class Altitudes:
         coords = []
         if bounds.multi:
             for b in bounds.polygons:
-                coords.extend(get_coords(b, existing, precision))
+                coords.extend(self.get_coords(b))
             return coords
         step = 1 / (10 ** precision)
         west, east = bounds.west, bounds.east
