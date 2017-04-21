@@ -797,9 +797,9 @@ class Worker:
 
             if more_points:
                 try:
-                    for point in map_cell['spawn_points']:
+                    for p in map_cell['spawn_points']:
                         points_seen += 1
-                        p = point['latitude'], point['longitude']
+                        p = p['latitude'], p['longitude']
                         if spawns.have_point(p) or p not in bounds:
                             continue
                         spawns.cell_points.add(p)

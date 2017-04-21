@@ -26,7 +26,7 @@ setup(
         'aiopogo>=1.8.0',
         'polyline>=1.3.1',
         'aiohttp>=2.0.7,<2.1',
-        'pogeo>=0.3',
+        'pogeo==0.3.*',
         'cyrandom>=0.1.2'
     ],
     extras_require={
