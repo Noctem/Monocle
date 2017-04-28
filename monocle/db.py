@@ -3,6 +3,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from enum import Enum
 from time import time, mktime
+from hashlib import sha256
 
 from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, ForeignKey, UniqueConstraint, create_engine, cast, func, desc, asc, and_, exists
 from sqlalchemy.orm import sessionmaker, relationship
@@ -14,6 +15,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from . import bounds, spawns, db_proc, sanitized as conf
 from .utils import time_until_time, dump_pickle, load_pickle
 from .shared import call_at, get_logger
+
+contains_spawn = bounds.contains_cellid if conf.SPAWN_ID_INT else bounds.contains_token
 
 try:
     assert conf.LAST_MIGRATION < time()
@@ -175,7 +178,7 @@ class FortCache:
 
     def pickle(self):
         state = self.__dict__.copy()
-        state['db_hash'] = spawns.db_hash
+        state['db_hash'] = DB_HASH
         state['bounds_hash'] = hash(bounds)
         dump_pickle('forts', state)
 
@@ -183,7 +186,7 @@ class FortCache:
         try:
             state = load_pickle('forts', raise_exception=True)
             if all((state['class_version'] == self.class_version,
-                    state['db_hash'] == spawns.db_hash,
+                    state['db_hash'] == DB_HASH,
                     state['bounds_hash'] == hash(bounds))):
                 self.__dict__.update(state)
         except (FileNotFoundError, TypeError, KeyError):
@@ -199,7 +202,7 @@ Base = declarative_base()
 _engine = create_engine(conf.DB_ENGINE)
 Session = sessionmaker(bind=_engine)
 DB_TYPE = _engine.name
-
+DB_HASH = sha256(conf.DB_ENGINE.encode()).digest()
 
 if conf.REPORT_SINCE:
     SINCE_TIME = mktime(conf.REPORT_SINCE.timetuple())
@@ -216,8 +219,6 @@ class Sighting(Base):
     spawn_id = Column(ID_TYPE)
     expire_timestamp = Column(Integer, index=True)
     encounter_id = Column(HUGE_TYPE, index=True)
-    lat = Column(FLOAT_TYPE)
-    lon = Column(FLOAT_TYPE)
     atk_iv = Column(TINY_TYPE)
     def_iv = Column(TINY_TYPE)
     sta_iv = Column(TINY_TYPE)
@@ -240,8 +241,6 @@ class Mystery(Base):
     pokemon_id = Column(TINY_TYPE)
     spawn_id = Column(ID_TYPE, index=True)
     encounter_id = Column(HUGE_TYPE, index=True)
-    lat = Column(FLOAT_TYPE)
-    lon = Column(FLOAT_TYPE)
     first_seen = Column(Integer, index=True)
     first_seconds = Column(SmallInteger)
     last_seconds = Column(SmallInteger)
@@ -267,8 +266,6 @@ class Spawnpoint(Base):
     id = Column(Integer, primary_key=True)
     spawn_id = Column(ID_TYPE, unique=True, index=True)
     despawn_time = Column(SmallInteger, index=True)
-    lat = Column(FLOAT_TYPE)
-    lon = Column(FLOAT_TYPE)
     updated = Column(Integer, index=True)
     duration = Column(TINY_TYPE)
     failures = Column(TINY_TYPE)
@@ -372,7 +369,7 @@ def add_spawnpoint(session, pokemon):
         .first()
     now = round(time())
     point = pokemon['lat'], pokemon['lon']
-    spawns.add_known(spawn_id, new_time, point)
+    spawns.add_known(spawn_id, new_time)
     if existing:
         existing.updated = now
         existing.failures = 0
@@ -405,8 +402,7 @@ def add_spawnpoint(session, pokemon):
 def add_mystery_spawnpoint(session, pokemon):
     # Check if the same entry already exists
     spawn_id = pokemon['spawn_id']
-    point = pokemon['lat'], pokemon['lon']
-    if point in spawns.unknown or session.query(exists().where(
+    if spawn_id in spawns.unknown or session.query(exists().where(
             Spawnpoint.spawn_id == spawn_id)).scalar():
         return
 
@@ -420,8 +416,8 @@ def add_mystery_spawnpoint(session, pokemon):
         failures=0
     ))
 
-    if point in bounds:
-        spawns.add_unknown(point)
+    if Location(pokemon['lat'], pokemon['lon']) in bounds:
+        spawns.unknowns.add(spawn_id)
 
 
 def add_mystery(session, pokemon):

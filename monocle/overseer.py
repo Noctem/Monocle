@@ -16,6 +16,12 @@ from .shared import get_logger, LOOP, run_threaded, ACCOUNTS
 from . import bounds, db_proc, spawns, sanitized as conf
 from .worker import Worker
 
+if conf.SPAWN_ID_INT:
+    from pogeo import diagonal_distance, cellid_to_location as spawnid_to_loc
+else:
+    from pogeo import diagonal_distance, token_to_location as spawnid_to_loc
+
+
 ANSI = '\x1b[2J\x1b[H'
 if platform == 'win32':
     try:
@@ -170,11 +176,11 @@ class Overseer:
 
         self.update_coroutines_count()
         self.counts = (
-            'Known spawns: {}, unknown: {}, more: {}\n'
+            'Known spawns: {}, unknown: {}\n'
             '{} workers, {} coroutines\n'
             'sightings cache: {}, mystery cache: {}, DB queue: {}\n'
         ).format(
-            len(spawns), len(spawns.unknown), spawns.cells_count,
+            len(spawns), len(spawns.unknown),
             count, self.coroutines_count,
             len(SIGHTING_CACHE), len(MYSTERY_CACHE), len(db_proc)
         )
@@ -316,12 +322,12 @@ class Overseer:
         now = time() % 3600
         closest = None
 
-        for spawn_id, spawn_time in spawns.known.values():
+        for spawn_id, spawn_time in spawns.known.items():
             time_diff = now - spawn_time
-            if 0 < time_diff < smallest_diff:
+            if 0.0 < time_diff < smallest_diff:
                 smallest_diff = time_diff
                 closest = spawn_id
-            if smallest_diff < 3:
+            if smallest_diff < 3.0:
                 break
         return closest
 
@@ -358,7 +364,7 @@ class Overseer:
                 return
 
         update_spawns = False
-        self.mysteries = spawns.mystery_gen()
+        self.mysteries = iter(spawns.unknown.copy())
         while True:
             try:
                 await self._launch(update_spawns)
@@ -383,7 +389,7 @@ class Overseer:
             start_point = self.get_start_point()
             if start_point and not spawns.after_last():
                 spawns_iter = dropwhile(
-                    lambda s: s[1][0] != start_point, spawns.items())
+                    lambda s: s[0] != start_point, spawns.items())
             else:
                 spawns_iter = iter(spawns.items())
 
@@ -393,7 +399,7 @@ class Overseer:
 
         captcha_limit = conf.MAX_CAPTCHAS
         skip_spawn = conf.SKIP_SPAWN
-        for point, (spawn_id, spawn_seconds) in spawns_iter:
+        for spawn_id, spawn_seconds in spawns_iter:
             try:
                 if self.captcha_queue.qsize() > captcha_limit:
                     self.paused = True
@@ -408,15 +414,15 @@ class Overseer:
             # positive = already happened
             time_diff = time() - spawn_time
 
-            while time_diff < 0.5:
+            while time_diff < 0.4:
                 try:
-                    mystery_point = next(self.mysteries)
+                    mystery_id = next(self.mysteries)
 
                     await self.coroutine_semaphore.acquire()
-                    LOOP.create_task(self.try_point(mystery_point))
+                    LOOP.create_task(self.try_point(mystery_id))
                 except StopIteration:
                     if self.next_mystery_reload < monotonic():
-                        self.mysteries = spawns.mystery_gen()
+                        self.mysteries = iter(spawns.unknown.copy())
                         self.next_mystery_reload = monotonic() + conf.RESCAN_UNKNOWN
                     else:
                         await sleep(min(spawn_time - time() + .5, self.next_mystery_reload - monotonic()), loop=LOOP)
@@ -499,11 +505,11 @@ class Overseer:
         tasks = (bootstrap_try(x) for x in get_bootstrap_points(bounds))
         await gather(*tasks, loop=LOOP)
 
-    async def try_point(self, point, spawn_time=None, spawn_id=None):
+    async def try_spawn(self, spawn_id, spawn_time=None, _jitter=diagonal_distance(bounds.center, 50.0 if conf.ENCOUNTER else 65.0)):
         try:
-            point = randomize_point(point)
-            skip_time = monotonic() + (conf.GIVE_UP_KNOWN if spawn_time else conf.GIVE_UP_UNKNOWN)
-            worker = await self.best_worker(point, skip_time)
+            location = spawnid_to_loc(spawn_id)
+            location.jitter(_jitter)
+            worker = await self.best_worker(location, monotonic() + (conf.GIVE_UP_KNOWN if spawn_time else conf.GIVE_UP_UNKNOWN))
             if not worker:
                 if spawn_time:
                     self.skipped += 1
@@ -521,8 +527,7 @@ class Overseer:
         finally:
             self.coroutine_semaphore.release()
 
-    async def best_worker(self, point, skip_time):
-        good_enough = conf.GOOD_ENOUGH
+    async def best_worker(self, location, skip_time, _good_enough=conf.GOOD_ENOUGH):
         while self.running:
             gen = (w for w in self.workers if not w.busy.locked())
             try:
@@ -535,7 +540,7 @@ class Overseer:
                 if speed < lowest_speed:
                     lowest_speed = speed
                     worker = w
-                    if speed < good_enough:
+                    if speed < _good_enough:
                         break
             if lowest_speed < conf.SPEED_LIMIT:
                 worker.speed = lowest_speed
