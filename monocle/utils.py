@@ -3,17 +3,14 @@ import socket
 from os import mkdir
 from os.path import join, exists
 from sys import platform
-from asyncio import sleep
-from math import sqrt
 from uuid import uuid4
 from enum import Enum
 from csv import DictReader
-from cyrandom import choice, shuffle, uniform
+from cyrandom import choice
 from time import time
 from pickle import dump as pickle_dump, load as pickle_load, HIGHEST_PROTOCOL
 
-from geopy import Point
-from geopy.distance import distance
+from pogeo import Location
 from aiopogo import utilities as pgoapi_utils
 from pogeo import get_distance
 
@@ -61,69 +58,15 @@ def percentage_split(seq, percentages):
 
 def get_start_coords(worker_no, grid=conf.GRID, bounds=bounds):
     """Returns center of square for given worker"""
-    per_column = int((grid[0] * grid[1]) / grid[0])
+    per_column = (grid[0] * grid[1]) // grid[0]
 
     column = worker_no % per_column
-    row = int(worker_no / per_column)
+    row = worker_no // per_column
     part_lat = (bounds.south - bounds.north) / grid[0]
     part_lon = (bounds.east - bounds.west) / grid[1]
     start_lat = bounds.north + part_lat * row + part_lat / 2
     start_lon = bounds.west + part_lon * column + part_lon / 2
-    return start_lat, start_lon
-
-
-def float_range(start, end, step):
-    """range for floats, also capable of iterating backwards"""
-    if start > end:
-        while end <= start:
-            yield start
-            start += -step
-    else:
-        while start <= end:
-            yield start
-            start += step
-
-
-def get_gains(dist=70):
-    """Returns lat and lon gain
-
-    Gain is space between circles.
-    """
-    start = Point(*bounds.center)
-    base = dist * sqrt(3)
-    height = base * sqrt(3) / 2
-    dis_a = distance(meters=base)
-    dis_h = distance(meters=height)
-    lon_gain = dis_a.destination(point=start, bearing=90).longitude
-    lat_gain = dis_h.destination(point=start, bearing=0).latitude
-    return abs(start.latitude - lat_gain), abs(start.longitude - lon_gain)
-
-
-def round_coords(point, precision, _round=round):
-    return _round(point[0], precision), _round(point[1], precision)
-
-
-def get_bootstrap_points(bounds):
-    coords = []
-    if bounds.multi:
-        for b in bounds.polygons:
-            coords.extend(get_bootstrap_points(b))
-        return coords
-    lat_gain, lon_gain = get_gains(conf.BOOTSTRAP_RADIUS)
-    west, east = bounds.west, bounds.east
-    bound = bool(bounds)
-    for map_row, lat in enumerate(
-        float_range(bounds.south, bounds.north, lat_gain)
-    ):
-        row_start_lon = west
-        if map_row % 2 != 0:
-            row_start_lon -= 0.5 * lon_gain
-        for lon in float_range(row_start_lon, east, lon_gain):
-            point = lat, lon
-            if not bound or point in bounds:
-                coords.append(point)
-    shuffle(coords)
-    return coords
+    return Location(start_lat, start_lon)
 
 
 def get_device_info(account):
@@ -232,14 +175,6 @@ def accounts_from_csv(new_accounts, pickled_accounts):
     return accounts
 
 
-if conf.SPAWN_ID_INT:
-    def get_spawn_id(pokemon, _int=int):
-        return _int(pokemon['spawn_point_id'], 16)
-else:
-    def get_spawn_id(pokemon):
-        return pokemon['spawn_point_id']
-
-
 def get_current_hour(now=None, _time=time):
     now = now or _time()
     return round(now - (now % 3600))
@@ -320,12 +255,3 @@ def load_accounts_csv():
         for row in reader:
             accounts[row['username']] = dict(row)
     return accounts
-
-
-def randomize_point(point, amount=0.0003, randomize=uniform):
-    '''Randomize point, by up to ~47 meters by default.'''
-    lat, lon = point
-    return (
-        randomize(lat - amount, lat + amount),
-        randomize(lon - amount, lon + amount)
-    )

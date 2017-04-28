@@ -11,15 +11,15 @@ from aiopogo import HashServer
 from sqlalchemy.exc import OperationalError
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
-from .utils import get_current_hour, dump_pickle, get_start_coords, get_bootstrap_points, randomize_point, best_factors, percentage_split
-from .shared import get_logger, LOOP, run_threaded, ACCOUNTS
+from .utils import get_current_hour, dump_pickle, get_start_coords, best_factors, percentage_split
+from .shared import ACCOUNTS, get_logger, LOOP, run_threaded
 from . import bounds, db_proc, spawns, sanitized as conf
 from .worker import Worker
 
 if conf.SPAWN_ID_INT:
-    from pogeo import diagonal_distance, cellid_to_location as spawnid_to_loc
+    from pogeo import diagonal_distance, level_edge, cellid_to_location as spawnid_to_loc
 else:
-    from pogeo import diagonal_distance, token_to_location as spawnid_to_loc
+    from pogeo import diagonal_distance, level_edge, token_to_location as spawnid_to_loc
 
 
 ANSI = '\x1b[2J\x1b[H'
@@ -37,7 +37,7 @@ if platform == 'win32':
         from os import system
         ANSI = ''
 
-BAD_STATUSES = (
+BAD_STATUSES = {
     'FAILED LOGIN',
     'EXCEPTION',
     'NOT AUTHENTICATED',
@@ -57,7 +57,7 @@ BAD_STATUSES = (
     'HASHING ERROR',
     'PROXY ERROR',
     'TIMEOUT'
-)
+}
 
 
 class Overseer:
@@ -77,6 +77,7 @@ class Overseer:
         self.idle_seconds = 0
         self.log.info('Overseer initialized')
         self.pokemon_found = ''
+        self.jitter_lat, self.jitter_lon = 
 
     def start(self, status_bar):
         self.captcha_queue = self.manager.captcha_queue()
@@ -255,8 +256,8 @@ class Overseer:
         ]
 
         try:
-            seen = Worker.g['seen']
-            captchas = Worker.g['captchas']
+            seen = Worker.seen
+            captchas = Worker.captchas
             output.append('Seen per visit: {v:.2f}, per minute: {m:.0f}'.format(
                 v=seen / self.visits, m=seen / (seconds_since_start / 60)))
 
@@ -314,7 +315,7 @@ class Overseer:
             if w.start_time < earliest:
                 worker = w
                 earliest = w.start_time
-        minutes = ((time() * 1000) - earliest) / 60000
+        minutes = (monotonic() - earliest) / 60.0
         return worker, minutes
 
     def get_start_point(self):
@@ -336,6 +337,7 @@ class Overseer:
             try:
                 await run_threaded(spawns.update)
                 LOOP.create_task(run_threaded(spawns.pickle))
+                return
             except OperationalError as e:
                 self.log.exception('Operational error while trying to update spawns.')
                 if initial:
@@ -346,8 +348,6 @@ class Overseer:
             except Exception as e:
                 self.log.exception('A wild {} appeared while updating spawns!', e.__class__.__name__)
                 await sleep(15, loop=LOOP)
-            else:
-                break
 
     async def launch(self, bootstrap, pickle):
         exceptions = 0
@@ -419,7 +419,7 @@ class Overseer:
                     mystery_id = next(self.mysteries)
 
                     await self.coroutine_semaphore.acquire()
-                    LOOP.create_task(self.try_point(mystery_id))
+                    LOOP.create_task(self.try_spawn(mystery_id, skip_time=conf.GIVE_UP_UNKNOWN))
                 except StopIteration:
                     if self.next_mystery_reload < monotonic():
                         self.mysteries = iter(spawns.unknown.copy())
@@ -436,7 +436,7 @@ class Overseer:
                 continue
 
             await self.coroutine_semaphore.acquire()
-            LOOP.create_task(self.try_point(point, spawn_time, spawn_id))
+            LOOP.create_task(self.try_spawn(spawn_id, spawn_time))
 
     async def try_again(self, point):
         async with self.coroutine_semaphore:
@@ -465,7 +465,7 @@ class Overseer:
         self.log.warning('Starting bootstrap phase 3.')
         unknowns = list(spawns.unknown)
         shuffle(unknowns)
-        tasks = (self.try_again(point) for point in unknowns)
+        tasks = (self.try_again(point) for point in map(spawnid_to_loc, unknowns))
         await gather(*tasks, loop=LOOP)
         self.log.warning('Finished bootstrapping.')
 
@@ -494,22 +494,25 @@ class Overseer:
     async def bootstrap_two(self):
         async def bootstrap_try(point):
             async with self.coroutine_semaphore:
-                randomized = randomize_point(point, randomization)
-                LOOP.call_later(1790, LOOP.create_task, self.try_again(randomized))
+                point.jitter(lat_amount, lon_amount)
+                LOOP.call_later(1790, LOOP.create_task, self.try_again(point))
                 worker = await self.best_worker(point, False)
                 async with worker.busy:
                     self.visits += await worker.bootstrap_visit(point)
 
         # randomize to within ~140m of the nearest neighbor on the second visit
-        randomization = conf.BOOTSTRAP_RADIUS / 155555 - 0.00045
-        tasks = (bootstrap_try(x) for x in get_bootstrap_points(bounds))
+        if conf.BOOTSTRAP_LEVEL < 17:
+            lat_amount, lon_amount = diagonal_distance(bounds.center, level_edge(conf.BOOSTRAP_LEVEL) - 140.0)
+        else:
+            lat_amount = lon_amount = 0.0
+        tasks = (bootstrap_try(p) for p in bounds.get_points(bootstrap_level))
         await gather(*tasks, loop=LOOP)
 
-    async def try_spawn(self, spawn_id, spawn_time=None, _jitter=diagonal_distance(bounds.center, 50.0 if conf.ENCOUNTER else 65.0)):
+    async def try_spawn(self, spawn_id, spawn_time=None, skip_time=conf.GIVE_UP_KNOWN, _jitter = diagonal_distance(bounds.center, 50.0 if conf.ENCOUNTER else 65.0)):
         try:
             location = spawnid_to_loc(spawn_id)
-            location.jitter(_jitter)
-            worker = await self.best_worker(location, monotonic() + (conf.GIVE_UP_KNOWN if spawn_time else conf.GIVE_UP_UNKNOWN))
+            location.jitter(*_jitter)
+            worker = await self.best_worker(location, monotonic() + skip_time)
             if not worker:
                 if spawn_time:
                     self.skipped += 1
@@ -523,11 +526,11 @@ class Overseer:
         except CancelledError:
             raise
         except Exception:
-            self.log.exception('An exception occurred in try_point')
+            self.log.exception('An exception occurred in try_spawn')
         finally:
             self.coroutine_semaphore.release()
 
-    async def best_worker(self, location, skip_time, _good_enough=conf.GOOD_ENOUGH):
+    async def best_worker(self, location, skip_time, _enough=conf.GOOD_ENOUGH, _limit=conf.SPEED_LIMIT):
         while self.running:
             gen = (w for w in self.workers if not w.busy.locked())
             try:
@@ -538,11 +541,12 @@ class Overseer:
             for w in gen:
                 speed = w.travel_speed(point)
                 if speed < lowest_speed:
+                    if speed <= _enough:
+                        w.speed = speed
+                        return w
                     lowest_speed = speed
                     worker = w
-                    if speed < _good_enough:
-                        break
-            if lowest_speed < conf.SPEED_LIMIT:
+            if lowest_speed <= _limit:
                 worker.speed = lowest_speed
                 return worker
             if skip_time and monotonic() > skip_time:
