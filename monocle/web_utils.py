@@ -5,20 +5,9 @@ from time import time
 
 from monocle import sanitized as conf
 from monocle.db import get_forts, Pokestop, session_scope, Sighting, Spawnpoint
-from monocle.utils import Units, get_address
+from monocle.utils import get_address
 from monocle.names import DAMAGE, MOVES, POKEMON
 
-if conf.MAP_WORKERS:
-    try:
-        UNIT = getattr(Units, conf.SPEED_UNIT.lower())
-        if UNIT is Units.miles:
-            UNIT_STRING = "MPH"
-        elif UNIT is Units.kilometers:
-            UNIT_STRING = "KMH"
-        elif UNIT is Units.meters:
-            UNIT_STRING = "m/h"
-    except AttributeError:
-        UNIT_STRING = "MPH"
 
 def get_args():
     parser = ArgumentParser()
@@ -73,15 +62,15 @@ class Workers:
 
 def get_worker_markers(workers):
     return [{
-        'lat': lat,
-        'lon': lon,
+        'lat': location[0],
+        'lon': location[1],
         'worker_no': worker_no,
         'time': datetime.fromtimestamp(timestamp).strftime('%I:%M:%S %p'),
-        'speed': '{:.1f}{}'.format(speed, UNIT_STRING),
+        'speed': '{:.1f}m/s'.format(speed),
         'total_seen': total_seen,
         'visits': visits,
         'seen_here': seen_here
-    } for worker_no, ((lat, lon), timestamp, speed, total_seen, visits, seen_here) in workers.data]
+    } for worker_no, (location, timestamp, speed, total_seen, visits, seen_here) in workers.data]
 
 
 def sighting_to_marker(pokemon, names=POKEMON, moves=MOVES, damage=DAMAGE):

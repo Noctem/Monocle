@@ -153,7 +153,8 @@ def cleanup(overseer, manager):
         FORT_CACHE.pickle()
         altitudes.pickle()
         if conf.CACHE_CELLS:
-            dump_pickle('cells', Worker.cells)
+            from monocle.worker import CELL_CACHE
+            dump_pickle('cellcache', CELL_CACHE)
 
         spawns.pickle()
         while not db_proc.queue.empty():

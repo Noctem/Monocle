@@ -58,7 +58,7 @@ SIMULTANEOUS_SIMULATION = 10
 # Immediately select workers whose speed are below (SPEED_UNIT)p/h instead of
 # continuing to try to find the worker with the lowest speed.
 # May increase clustering if you have a high density of workers.
-GOOD_ENOUGH = 0.1
+GOOD_ENOUGH = 1.0
 
 # Seconds to sleep after failing to find an eligible worker before trying again.
 SEARCH_SLEEP = 2.5

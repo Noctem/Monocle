@@ -8,30 +8,21 @@ from distutils.version import StrictVersion
 
 from aiopogo import PGoApi, HashServer, json_loads, exceptions as ex
 from aiopogo.auth_ptc import AuthPtc
-from pogeo import get_distance, get_cell_ids
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
-from .utils import load_pickle, get_device_info, get_start_coords, Units
+from .utils import load_pickle, get_device_info, get_start_coords
 from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS
 from . import altitudes, avatar, bounds, db_proc, spawns, sanitized as conf
 
 if conf.NOTIFY:
     from .notification import Notifier
 
-
-_unit = getattr(Units, conf.SPEED_UNIT.lower())
-if conf.SPIN_POKESTOPS:
-    if _unit is Units.miles:
-        SPINNING_SPEED_LIMIT = 21
-        UNIT_STRING = "MPH"
-    elif _unit is Units.kilometers:
-        SPINNING_SPEED_LIMIT = 34
-        UNIT_STRING = "KMH"
-    elif _unit is Units.meters:
-        SPINNING_SPEED_LIMIT = 34000
-        UNIT_STRING = "m/h"
-UNIT = _unit.value
-del _unit
+if conf.CACHE_CELLS:
+    from pogeo import CellCache
+    CELL_CACHE = load_pickle('cellcache') or CellCache()
+    get_cell_ids = CELL_CACHE.get_cell_ids
+else:
+    from pogeo import get_cell_ids
 
 
 class Worker:
@@ -41,20 +32,6 @@ class Worker:
     scan_delay = conf.SCAN_DELAY if conf.SCAN_DELAY >= 10 else 10
     seen = 0
     captchas = 0
-
-    if conf.CACHE_CELLS:
-        cells = load_pickle('cells') or {}
-
-        @classmethod
-        def get_cell_ids(cls, point):
-            try:
-                return cls.cells[rounded]
-            except KeyError:
-                cells = _pogeo_cell_ids(rounded)
-                cls.cells[rounded] = cells
-                return cells
-    else:
-        get_cell_ids = _pogeo_cell_ids
 
     login_semaphore = Semaphore(conf.SIMULTANEOUS_LOGINS, loop=LOOP)
     sim_semaphore = Semaphore(conf.SIMULTANEOUS_SIMULATION, loop=LOOP)
@@ -560,14 +537,6 @@ class Worker:
                 await self.handle_captcha(responses)
         return responses
 
-    def travel_speed(self, point):
-        '''Fast calculation of travel speed to point'''
-        time_diff = max(time() - self.last_request, self.scan_delay)
-        distance = get_distance(self.location, point, UNIT)
-        # conversion from seconds to hours
-        speed = (distance / time_diff) * 3600
-        return speed
-
     async def bootstrap_visit(self, point):
         for _ in range(3):
             if await self.visit(point, bootstrap=True):
@@ -658,7 +627,7 @@ class Worker:
             self.error_code = 'MALFORMED RESPONSE'
         except EmptyGMOException as e:
             self.error_code = '0'
-            self.log.warning('Empty GetMapObjects response for {}. Speed: {:.2f}', self.username, self.speed)
+            self.log.warning('Empty GetMapObjects response for {}. Speed: {:.2f}m/s', self.username, self.speed)
         except ex.HashServerException as e:
             self.log.warning('{}', e)
             self.error_code = 'HASHING ERROR'
@@ -696,7 +665,7 @@ class Worker:
 
             map_status = map_objects['status']
             if map_status != 1:
-                error = 'GetMapObjects code {} for {}. Speed: {:.2f}'.format(map_status, self.username, self.speed)
+                error = 'GetMapObjects code {} for {}. Speed: {:.2f}m/s'.format(map_status, self.username, self.speed)
                 self.empty_visits += 1
                 if self.empty_visits > 3:
                     await self.swap_account('{} empty visits'.format(self.empty_visits))
@@ -792,7 +761,7 @@ class Worker:
         else:
             self.empty_visits += 1
             if forts_seen == 0:
-                self.log.warning('Nothing seen by {}. Speed: {:.2f}', self.username, self.speed)
+                self.log.warning('Nothing seen by {}. Speed: {:.2f}m/s', self.username, self.speed)
                 self.error_code = '0 SEEN'
             else:
                 self.error_code = ','
@@ -802,9 +771,8 @@ class Worker:
         self.visits += 1
 
         if conf.MAP_WORKERS:
-            self.worker_dict.update([(self.worker_no,
-                (point, self.location.time, self.speed, self.total_seen,
-                self.visits, pokemon_seen))])
+            self.worker_dict[self.worker_no] = (point, self.location.time,
+                self.speed, self.total_seen, self.visits, pokemon_seen)
         self.log.info(
             'Point processed, {} Pokemon and {} forts seen!',
             pokemon_seen,
@@ -829,9 +797,9 @@ class Worker:
     async def spin_pokestop(self, pokestop):
         self.error_code = '$'
         distance = self.location.distance_meters(Location(pokestop['lat'], pokestop['lon']))
-        # permitted interaction distance - 2 (for some jitter leeway)
+        # permitted interaction distance - 2 (for some jitter/calculation leeway)
         # estimation of spinning speed limit
-        if distance > 38 or self.speed > SPINNING_SPEED_LIMIT:
+        if distance > 38.0 or self.speed > 8.611:
             self.error_code = '!'
             return False
 
@@ -858,8 +826,8 @@ class Worker:
             if result == 1:
                 self.log.info('Spun {}.', name)
             elif result == 2:
-                self.log.info('The server said {} was out of spinning range. {:.1f}m {:.1f}{}',
-                    name, distance, self.speed, UNIT_STRING)
+                self.log.info('The server said {} was out of spinning range. {:.1f}m {:.1f}m/s',
+                    name, distance, self.speed)
             elif result == 3:
                 self.log.warning('{} was in the cooldown period.', name)
             elif result == 4:

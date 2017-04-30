@@ -59,6 +59,23 @@ BAD_STATUSES = {
     'TIMEOUT'
 }
 
+_unit = conf.SPEED_UNIT.lower()
+if _unit == "miles":
+    # miles/hour to meters/second, default to 19.5mph
+    SPEED_LIMIT = conf.SPEED_LIMIT * 0.44704 if conf.SPEED_LIMIT else 8.71728
+    GOOD_ENOUGH = conf.GOOD_ENOUGH * 0.44704 if conf.GOOD_ENOUGH else 0.44704
+if _unit == "kilometers":
+    # kilometers/hour to meters/second, default to 31.38km/h
+    SPEED_LIMIT = conf.SPEED_LIMIT * 1000 / 3600 if conf.SPEED_LIMIT else 8.71728
+    GOOD_ENOUGH = conf.GOOD_ENOUGH * 1000 / 3600 if conf.GOOD_ENOUGH else 0.44704
+elif _unit is "meters":
+    # meters/hour to meters/second
+    SPEED_LIMIT = conf.SPEED_LIMIT / 3600 if conf.SPEED_LIMIT else 8.71728
+    GOOD_ENOUGH = conf.GOOD_ENOUGH / 3600 if conf.GOOD_ENOUGH else 0.44704
+else:
+    raise ValueError("Valid speed units are: 'miles', 'kilometers', and 'meters'")
+del _unit
+
 
 class Overseer:
     def __init__(self, manager):
@@ -77,7 +94,6 @@ class Overseer:
         self.idle_seconds = 0
         self.log.info('Overseer initialized')
         self.pokemon_found = ''
-        self.jitter_lat, self.jitter_lon = 
 
     def start(self, status_bar):
         self.captcha_queue = self.manager.captcha_queue()
@@ -530,25 +546,27 @@ class Overseer:
         finally:
             self.coroutine_semaphore.release()
 
-    async def best_worker(self, location, skip_time, _enough=conf.GOOD_ENOUGH, _limit=conf.SPEED_LIMIT):
+    async def best_worker(self, location, skip_time, _enough=GOOD_ENOUGH, _limit=SPEED_LIMIT):
         while self.running:
             gen = (w for w in self.workers if not w.busy.locked())
             try:
                 worker = next(gen)
-                lowest_speed = worker.travel_speed(point)
+                current_time = time()
+                lowest_speed = worker.location.speed_with_time(location, current_time)
             except StopIteration:
-                lowest_speed = float('inf')
-            for w in gen:
-                speed = w.travel_speed(point)
-                if speed < lowest_speed:
-                    if speed <= _enough:
-                        w.speed = speed
-                        return w
-                    lowest_speed = speed
-                    worker = w
-            if lowest_speed <= _limit:
-                worker.speed = lowest_speed
-                return worker
+                pass
+            else:
+                for w in gen:
+                    speed = w.location.speed_with_time(location, current_time)
+                    if speed < lowest_speed:
+                        if speed <= _enough:
+                            w.speed = speed
+                            return w
+                        lowest_speed = speed
+                        worker = w
+                if lowest_speed <= _limit:
+                    worker.speed = lowest_speed
+                    return worker
             if skip_time and monotonic() > skip_time:
                 return None
             await sleep(conf.SEARCH_SLEEP, loop=LOOP)
@@ -556,5 +574,4 @@ class Overseer:
     def refresh_dict(self):
         while not self.extra_queue.empty():
             account = self.extra_queue.get()
-            username = account['username']
-            ACCOUNTS[username] = account
+            ACCOUNTS[account['username']] = account
