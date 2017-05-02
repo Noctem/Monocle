@@ -8,18 +8,14 @@ from itertools import dropwhile
 from time import time, monotonic
 
 from aiopogo import HashServer
+from pogeo import diagonal_distance, level_edge
 from sqlalchemy.exc import OperationalError
 
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
 from .utils import get_current_hour, dump_pickle, get_start_coords, best_factors, percentage_split
 from .shared import ACCOUNTS, get_logger, LOOP, run_threaded
-from . import bounds, db_proc, spawns, sanitized as conf
+from . import bounds, db_proc, spawnid_to_loc, spawns, sanitized as conf
 from .worker import Worker
-
-if conf.SPAWN_ID_INT:
-    from pogeo import diagonal_distance, level_edge, cellid_to_location as spawnid_to_loc
-else:
-    from pogeo import diagonal_distance, level_edge, token_to_location as spawnid_to_loc
 
 
 ANSI = '\x1b[2J\x1b[H'

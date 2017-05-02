@@ -12,7 +12,7 @@ from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT, DOUBLE
 from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION
 from sqlalchemy.ext.declarative import declarative_base
 
-from . import bounds, spawns, db_proc, sanitized as conf
+from . import bounds, db_proc, spawns, spawnid_to_loc, sanitized as conf
 from .utils import time_until_time, dump_pickle, load_pickle
 from .shared import call_at, get_logger
 
@@ -55,7 +55,7 @@ else:
         impl = Text
 
         def process_bind_param(self, value, dialect):
-            return str(value)
+            return repr(value)
 
         def process_result_value(self, value, dialect):
             return int(value)
@@ -66,6 +66,8 @@ else:
     FLOAT_TYPE = Float(asdecimal=False)
 
 ID_TYPE = BigInteger if conf.SPAWN_ID_INT else String(11)
+
+DB_HASH = sha256(conf.DB_ENGINE.encode('utf-8')).digest()
 
 
 class Team(Enum):
@@ -202,10 +204,9 @@ Base = declarative_base()
 _engine = create_engine(conf.DB_ENGINE)
 Session = sessionmaker(bind=_engine)
 DB_TYPE = _engine.name
-DB_HASH = sha256(conf.DB_ENGINE.encode()).digest()
 
 if conf.REPORT_SINCE:
-    SINCE_TIME = mktime(conf.REPORT_SINCE.timetuple())
+    SINCE_TIME = int(mktime(conf.REPORT_SINCE.timetuple()))
     SINCE_QUERY = 'WHERE expire_timestamp > {}'.format(SINCE_TIME)
 else:
     SINCE_QUERY = ''
@@ -328,31 +329,33 @@ def session_scope(autoflush=False):
         session.close()
 
 
-def add_sighting(session, pokemon):
+def add_sighting(session, pokemon, _cache=SIGHTING_CACHE, _encounter=conf.ENCOUNTER):
     # Check if there isn't the same entry already
-    if pokemon in SIGHTING_CACHE:
+    if pokemon in _cache:
         return
     if session.query(exists().where(and_(
                 Sighting.expire_timestamp == pokemon['expire_timestamp'],
                 Sighting.encounter_id == pokemon['encounter_id']))
             ).scalar():
-        SIGHTING_CACHE.add(pokemon)
+        _cache.add(pokemon)
         return
     obj = Sighting(
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
         encounter_id=pokemon['encounter_id'],
         expire_timestamp=pokemon['expire_timestamp'],
-        lat=pokemon['lat'],
-        lon=pokemon['lon'],
-        atk_iv=pokemon.get('individual_attack'),
-        def_iv=pokemon.get('individual_defense'),
-        sta_iv=pokemon.get('individual_stamina'),
-        move_1=pokemon.get('move_1'),
-        move_2=pokemon.get('move_2')
     )
+    if _encounter:
+        try:
+            obj.atk_iv = pokemon['individual_attack']
+            obj.def_iv = pokemon['individual_defense']
+            obj.sta_iv = pokemon['individual_stamina']
+            obj.move_1 = pokemon['move_1']
+            obj.move_2 = pokemon['move_2']
+        except KeyError:
+            pass
     session.add(obj)
-    SIGHTING_CACHE.add(pokemon)
+    _cache.add(pokemon)
 
 
 def add_spawnpoint(session, pokemon):
@@ -368,7 +371,6 @@ def add_spawnpoint(session, pokemon):
         .filter(Spawnpoint.spawn_id == spawn_id) \
         .first()
     now = round(time())
-    point = pokemon['lat'], pokemon['lon']
     spawns.add_known(spawn_id, new_time)
     if existing:
         existing.updated = now
@@ -391,8 +393,6 @@ def add_spawnpoint(session, pokemon):
         session.add(Spawnpoint(
             spawn_id=spawn_id,
             despawn_time=new_time,
-            lat=pokemon['lat'],
-            lon=pokemon['lon'],
             updated=now,
             duration=duration,
             failures=0
@@ -408,20 +408,16 @@ def add_mystery_spawnpoint(session, pokemon):
 
     session.add(Spawnpoint(
         spawn_id=spawn_id,
-        despawn_time=None,
-        lat=pokemon['lat'],
-        lon=pokemon['lon'],
         updated=0,
-        duration=None,
         failures=0
     ))
 
-    if Location(pokemon['lat'], pokemon['lon']) in bounds:
+    if spawnid_to_loc(spawn_id) in bounds:
         spawns.unknowns.add(spawn_id)
 
 
-def add_mystery(session, pokemon):
-    if pokemon in MYSTERY_CACHE:
+def add_mystery(session, pokemon, _cache=SIGHTING_CACHE, _encounter=conf.ENCOUNTER):
+    if pokemon in _cache:
         return
     add_mystery_spawnpoint(session, pokemon)
     existing = session.query(Mystery) \
@@ -437,20 +433,22 @@ def add_mystery(session, pokemon):
         pokemon_id=pokemon['pokemon_id'],
         spawn_id=pokemon['spawn_id'],
         encounter_id=pokemon['encounter_id'],
-        lat=pokemon['lat'],
-        lon=pokemon['lon'],
         first_seen=pokemon['seen'],
         first_seconds=seconds,
         last_seconds=seconds,
-        seen_range=0,
-        atk_iv=pokemon.get('individual_attack'),
-        def_iv=pokemon.get('individual_defense'),
-        sta_iv=pokemon.get('individual_stamina'),
-        move_1=pokemon.get('move_1'),
-        move_2=pokemon.get('move_2')
+        seen_range=0
     )
+    if _encounter:
+        try:
+            obj.atk_iv = pokemon['individual_attack']
+            obj.def_iv = pokemon['individual_defense']
+            obj.sta_iv = pokemon['individual_stamina']
+            obj.move_1 = pokemon['move_1']
+            obj.move_2 = pokemon['move_2']
+        except KeyError:
+            pass
     session.add(obj)
-    MYSTERY_CACHE.add(pokemon)
+    _cache.add(pokemon)
 
 
 def add_fort_sighting(session, raw_fort):
@@ -709,7 +707,7 @@ def get_rare_pokemon(session):
     result = []
 
     for pokemon_id in conf.RARE_IDS:
-        query = session.query(Sighting) \
+        query = session.query(Sighting.id) \
             .filter(Sighting.pokemon_id == pokemon_id)
         if conf.REPORT_SINCE:
             query = query.filter(Sighting.expire_timestamp > SINCE_TIME)
@@ -729,8 +727,7 @@ def get_nonexistent_pokemon(session):
 
 
 def get_all_sightings(session, pokemon_ids):
-    # TODO: rename this and get_sightings
-    query = session.query(Sighting) \
+    query = session.query(Sighting.pokemon_id, Sighting.spawn_id) \
         .filter(Sighting.pokemon_id.in_(pokemon_ids))
     if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > SINCE_TIME)
@@ -773,7 +770,7 @@ def get_spawns_per_hour(session, pokemon_id):
 
 
 def get_total_spawns_count(session, pokemon_id):
-    query = session.query(Sighting) \
+    query = session.query(Sighting.id) \
         .filter(Sighting.pokemon_id == pokemon_id)
     if conf.REPORT_SINCE:
         query = query.filter(Sighting.expire_timestamp > SINCE_TIME)
@@ -781,9 +778,9 @@ def get_total_spawns_count(session, pokemon_id):
 
 
 def get_all_spawn_coords(session, pokemon_id=None):
-    points = session.query(Sighting.lat, Sighting.lon)
+    points = session.query(Sighting.spawn_id)
     if pokemon_id:
         points = points.filter(Sighting.pokemon_id == int(pokemon_id))
     if conf.REPORT_SINCE:
         points = points.filter(Sighting.expire_timestamp > SINCE_TIME)
-    return points.all()
+    return [spawnid_to_loc(x[0]).coords for x in points]

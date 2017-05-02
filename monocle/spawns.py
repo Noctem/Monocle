@@ -4,7 +4,6 @@ from collections import deque, OrderedDict
 from time import time
 
 from . import bounds, db, sanitized as conf
-from .db import DB_HASH, session_scope, Spawnpoint
 from .shared import get_logger
 from .utils import dump_pickle, load_pickle, get_current_hour, time_until_time
 
@@ -46,8 +45,8 @@ class Spawns:
         self.unknown.discard(spawn_id)
 
     def update(self, _migration=conf.LAST_MIGRATION, _contains=contains_spawn):
-        with session_scope() as session:
-            query = session.query(Spawnpoint.spawn_id, Spawnpoint.despawn_time, Spawnpoint.duration, Spawnpoint.updated)
+        with db.session_scope() as session:
+            query = session.query(db.Spawnpoint.spawn_id, db.Spawnpoint.despawn_time, db.Spawnpoint.duration, db.Spawnpoint.updated)
             known = {}
             for spawn_id, despawn_time, duration, updated in query:
                 # skip if point is not within boundaries (if applicable)
@@ -81,9 +80,9 @@ class Spawns:
     def unpickle(self):
         try:
             state = load_pickle('spawns', raise_exception=True)
-            if (state['class_version'] == 4,
-                    and state['db_hash'] == DB_HASH,
-                    and state['bounds_hash'] == hash(bounds),
+            if (state['class_version'] == 4
+                    and state['db_hash'] == db.DB_HASH
+                    and state['bounds_hash'] == hash(bounds)
                     and state['last_migration'] == conf.LAST_MIGRATION):
                 self.despawn_times = state['despawn_times']
                 self.known = state['known']
@@ -101,7 +100,7 @@ class Spawns:
         dump_pickle('spawns', {
             'bounds_hash': hash(bounds),
             'class_version': 4,
-            'db_hash': DB_HASH,
+            'db_hash': db.DB_HASH,
             'despawn_times': self.despawn_times,
             'known': self.known,
             'last_migration': conf.LAST_MIGRATION,
