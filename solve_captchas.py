@@ -11,8 +11,9 @@ from selenium.webdriver.common.by import By
 from aiopogo import PGoApi, close_sessions, activate_hash_server, exceptions as ex
 from aiopogo.auth_ptc import AuthPtc
 
-from monocle import altitudes, sanitized as conf
-from monocle.utils import get_device_info, get_address, randomize_point
+from monocle import sanitized as conf
+from monocle.altitudes import load_alts, set_altitude
+from monocle.utils import get_device_info, get_address
 from monocle.bounds import center
 
 
@@ -51,6 +52,7 @@ async def solve_captcha(url, api, driver, timestamp):
 
 async def main():
     try:
+        load_alts()
         class AccountManager(BaseManager): pass
         AccountManager.register('captcha_queue')
         AccountManager.register('extra_queue')
@@ -67,22 +69,18 @@ async def main():
         while not captcha_queue.empty():
             account = captcha_queue.get()
             username = account.get('username')
-            location = account.get('location')
-            if location and location != (0,0,0):
-                lat = location[0]
-                lon = location[1]
-            else:
-                lat, lon = randomize_point(center, 0.0001)
-
             try:
-                alt = altitudes.get((lat, lon))
-            except KeyError:
-                alt = await altitudes.fetch((lat, lon))
+                location = account['loc']
+            except Exception:
+                location = center
+                location.jitter(0.0001, 0.0001, 2.0)
+
+            set_altitude(location)
 
             try:
                 device_info = get_device_info(account)
                 api = PGoApi(device_info=device_info)
-                api.set_position(lat, lon, alt)
+                api.location = location
 
                 authenticated = False
                 try:
@@ -118,7 +116,7 @@ async def main():
                 responses = response['responses']
                 challenge_url = responses['CHECK_CHALLENGE']['challenge_url']
                 timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
-                account['location'] = lat, lon, alt
+                account['location'] = location
                 account['inventory_timestamp'] = timestamp
                 if challenge_url == ' ':
                     account['captcha'] = False
