@@ -7,13 +7,13 @@ DB_ENGINE = 'sqlite:///db.sqlite'
 AREA_NAME = 'SLC'     # the city or region you are scanning
 LANGUAGE = 'EN'       # ISO 639-1 codes EN, DE, ES, FR, IT, JA, KO, or ZH for Pokémon/move names
 MAX_CAPTCHAS = 100    # stop launching new visits if this many CAPTCHAs are pending
-SCAN_DELAY = 10       # wait at least this many seconds before scanning with the same account
+SCAN_DELAY = 10.0     # wait at least this many seconds before scanning with the same account
 SPEED_UNIT = 'miles'  # valid options are 'miles', 'kilometers', 'meters'
 SPEED_LIMIT = 19.5    # limit worker speed to this many SPEED_UNITs per hour
 
 # The number of simultaneous workers will be these two numbers multiplied.
 # On the initial run, workers will arrange themselves in a grid across the
-# rectangle you defined with MAP_START and MAP_END.
+# the boundaries you define below.
 # The rows/columns will also be used for the dot grid in the console output.
 # Provide more accounts than the product of your grid to allow swapping.
 GRID = (4, 4)  # rows, columns
@@ -22,10 +22,23 @@ GRID = (4, 4)  # rows, columns
 # any spawn points have been discovered
 MAP_START = (40.7913, -111.9398)
 MAP_END = (40.7143, -111.8046)
-
 # do not visit spawn points outside of your MAP_START and MAP_END rectangle
-# the boundaries will be the rectangle created by MAP_START and MAP_END, unless
 STAY_WITHIN_MAP = True
+
+## alternatively define a polygon to use as boundaries
+## must be a tuple of tuples (containing coordinates for vertices)
+## if BOUNDARIES is set, MAP_START, MAP_END, and STAY_WITHIN_MAP will be ignored
+#BOUNDARIES = ((40.799609, -111.948556), (40.792749, -111.887341), (40.779264, -111.838078), (40.761410, -111.817908), (40.728636, -111.805293), (40.688833, -111.785564), (40.689768, -111.919389), (40.750461, -111.949938))
+
+## alternatively define multiple polygons to use as boundaries
+## must be a tuple of tuples of tuples (containing coordinates for vertices)
+#MULTI_BOUNDARIES = (((40.252083, -111.654868), (40.24589, -111.65413), (40.2454018, -111.64340), (40.252509, -111.64268)), ((40.2388, -111.643066), (40.23894, -111.63165), (40.23426, -111.63311), (40.2354, -111.64014)))
+
+## if using BOUNDARIES or MULTI_BOUNDARIES you may define polygonal holes
+## workers will stay out of these holes as if they were out of bounds
+## must be a tuple of tuples of tuples
+# for only one hole do a tuple of tuples and a trailing comma, like so:
+#HOLES = ((40.795, -111.94), (40.79, -111.88), (40.77, -111.83)),
 
 # ensure that you visit within this many meters of every part of your map during bootstrap
 # lower values are more thorough but will take longer
@@ -62,13 +75,6 @@ GOOD_ENOUGH = 1.0
 
 # Seconds to sleep after failing to find an eligible worker before trying again.
 SEARCH_SLEEP = 2.5
-
-## alternatively define a Polygon to use as boundaries (requires shapely)
-## if BOUNDARIES is set, STAY_WITHIN_MAP will be ignored
-## more information available in the shapely manual:
-## http://toblerity.org/shapely/manual.html#polygons
-#from shapely.geometry import Polygon
-#BOUNDARIES = Polygon(((40.799609, -111.948556), (40.792749, -111.887341), (40.779264, -111.838078), (40.761410, -111.817908), (40.728636, -111.805293), (40.688833, -111.785564), (40.689768, -111.919389), (40.750461, -111.949938)))
 
 # key for Bossland's hashing server, otherwise the old hashing lib will be used
 #HASH_KEY = '9d87af14461b93cb3605'  # this key is fake
@@ -129,7 +135,7 @@ ITEM_LIMITS = {
 # Update the console output every x seconds
 REFRESH_RATE = 0.75  # 750ms
 # Update the seen/speed/visit/speed stats every x seconds
-STAT_REFRESH = 5
+STAT_REFRESH = 5.0
 
 # sent with GET_PLAYER requests, should match your region
 PLAYER_LOCALE = {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'}
@@ -139,9 +145,6 @@ MAX_RETRIES = 3
 
 # number of seconds before timing out on a login request
 LOGIN_TIMEOUT = 2.5
-
-# add spawn points reported in cell_ids to the unknown spawns list
-#MORE_POINTS = False
 
 # Set to True to kill the scanner when a newer version is forced
 #FORCED_KILL = False
@@ -161,13 +164,14 @@ REPORT_SINCE = datetime(2017, 2, 17)  # base reports on data from after this dat
 # used for altitude queries and maps in reports
 #GOOGLE_MAPS_KEY = 'OYOgW1wryrp2RKJ81u7BLvHfYUA6aArIyuQCXu4'  # this key is fake
 REPORT_MAPS = True  # Show maps on reports
-#ALT_RANGE = (1250, 1450)  # Fall back to altitudes in this range if Google query fails
 
-## Round altitude coordinates to this many decimal places
-## More precision will lead to larger caches and more Google API calls
-## Maximum distance from coords to rounded coords for precisions (at Lat40):
-## 1: 7KM, 2: 700M, 3: 70M, 4: 7M
-#ALT_PRECISION = 2
+## S2 cell level to fetch altitudes for
+## Higher levels will lead to a larger cache and more Google Elevation API requests
+## Average diameter of some levels:
+## 9: 17.85km, 10: 8.93km, 11: 4.46km, 12: 2.23km, 13: 1.12km, 14: 558m, 15: 279m
+#ALT_LEVEL = 12
+
+#ALT_RANGE = (400.0, 500.0)  # Fall back to altitudes in this range if Google query fails
 
 ## Automatically resolve captchas using 2Captcha key.
 #CAPTCHA_KEY = '1abc234de56fab7c89012d34e56fa7b8'
@@ -208,7 +212,7 @@ FAILURES_ALLOWED = 2
 #MANAGER_ADDRESS = ('127.0.0.1', 5002)  # could be used for CAPTCHA solving and live worker maps on remote systems
 
 # Store the cell IDs so that they don't have to be recalculated every visit.
-# Enabling will (potentially drastically) increase memory usage.
+# Enabling will increase memory usage.
 #CACHE_CELLS = False
 
 # Only for use with web_sanic (requires PostgreSQL)

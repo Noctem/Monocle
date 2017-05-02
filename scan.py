@@ -28,7 +28,7 @@ from monocle.utils import get_address, dump_pickle
 from monocle.worker import Worker
 from monocle.overseer import Overseer
 from monocle.db import FORT_CACHE
-from monocle import altitudes, db_proc, spawns
+from monocle import db_proc, spawns
 
 
 class AccountManager(BaseManager):
@@ -151,7 +151,6 @@ def cleanup(overseer, manager):
         print('Dumping pickles...')
         dump_pickle('accounts', ACCOUNTS)
         FORT_CACHE.pickle()
-        altitudes.pickle()
         if conf.CACHE_CELLS:
             from monocle.worker import CELL_CACHE
             dump_pickle('cellcache', CELL_CACHE)

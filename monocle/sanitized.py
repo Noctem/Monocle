@@ -20,7 +20,7 @@ worker_count = config.GRID[0] * config.GRID[1]
 _valid_types = {
     'ACCOUNTS': set_sequence,
     'ACCOUNTS_CSV': path,
-    'ALT_PRECISION': int,
+    'ALT_LEVEL': int,
     'ALT_RANGE': sequence,
     'ALWAYS_NOTIFY': int,
     'ALWAYS_NOTIFY_IDS': set_sequence_range,
@@ -133,7 +133,7 @@ _valid_types = {
 _defaults = {
     'ACCOUNTS': None,
     'ACCOUNTS_CSV': None,
-    'ALT_PRECISION': 2,
+    'ALT_LEVEL': 12,
     'ALT_RANGE': (300, 400),
     'ALWAYS_NOTIFY': 0,
     'ALWAYS_NOTIFY_IDS': set(),
