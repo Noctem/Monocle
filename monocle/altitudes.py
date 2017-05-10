@@ -9,7 +9,7 @@ from .shared import get_logger
 log = get_logger('altitudes')
 
 
-ALTITUDES = AltitudeCache(conf.ALT_LEVEL, conf.ALT_RANGE[0], conf.ALT_RANGE[1])
+ALTITUDES = AltitudeCache(conf.ALT_LEVEL, conf.GOOGLE_MAPS_KEY, conf.ALT_RANGE[0], conf.ALT_RANGE[1])
 
 set_altitude = ALTITUDES.set_alt
 

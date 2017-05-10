@@ -3,10 +3,10 @@ from datetime import datetime
 from multiprocessing.managers import BaseManager, RemoteError
 from time import time
 
-from monocle import sanitized as conf
+from monocle import spawnid_to_coords, sanitized as conf
 from monocle.db import get_forts, Pokestop, session_scope, Sighting, Spawnpoint
 from monocle.utils import get_address
-from monocle.names import DAMAGE, MOVES, POKEMON
+from monocle.names import POKEMON
 
 
 def get_args():
@@ -73,45 +73,11 @@ def get_worker_markers(workers):
     } for worker_no, (location, timestamp, speed, total_seen, visits, seen_here) in workers.data]
 
 
-def sighting_to_marker(pokemon, names=POKEMON, moves=MOVES, damage=DAMAGE):
-    pokemon_id = pokemon.pokemon_id
-    marker = {
-        'id': 'pokemon-' + str(pokemon.id),
-        'trash': pokemon_id in conf.TRASH_IDS,
-        'name': names[pokemon_id],
-        'pokemon_id': pokemon_id,
-        'lat': pokemon.lat,
-        'lon': pokemon.lon,
-        'expires_at': pokemon.expire_timestamp,
-    }
-    move1 = pokemon.move_1
-    if pokemon.move_1:
-        move2 = pokemon.move_2
-        marker['atk'] = pokemon.atk_iv
-        marker['def'] = pokemon.def_iv
-        marker['sta'] = pokemon.sta_iv
-        marker['move1'] = moves[move1]
-        marker['move2'] = moves[move2]
-        marker['damage1'] = damage[move1]
-        marker['damage2'] = damage[move2]
-    return marker
-
-
-def get_pokemarkers(after_id=0):
-    with session_scope() as session:
-        pokemons = session.query(Sighting) \
-            .filter(Sighting.expire_timestamp > time(),
-                    Sighting.id > after_id)
-        if conf.MAP_FILTER_IDS:
-            pokemons = pokemons.filter(~Sighting.pokemon_id.in_(conf.MAP_FILTER_IDS))
-        return tuple(map(sighting_to_marker, pokemons))
-
-
 def get_gym_markers(names=POKEMON):
     with session_scope() as session:
         forts = get_forts(session)
     return [{
-            'id': 'fort-' + str(fort['fort_id']),
+            'id': 'fort-' + repr(fort['fort_id']),
             'sighting_id': fort['id'],
             'prestige': fort['prestige'],
             'pokemon_id': fort['guard_pokemon_id'],
@@ -121,17 +87,6 @@ def get_gym_markers(names=POKEMON):
             'lon': fort['lon']
     } for fort in forts]
 
-
-def get_spawnpoint_markers():
-    with session_scope() as session:
-        spawns = session.query(Spawnpoint)
-        return [{
-            'spawn_id': spawn.spawn_id,
-            'despawn_time': spawn.despawn_time,
-            'lat': spawn.lat,
-            'lon': spawn.lon,
-            'duration': spawn.duration
-        } for spawn in spawns]
 
 if conf.BOUNDARIES:
     from shapely.geometry import mapping

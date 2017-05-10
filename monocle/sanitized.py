@@ -27,7 +27,7 @@ _valid_types = {
     'APP_SIMULATION': bool,
     'AREA_NAME': str,
     'AUTHKEY': bytes,
-    'BOOTSTRAP_RADIUS': Number,
+    'BOOTSTRAP_LEVEL': int,
     'BOUNDARIES': tuple,
     'CACHE_CELLS': bool,
     'CAPTCHAS_ALLOWED': int,
@@ -85,7 +85,7 @@ _valid_types = {
     'NAME_FONT': str,
     'NEVER_NOTIFY_IDS': set_sequence_range,
     'NOTIFY': bool,
-    'NOTIFY_IDS': set_sequence_range,
+    'NOTIFY_IDS': sequence,
     'NOTIFY_RANKING': int,
     'PASS': str,
     'PB_API_KEY': str,
@@ -133,14 +133,14 @@ _valid_types = {
 _defaults = {
     'ACCOUNTS': None,
     'ACCOUNTS_CSV': None,
-    'ALT_LEVEL': 12,
-    'ALT_RANGE': (300, 400),
+    'ALT_LEVEL': 13,
+    'ALT_RANGE': (390.0, 490.0),
     'ALWAYS_NOTIFY': 0,
-    'ALWAYS_NOTIFY_IDS': set(),
+    'ALWAYS_NOTIFY_IDS': frozenset(),
     'APP_SIMULATION': True,
     'AREA_NAME': 'Area',
     'AUTHKEY': b'm3wtw0',
-    'BOOTSTRAP_RADIUS': 120,
+    'BOOTSTRAP_LEVEL': 16,
     'BOUNDARIES': None,
     'CACHE_CELLS': False,
     'CAPTCHAS_ALLOWED': 3,
@@ -157,9 +157,9 @@ _defaults = {
     'FB_PAGE_ID': None,
     'FIXED_OPACITY': False,
     'FORCED_KILL': None,
-    'FULL_TIME': 1800,
-    'GIVE_UP_KNOWN': 75,
-    'GIVE_UP_UNKNOWN': 60,
+    'FULL_TIME': 1800.0,
+    'GIVE_UP_KNOWN': 75.0,
+    'GIVE_UP_UNKNOWN': 60.0,
     'GOOD_ENOUGH': None,
     'GOOGLE_MAPS_KEY': '',
     'HASHTAGS': None,
@@ -185,11 +185,11 @@ _defaults = {
     'MAP_WORKERS': True,
     'MAX_CAPTCHAS': 0,
     'MAX_RETRIES': 3,
-    'MINIMUM_RUNTIME': 10,
+    'MINIMUM_RUNTIME': 10.0,
     'MOVE_FONT': 'sans-serif',
     'MULTI_BOUNDARIES': None,
     'NAME_FONT': 'sans-serif',
-    'NEVER_NOTIFY_IDS': (),
+    'NEVER_NOTIFY_IDS': frozenset(),
     'NOTIFY': False,
     'NOTIFY_IDS': None,
     'NOTIFY_RANKING': None,
@@ -199,32 +199,32 @@ _defaults = {
     'PLAYER_LOCALE': {'country': 'US', 'language': 'en', 'timezone': 'America/Denver'},
     'PROVIDER': None,
     'PROXIES': None,
-    'RARE_IDS': (),
+    'RARE_IDS': frozenset(),
     'RARITY_OVERRIDE': {},
     'REFRESH_RATE': 0.6,
     'REPORT_MAPS': True,
     'REPORT_SINCE': None,
-    'RESCAN_UNKNOWN': 90,
+    'RESCAN_UNKNOWN': 90.0,
     'SCAN_DELAY': 10,
     'SEARCH_SLEEP': 2.5,
     'SHOW_TIMER': False,
     'SIMULTANEOUS_LOGINS': 2,
     'SIMULTANEOUS_SIMULATION': 4,
-    'SKIP_SPAWN': 90,
+    'SKIP_SPAWN': 90.0,
     'SMART_THROTTLE': False,
     'SPAWN_ID_INT': True,
     'SPEED_LIMIT': None,
     'SPEED_UNIT': 'miles',
-    'SPIN_COOLDOWN': 300,
+    'SPIN_COOLDOWN': 300.0,
     'SPIN_POKESTOPS': True,
-    'STAT_REFRESH': 5,
+    'STAT_REFRESH': 5.0,
     'STAY_WITHIN_MAP': True,
     'SWAP_OLDEST': 21600 / worker_count,
     'TELEGRAM_BOT_TOKEN': None,
     'TELEGRAM_CHAT_ID': None,
     'TELEGRAM_USERNAME': None,
-    'TIME_REQUIRED': 300,
-    'TRASH_IDS': (),
+    'TIME_REQUIRED': 600.0,
+    'TRASH_IDS': frozenset(),
     'TWEET_IMAGES': False,
     'TWITTER_ACCESS_KEY': None,
     'TWITTER_ACCESS_SECRET': None,
@@ -236,23 +236,50 @@ _defaults = {
     'WEBHOOKS': None
 }
 
+_cast = {
+    'ALWAYS_NOTIFY_IDS': set,
+    'ENCOUNTER_IDS': set,
+    'FULL_TIME': float,
+    'GIVE_UP_KNOWN': float,
+    'GIVE_UP_UNKNOWN': float,
+    'GOOD_ENOUGH': float,
+    'INITIAL_SCORE': float,
+    'LOGIN_TIMEOUT': float,
+    'MAP_FILTER_IDS': tuple,
+    'MINIMUM_RUNTIME': float,
+    'MINIMUM_SCORE': float,
+    'NEVER_NOTIFY_IDS': set,
+    'RARE_IDS': set,
+    'REFRESH_RATE': float,
+    'SCAN_DELAY': float,
+    'SEARCH_SLEEP': float,
+    'SKIP_SPAWN': float,
+    'SMART_THROTTLE': float,
+    'SPEED_LIMIT': float,
+    'SPIN_COOLDOWN': float,
+    'STAT_REFRESH': float,
+    'SWAP_OLDEST': float,
+    'TIME_REQUIRED': float,
+    'TRASH_IDS': set
+}
+
 
 class Config:
     __spec__ = __spec__
     __slots__ = tuple(_valid_types.keys()) + ('log',)
 
-    def __init__(self):
+    def __init__(self, valid_types=_valid_types, defaults=_defaults, cast=_cast):
         self.log = getLogger('sanitizer')
         for key, value in (x for x in vars(config).items() if x[0].isupper()):
             try:
-                if isinstance(value, _valid_types[key]):
-                    setattr(self, key, value)
-                    if key in _defaults:
-                        del _defaults[key]
-                elif key in _defaults and value is _defaults[key]:
-                    setattr(self, key, _defaults.pop(key))
+                if isinstance(value, valid_types[key]):
+                    setattr(self, key, value if key not in cast else cast[key](value))
+                    if key in defaults:
+                        del defaults[key]
+                elif key in defaults and value is defaults[key]:
+                    setattr(self, key, defaults.pop(key))
                 else:
-                    valid = _valid_types[key]
+                    valid = valid_types[key]
                     actual = type(value).__name__
                     if isinstance(valid, type):
                         err = '{} must be {}. Yours is: {}.'.format(
@@ -279,4 +306,4 @@ class Config:
 
 sys.modules[__name__] = Config()
 
-del _valid_types, config
+del _cast, _valid_types, config

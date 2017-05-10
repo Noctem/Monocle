@@ -4,7 +4,7 @@ from . import sanitized as conf
 
 language = conf.LANGUAGE.upper()[:2]
 
-POKEMON = defaultdict(lambda: '?', {
+POKEMON = {
     1: 'Bulbasaur',
     2: 'Ivysaur',
     3: 'Venusaur',
@@ -256,7 +256,7 @@ POKEMON = defaultdict(lambda: '?', {
     249: 'Lugia',
     250: 'Ho-Oh',
     251: 'Celebi'
-})
+}
 
 MOVES = defaultdict(lambda: '?', {
     1: 'Thunder Shock',
@@ -483,7 +483,7 @@ MOVES = defaultdict(lambda: '?', {
 if language == 'EN':
     pass
 elif language == 'DE':
-    POKEMON = defaultdict(lambda: '?', {
+    POKEMON = {
         1: 'Bisasam',
         2: 'Bisaknosp',
         3: 'Bisaflor',
@@ -735,7 +735,7 @@ elif language == 'DE':
         249: 'Lugia',
         250: 'Ho-Oh',
         251: 'Celebi'
-    })
+    }
 
     MOVES = defaultdict(lambda: '?', {
         1: 'Donnerschock',
@@ -959,7 +959,7 @@ elif language == 'DE':
         281: 'Kraftreserve'
     })
 elif language == 'FR':
-    POKEMON = defaultdict(lambda: '?', {
+    POKEMON = {
         1: 'Bulbizarre',
         2: 'Herbizarre',
         3: 'Florizarre',
@@ -1211,7 +1211,7 @@ elif language == 'FR':
         249: 'Lugia',
         250: 'Ho-Oh',
         251: 'Celebi'
-    })
+    }
 
     MOVES = defaultdict(lambda: '?', {
         1: 'Éclair',
@@ -1435,7 +1435,7 @@ elif language == 'FR':
         281: 'Puissance Cachée'
     })
 elif language == 'ZH':
-    POKEMON = defaultdict(lambda: '?', {
+    POKEMON = {
         1: '妙蛙种子',
         2: '妙蛙草',
         3: '妙蛙花',
@@ -1687,10 +1687,10 @@ elif language == 'ZH':
         249: '洛奇亚',
         250: '凤王',
         251: '雪拉比'
-    })
+    }
     # TODO: Chinese move names
 elif language == 'JA':
-    POKEMON = defaultdict(lambda: '?', {
+    POKEMON = {
         1: 'フシギダネ',
         2: 'フシギソウ',
         3: 'フシギバナ',
@@ -1942,7 +1942,7 @@ elif language == 'JA':
         249: 'ルギア',
         250: 'ホウオウ',
         251: 'セレビィ'
-    })
+    }
 
     MOVES = defaultdict(lambda: '?', {
         1: 'でんきショック',
@@ -2613,7 +2613,7 @@ elif language == 'IT':
         281: 'Introforza'
     })
 elif language == 'KO':
-    POKEMON = defaultdict(lambda: '?', {
+    POKEMON = {
         1: '이상해씨',
         2: '이상해풀',
         3: '이상해꽃',
@@ -2865,7 +2865,7 @@ elif language == 'KO':
         249: '루기아',
         250: '칠색조',
         251: '세레비'
-    })
+    }
 
     MOVES = defaultdict(lambda: '?', {
         1: '전기쇼크',

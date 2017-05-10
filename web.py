@@ -10,10 +10,11 @@ try:
 except ImportError:
     from json import dumps
 
-from flask import Flask, jsonify, Markup, render_template, request
+from pogeo.webcache import SightingCache, SpawnCache
+from flask import Flask, jsonify, make_response, Markup, render_template, request
 
 from monocle import db, sanitized as conf
-from monocle.names import POKEMON
+from monocle.names import DAMAGE, MOVES, POKEMON
 from monocle.web_utils import *
 from monocle.bounds import area, center
 
@@ -78,9 +79,22 @@ def fullmap(map_html=render_map()):
 
 
 @app.route('/data')
-def pokemon_data():
-    last_id = request.args.get('last_id', 0)
-    return jsonify(get_pokemarkers(last_id))
+def pokemon_data(
+        cache=SightingCache(
+            conf.TRASH_IDS, POKEMON, MOVES, DAMAGE, conf.MAP_FILTER_IDS,
+            db.Sighting, db.Session, conf.SPAWN_ID_INT
+        ),
+        _resp=make_response):
+    compress = 'gzip' in request.headers.get('Accept-Encoding', '').lower()
+    try:
+        last_id = int(request.args['last_id'])
+    except KeyError:
+        last_id = 0
+    response = _resp(cache.get_json(last_id, compress))
+    response.mimetype = 'application/json'
+    if compress:
+        response.headers['Content-Encoding'] = 'gzip'
+    return response
 
 
 @app.route('/gym_data')
@@ -89,8 +103,15 @@ def gym_data():
 
 
 @app.route('/spawnpoints')
-def spawn_points():
-    return jsonify(get_spawnpoint_markers())
+def spawn_points(
+        cache=SpawnCache(conf.SPAWN_ID_INT, db.Spawnpoint, db.Session),
+        _resp=make_response):
+    compress = 'gzip' in request.headers.get('Accept-Encoding', '').lower()
+    response = _resp(cache.get_json(compress))
+    response.mimetype = 'application/json'
+    if compress:
+        response.headers['Content-Encoding'] = 'gzip'
+    return response
 
 
 @app.route('/pokestops')

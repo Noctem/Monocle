@@ -12,7 +12,7 @@ from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT, DOUBLE
 from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION
 from sqlalchemy.ext.declarative import declarative_base
 
-from . import bounds, db_proc, spawns, spawnid_to_loc, sanitized as conf
+from . import bounds, db_proc, spawns, spawnid_to_coords, spawnid_to_loc, sanitized as conf
 from .utils import time_until_time, dump_pickle, load_pickle
 from .shared import call_at, get_logger
 
@@ -322,7 +322,7 @@ def session_scope(autoflush=False):
     try:
         yield session
         session.commit()
-    except:
+    except Exception:
         session.rollback()
         raise
     finally:
@@ -783,4 +783,4 @@ def get_all_spawn_coords(session, pokemon_id=None):
         points = points.filter(Sighting.pokemon_id == int(pokemon_id))
     if conf.REPORT_SINCE:
         points = points.filter(Sighting.expire_timestamp > SINCE_TIME)
-    return [spawnid_to_loc(x[0]).coords for x in points]
+    return [spawnid_to_coords(x[0]) for x in points]

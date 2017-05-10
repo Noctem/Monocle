@@ -8,5 +8,7 @@ from . import sanitized
 
 if sanitized.SPAWN_ID_INT:
     from pogeo import cellid_to_location as spawnid_to_loc
+    from pogeo import cellid_to_coords as spawnid_to_coords
 else:
     from pogeo import token_to_location as spawnid_to_loc
+    from pogeo import token_to_coords as spawnid_to_coords

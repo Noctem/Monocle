@@ -44,13 +44,13 @@ STAY_WITHIN_MAP = True
 # lower values are more thorough but will take longer
 BOOTSTRAP_RADIUS = 120
 
-GIVE_UP_KNOWN = 75   # try to find a worker for a known spawn for this many seconds before giving up
-GIVE_UP_UNKNOWN = 60 # try to find a worker for an unknown point for this many seconds before giving up
-SKIP_SPAWN = 90      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
+GIVE_UP_KNOWN = 75.0    # try to find a worker for a known spawn for this many seconds before giving up
+GIVE_UP_UNKNOWN = 60.0  # try to find a worker for an unknown point for this many seconds before giving up
+SKIP_SPAWN = 90.0         # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
 
 # How often should the mystery queue be reloaded (default 90s)
 # this will reduce the grouping of workers around the last few mysteries
-#RESCAN_UNKNOWN = 90
+#RESCAN_UNKNOWN = 90.0
 
 # filename of accounts CSV
 ACCOUNTS_CSV = 'accounts.csv'
@@ -91,7 +91,7 @@ SEARCH_SLEEP = 2.5
 # Defaults to whatever will allow every worker to be swapped within 6 hours
 #SWAP_OLDEST = 300  # 5 minutes
 # Only swap if it's been active for more than x minutes
-#MINIMUM_RUNTIME = 10
+#MINIMUM_RUNTIME = 10.0
 
 ### these next 6 options use more requests but look more like the real client
 APP_SIMULATION = True     # mimic the actual app's login requests
@@ -105,11 +105,11 @@ INCUBATE_EGGS = True      # incubate eggs if available
 # 'notifying' will encounter Pokémon that are eligible for notifications
 # None will never encounter Pokémon
 ENCOUNTER = None
-#ENCOUNTER_IDS = (3, 6, 9, 45, 62, 71, 80, 85, 87, 89, 91, 94, 114, 130, 131, 134)
+#ENCOUNTER_IDS = {3, 6, 9, 45, 62, 71, 80, 85, 87, 89, 91, 94, 114, 130, 131, 134}
 
 # PokéStops
 SPIN_POKESTOPS = True  # spin all PokéStops that are within range
-SPIN_COOLDOWN = 300    # spin only one PokéStop every n seconds (default 300)
+SPIN_COOLDOWN = 300.0  # spin only one PokéStop every n seconds
 
 # minimum number of each item to keep if the bag is cleaned
 # bag cleaning is disabled if this is not present or is commented out
@@ -150,13 +150,13 @@ LOGIN_TIMEOUT = 2.5
 #FORCED_KILL = False
 
 # exclude these Pokémon from the map by default (only visible in trash layer)
-TRASH_IDS = (
+TRASH_IDS = {
     16, 19, 21, 29, 32, 41, 46, 48, 50, 52, 56, 74, 77, 96, 111, 133,
     161, 163, 167, 177, 183, 191, 194
-)
+}
 
 # include these Pokémon on the "rare" report
-RARE_IDS = (3, 6, 9, 45, 62, 71, 80, 85, 87, 89, 91, 94, 114, 130, 131, 134)
+RARE_IDS = {3, 6, 9, 45, 62, 71, 80, 85, 87, 89, 91, 94, 114, 130, 131, 134}
 
 from datetime import datetime
 REPORT_SINCE = datetime(2017, 2, 17)  # base reports on data from after this date
@@ -169,9 +169,9 @@ REPORT_MAPS = True  # Show maps on reports
 ## Higher levels will lead to a larger cache and more Google Elevation API requests
 ## Average diameter of some levels:
 ## 9: 17.85km, 10: 8.93km, 11: 4.46km, 12: 2.23km, 13: 1.12km, 14: 558m, 15: 279m
-#ALT_LEVEL = 12
+#ALT_LEVEL = 13
 
-#ALT_RANGE = (400.0, 500.0)  # Fall back to altitudes in this range if Google query fails
+#ALT_RANGE = (390.0, 490.0)  # Fall back to altitudes in this range if Google query fails
 
 ## Automatically resolve captchas using 2Captcha key.
 #CAPTCHA_KEY = '1abc234de56fab7c89012d34e56fa7b8'
@@ -183,7 +183,7 @@ REPORT_MAPS = True  # Show maps on reports
 # allow displaying the live location of workers on the map
 MAP_WORKERS = True
 # filter these Pokemon from the map to reduce traffic and browser load
-#MAP_FILTER_IDS = [161, 165, 16, 19, 167]
+#MAP_FILTER_IDS = (16, 19, 161, 165, 167)
 
 # unix timestamp of last spawn point migration, spawn times learned before this will be ignored
 LAST_MIGRATION = 1481932800  # Dec. 17th, 2016
@@ -253,7 +253,7 @@ HASHTAGS = {AREA_NAME, 'Monocle', 'PokemonGO'}
 #TZ_OFFSET = 0  # UTC offset in hours (if different from system time)
 
 # the required number of seconds remaining to notify about a Pokémon
-TIME_REQUIRED = 600  # 10 minutes
+TIME_REQUIRED = 600.0  # 10 minutes
 
 ### Only set either the NOTIFY_RANKING or NOTIFY_IDS, not both!
 # The (x) rarest Pokémon will be eligible for notification. Whether a
@@ -289,7 +289,7 @@ ALWAYS_NOTIFY = 14
 # Pokémon scores are an average of the Pokémon's rarity score and IV score (from 0 to 1)
 # If NOTIFY_RANKING is 90, the 90th most common Pokémon will have a rarity of score 0, the rarest will be 1.
 # IV score is the IV sum divided by 45 (perfect IVs).
-FULL_TIME = 1800  # the number of seconds after a notification when only MINIMUM_SCORE will be required
+FULL_TIME = 1800.0   # the number of seconds after a notification when only MINIMUM_SCORE will be required
 INITIAL_SCORE = 0.7  # the required score immediately after a notification
 MINIMUM_SCORE = 0.4  # the required score after FULL_TIME seconds have passed
 

@@ -8,6 +8,7 @@ from distutils.version import StrictVersion
 
 from aiopogo import PGoApi, HashServer, json_loads, exceptions as ex
 from aiopogo.auth_ptc import AuthPtc
+from pogeo.utils import location_to_cellid, location_to_token
 
 from .altitudes import load_alts, set_altitude
 from .db import SIGHTING_CACHE, MYSTERY_CACHE
@@ -1104,8 +1105,6 @@ class Worker:
             'type': 'pokemon',
             'encounter_id': raw['encounter_id'],
             'pokemon_id': raw['pokemon_data']['pokemon_id'],
-            'lat': raw['latitude'],
-            'lon': raw['longitude'],
             'spawn_id': int(raw['spawn_point_id'], 16) if spawn_int else raw['spawn_point_id']
             'seen': tss
         }
@@ -1124,15 +1123,14 @@ class Worker:
         return norm
 
     @staticmethod
-    def normalize_lured(raw, now):
+    def normalize_lured(raw, now, spawn_int=conf.SPAWN_ID_INT):
+        loc = Location(raw['latitude'], raw['longitude'])
         return {
             'type': 'pokemon',
             'encounter_id': raw['lure_info']['encounter_id'],
             'pokemon_id': raw['lure_info']['active_pokemon_id'],
             'expire_timestamp': raw['lure_info']['lure_expires_timestamp_ms'] // 1000,
-            'lat': raw['latitude'],
-            'lon': raw['longitude'],
-            'spawn_id': -1 if conf.SPAWN_ID_INT else 'LURED',
+            'spawn_id': location_to_cellid(loc, 30) if spawn_int else location_to_token(loc, 30),
             'time_till_hidden': (raw['lure_info']['lure_expires_timestamp_ms'] - now) // 1000,
             'inferred': 'pokestop'
         }
