@@ -14,7 +14,7 @@ var PokemonIcon = L.Icon.extend({
               '<div class="pokeimg">' +
                    '<img class="leaflet-marker-icon" src="' + this.options.iconUrl + '" />' +
               '</div>' +
-              '<div class="remaining_text" data-expire="' + this.options.expires_at + '">' + calculateRemainingTime(this.options.expires_at) + '</div>' +
+              '<div class="remaining_text" data-expire="' + this.options.expire + '">' + calculateRemainingTime(this.options.expire) + '</div>' +
             '</div>';
         return div;
     }
@@ -73,29 +73,29 @@ monitor(overlays.Gyms, true)
 monitor(overlays.Workers, false)
 
 function getPopupContent (item) {
-    var diff = (item.expires_at - new Date().getTime() / 1000);
-    var minutes = parseInt(diff / 60);
-    var seconds = parseInt(diff - (minutes * 60));
-    var expires_at = minutes + 'm ' + seconds + 's';
+    var diff = (item.expire - new Date().getTime() / 1000);
+    var minutes = Math.floor(diff / 60);
+    var seconds = Math.floor(diff % 60);
+    var expire = minutes + 'm ' + seconds + 's';
     var content = '<b>' + item.name + '</b> - <a href="https://pokemongo.gamepress.gg/pokemon/' + item.pokemon_id + '">#' + item.pokemon_id + '</a>';
-    if(item.atk != undefined){
+    if (item.atk != undefined) {
         var totaliv = 100 * (item.atk + item.def + item.sta) / 45;
         content += ' - <b>' + totaliv.toFixed(2) + '%</b><br>';
-        content += 'Disappears in: ' + expires_at + '<br>';
+        content += 'Disappears in: ' + expire + '<br>';
         content += 'Move 1: ' + item.move1 + ' ( ' + item.damage1 + ' dps )<br>';
         content += 'Move 2: ' + item.move2 + ' ( ' + item.damage2 + ' dps )<br>';
         content += 'IV: ' + item.atk + ' atk, ' + item.def + ' def, ' + item.sta + ' sta<br>'
     } else {
-        content += '<br>Disappears in: ' + expires_at + '<br>';
+        content += '<br>Disappears in: ' + expire + '<br>';
     }
-    content += '<a href="#" data-pokeid="'+item.pokemon_id+'" data-newlayer="Hidden" class="popup_filter_link">Hide</a>';
+    content += '<a href="#" data-pokeid="' + item.pid + '" data-newlayer="Hidden" class="popup_filter_link">Hide</a>';
     content += '&nbsp; | &nbsp;';
 
-    var userPref = getPreference('filter-'+item.pokemon_id);
+    var userPref = getPreference('filter-' + item.pid);
     if (userPref == 'trash'){
-        content += '<a href="#" data-pokeid="'+item.pokemon_id+'" data-newlayer="Pokemon" class="popup_filter_link">Move to Pokemon</a>';
+        content += '<a href="#" data-pokeid="' + item.pid + '" data-newlayer="Pokemon" class="popup_filter_link">Move to Pokemon</a>';
     }else{
-        content += '<a href="#" data-pokeid="'+item.pokemon_id+'" data-newlayer="Trash" class="popup_filter_link">Move to Trash</a>';
+        content += '<a href="#" data-pokeid="' + item.pid + '" data-newlayer="Trash" class="popup_filter_link">Move to Trash</a>';
     }
     content += '<br>=&gt; <a href="https://www.google.com/maps/?daddr='+ item.lat + ','+ item.lon +'" target="_blank" title="See in Google Maps">Get directions</a>';
     return content;
@@ -109,12 +109,11 @@ function getOpacity (diff) {
 }
 
 function PokemonMarker (raw) {
-    var icon = new PokemonIcon({iconUrl: '/static/monocle-icons/icons/' + raw.pokemon_id + '.png', expires_at: raw.expires_at});
+    var icon = new PokemonIcon({iconUrl: '/static/monocle-icons/icons/' + raw.pid + '.png', expire: raw.expire});
     var marker = L.marker([raw.lat, raw.lon], {icon: icon, opacity: 1});
 
-    var intId = parseInt(raw.id.split('-')[1]);
-    if (_last_pokemon_id < intId){
-        _last_pokemon_id = intId;
+    if (_last_pokemon_id < raw.id) {
+        _last_pokemon_id = raw.id;
     }
 
     if (raw.trash) {
@@ -122,12 +121,12 @@ function PokemonMarker (raw) {
     } else {
         marker.overlay = 'Pokemon';
     }
-    var userPreference = getPreference('filter-'+raw.pokemon_id);
-    if (userPreference === 'pokemon'){
+    var userPreference = getPreference('filter-' + raw.pid);
+    if (userPreference === 'pokemon') {
         marker.overlay = 'Pokemon';
-    }else if (userPreference === 'trash'){
+    } else if (userPreference === 'trash') {
         marker.overlay = 'Trash';
-    }else if (userPreference === 'hidden'){
+    } else if (userPreference === 'hidden') {
         marker.overlay = 'Hidden';
     }
     marker.raw = raw;
@@ -148,7 +147,7 @@ function PokemonMarker (raw) {
         if (marker.overlay === "Hidden" || overlays[marker.overlay].hidden) {
             return;
         }
-        var diff = marker.raw.expires_at - new Date().getTime() / 1000;
+        var diff = marker.raw.expire - new Date().getTime() / 1000;
         if (diff > 0) {
             marker.setOpacity(getOpacity(diff));
         } else {
@@ -182,7 +181,7 @@ function FortMarker (raw) {
                 content = '<b>Team Instinct</b>'
             }
             content += '<br>Prestige: ' + raw.prestige +
-                       '<br>Guarding Pokemon: ' + raw.pokemon_name + ' (#' + raw.pokemon_id + ')';
+                       '<br>Guarding Pokemon: ' + raw.pokemon_name + ' (#' + raw.pid + ')';
         }
         content += '<br>=&gt; <a href=https://www.google.com/maps/?daddr='+ raw.lat + ','+ raw.lon +' target="_blank" title="See in Google Maps">Get directions</a>';
         event.popup.setContent(content);
@@ -447,12 +446,12 @@ function moveToLayer(id, layer){
     layer = layer.toLowerCase();
     for(var k in markers) {
         var m = markers[k];
-        if ((k.indexOf("pokemon-") > -1) && (m !== undefined) && (m.raw.pokemon_id === id)){
+        if ((m !== undefined) && (m.raw.pid === id)) {
             m.removeFrom(overlays[m.overlay]);
             if (layer === 'pokemon'){
                 m.overlay = "Pokemon";
                 m.addTo(overlays.Pokemon);
-            }else if (layer === 'trash') {
+            } else if (layer === 'trash') {
                 m.overlay = "Trash";
                 m.addTo(overlays.Trash);
             }
@@ -532,8 +531,8 @@ $('.scroll-up').click(function () {
 
 function calculateRemainingTime(expire_at_timestamp) {
   var diff = (expire_at_timestamp - new Date().getTime() / 1000);
-        var minutes = parseInt(diff / 60);
-        var seconds = parseInt(diff - (minutes * 60));
+        var minutes = Math.floor(diff / 60);
+        var seconds = Math.floor(diff % 60);
         return minutes + ':' + (seconds > 9 ? "" + seconds: "0" + seconds);
 }
 
