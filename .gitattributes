@@ -1,0 +1,5 @@
+monocle/static/js/bootstrap.min.js linguist-vendored
+monocle/static/js/jquery-3.2.1.min.js linguist-vendored
+monocle/static/js/leaflet.js linguist-vendored
+monocle/static/css/bootstrap.min.css linguist-vendored
+monocle/static/css/leaflet.css linguist-vendored
