@@ -144,10 +144,10 @@ async def spawn_points(request, _dict=dict):
 
 
 @app.get('/pokestops')
-async def get_pokestops(request, _dict=dict):
+async def get_pokestops(request):
     async with app.pool.acquire() as conn:
         results = await conn.fetch('SELECT external_id, lat, lon FROM pokestops')
-    return json([_dict(x) for x in results])
+    return json(results)
 
 
 @app.get('/scan_coords')

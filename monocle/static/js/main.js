@@ -244,11 +244,11 @@ function addSpawnsToMap(data) {
 function addPokestopsToMap(data) {
   data.forEach(function(item) {
     var icon = new PokestopIcon();
-    var marker = L.marker([item.lat, item.lon], {icon: icon});
+    var marker = L.marker([item[1], item[2]], {icon: icon});
     marker.raw = item;
     marker.bindPopup(
-        '<b>Pokestop: ' + item.external_id + '</b>' +
-        '<br>=&gt; <a href=https://www.google.com/maps/?daddr=' + item.lat + ',' + item.lon +
+        '<b>Pokestop: ' + item[0] + '</b>' +
+        '<br>=&gt; <a href=https://www.google.com/maps/?daddr=' + item[1] + ',' + item[2] +
         ' target="_blank" title="See in Google Maps">Get directions</a>');
     marker.addTo(overlays.Pokestops);
   });

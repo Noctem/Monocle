@@ -88,16 +88,6 @@ def get_gym_markers(names=POKEMON):
     } for fort in forts]
 
 
-def get_pokestop_markers():
-    with session_scope() as session:
-        pokestops = session.query(Pokestop)
-        return [{
-            'external_id': pokestop.external_id,
-            'lat': pokestop.lat,
-            'lon': pokestop.lon
-        } for pokestop in pokestops]
-
-
 def sighting_to_report_marker(sighting):
     return {
         'icon': 'static/monocle-icons/icons/{}.png'.format(sighting.pokemon_id),
