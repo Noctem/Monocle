@@ -4,14 +4,13 @@ from pkg_resources import resource_filename
 from time import time
 
 from sanic import Sanic
-from sanic.response import html, json
+from sanic.response import html, HTTPResponse, json
 from jinja2 import Environment, PackageLoader, Markup
 from asyncpg import create_pool
 
-from monocle import sanitized as conf
-from monocle.bounds import center
+from monocle import bounds, sanitized as conf
 from monocle.names import DAMAGE, MOVES, POKEMON
-from monocle.web_utils import get_scan_coords, get_worker_markers, Workers, get_args
+from monocle.web_utils import get_worker_markers, Workers, get_args
 
 
 env = Environment(loader=PackageLoader('monocle', 'templates'))
@@ -50,7 +49,7 @@ def render_map():
     template = env.get_template('custom.html' if conf.LOAD_CUSTOM_HTML_FILE else 'newmap.html')
     return html(template.render(
         area_name=conf.AREA_NAME,
-        map_center=center,
+        map_center=bounds.center,
         map_provider_url=conf.MAP_PROVIDER_URL,
         map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION,
         social_links=social_links(),
@@ -63,7 +62,7 @@ def render_worker_map():
     template = env.get_template('workersmap.html')
     return html(template.render(
         area_name=conf.AREA_NAME,
-        map_center=center,
+        map_center=bounds.center,
         map_provider_url=conf.MAP_PROVIDER_URL,
         map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION,
         social_links=social_links()
@@ -152,8 +151,8 @@ async def get_pokestops(request, _dict=dict):
 
 
 @app.get('/scan_coords')
-async def scan_coords(request):
-    return json(get_scan_coords())
+async def scan_coords(request, _response=HTTPResponse(body_bytes=bounds.json, content_type='application/json')):
+    return _response
 
 
 def sighting_to_marker(pokemon, names=POKEMON, moves=MOVES, damage=DAMAGE, trash=conf.TRASH_IDS, _str=str):

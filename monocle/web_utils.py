@@ -88,31 +88,6 @@ def get_gym_markers(names=POKEMON):
     } for fort in forts]
 
 
-if conf.BOUNDARIES:
-    from shapely.geometry import mapping
-
-    def get_scan_coords():
-        coordinates = mapping(conf.BOUNDARIES)['coordinates']
-        coords = coordinates[0]
-        markers = [{
-                'type': 'scanarea',
-                'coords': coords
-            }]
-        for blacklist in coordinates[1:]:
-            markers.append({
-                    'type': 'scanblacklist',
-                    'coords': blacklist
-                })
-        return markers
-else:
-    def get_scan_coords():
-        return ({
-            'type': 'scanarea',
-            'coords': (conf.MAP_START, (conf.MAP_START[0], conf.MAP_END[1]),
-                       conf.MAP_END, (conf.MAP_END[0], conf.MAP_START[1]), conf.MAP_START)
-        },)
-
-
 def get_pokestop_markers():
     with session_scope() as session:
         pokestops = session.query(Pokestop)

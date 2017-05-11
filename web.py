@@ -13,10 +13,9 @@ except ImportError:
 from pogeo.webcache import SightingCache, SpawnCache
 from flask import Flask, jsonify, make_response, Markup, render_template, request
 
-from monocle import db, sanitized as conf
+from monocle import bounds, db, sanitized as conf
 from monocle.names import DAMAGE, MOVES, POKEMON
 from monocle.web_utils import *
-from monocle.bounds import area, center
 
 
 app = Flask(__name__, template_folder=resource_filename('monocle', 'templates'), static_folder=resource_filename('monocle', 'static'))
@@ -53,7 +52,7 @@ def render_map():
     template = app.jinja_env.get_template('custom.html' if conf.LOAD_CUSTOM_HTML_FILE else 'newmap.html')
     return template.render(
         area_name=conf.AREA_NAME,
-        map_center=center,
+        map_center=bounds.center,
         map_provider_url=conf.MAP_PROVIDER_URL,
         map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION,
         social_links=social_links(),
@@ -66,7 +65,7 @@ def render_worker_map():
     template = app.jinja_env.get_template('workersmap.html')
     return template.render(
         area_name=conf.AREA_NAME,
-        map_center=center,
+        map_center=bounds.center,
         map_provider_url=conf.MAP_PROVIDER_URL,
         map_provider_attribution=conf.MAP_PROVIDER_ATTRIBUTION,
         social_links=social_links()
@@ -120,8 +119,10 @@ def get_pokestops():
 
 
 @app.route('/scan_coords')
-def scan_coords():
-    return jsonify(get_scan_coords())
+def scan_coords(_coords=bounds.json, _resp=make_response):
+    response = _resp(_coords)
+    response.mimetype = 'application/json'
+    return response
 
 
 if conf.MAP_WORKERS:
@@ -174,7 +175,7 @@ def report_main(area_name=conf.AREA_NAME,
             'maps_data': {
                 'rare': [sighting_to_report_marker(s) for s in rare_sightings],
             },
-            'map_center': center,
+            'map_center': bounds.center,
             'zoom': 13,
         }
     icons = {
@@ -188,7 +189,7 @@ def report_main(area_name=conf.AREA_NAME,
         'report.html',
         current_date=datetime.now(),
         area_name=area_name,
-        area_size=area,
+        area_size=bounds.area,
         total_spawn_count=count,
         spawns_per_hour=count // session_stats['length_hours'],
         session_start=session_stats['start'],
@@ -210,14 +211,14 @@ def report_single(pokemon_id,
             'charts_data': {
                 'hours': db.get_spawns_per_hour(session, pokemon_id),
             },
-            'map_center': center,
+            'map_center': bounds.center,
             'zoom': 13,
         }
         return render_template(
             'report_single.html',
             current_date=datetime.now(),
             area_name=area_name,
-            area_size=area,
+            area_size=bounds.area,
             pokemon_id=pokemon_id,
             pokemon_name=POKEMON[pokemon_id],
             total_spawn_count=db.get_total_spawns_count(session, pokemon_id),

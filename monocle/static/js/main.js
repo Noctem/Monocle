@@ -189,7 +189,7 @@ function WorkerMarker(raw) {
   return group;
 }
 
-function addPokemonToMap(data, map) {
+function addPokemonToMap(data) {
   data.forEach(function(item) {
     // Already placed? No need to do anything, then
     if (item.id in markers) {
@@ -206,7 +206,7 @@ function addPokemonToMap(data, map) {
   }
 }
 
-function addGymsToMap(data, map) {
+function addGymsToMap(data) {
   data.forEach(function(item) {
     // No change since last time? Then don't do anything
     var existing = markers[item.id];
@@ -222,7 +222,7 @@ function addGymsToMap(data, map) {
   });
 }
 
-function addSpawnsToMap(data, map) {
+function addSpawnsToMap(data) {
   data.forEach(function(item) {
     var circle = L.circle([item.lat, item.lon], 5, {weight: 2});
     var time = '??';
@@ -241,7 +241,7 @@ function addSpawnsToMap(data, map) {
   });
 }
 
-function addPokestopsToMap(data, map) {
+function addPokestopsToMap(data) {
   data.forEach(function(item) {
     var icon = new PokestopIcon();
     var marker = L.marker([item.lat, item.lon], {icon: icon});
@@ -254,17 +254,16 @@ function addPokestopsToMap(data, map) {
   });
 }
 
-function addScanAreaToMap(data, map) {
-  data.forEach(function(item) {
-    if (item.type === 'scanarea') {
-      L.polyline(item.coords).addTo(overlays.ScanArea);
-    } else if (item.type === 'scanblacklist') {
-      L.polyline(item.coords, {'color': 'red'}).addTo(overlays.ScanArea);
-    }
+function addScanAreaToMap(data) {
+  data.areas.forEach(function(item) {
+    L.polyline(item).addTo(overlays.ScanArea);
+  });
+  data.holes.forEach(function(item) {
+    L.polyline(item, {'color': 'red'}).addTo(overlays.ScanArea);
   });
 }
 
-function addWorkersToMap(data, map) {
+function addWorkersToMap(data) {
   overlays.Workers.clearLayers();
   data.forEach(function(item) {
     marker = WorkerMarker(item);
@@ -281,7 +280,7 @@ function getPokemon() {
       resolve(response);
     });
   }).then(function(data) {
-    addPokemonToMap(data, map);
+    addPokemonToMap(data);
   });
 }
 
@@ -294,7 +293,7 @@ function getGyms() {
       resolve(response);
     });
   }).then(function(data) {
-    addGymsToMap(data, map);
+    addGymsToMap(data);
   });
 }
 
@@ -304,7 +303,7 @@ function getSpawnPoints() {
       resolve(response);
     });
   }).then(function(data) {
-    addSpawnsToMap(data, map);
+    addSpawnsToMap(data);
   });
 }
 
@@ -314,7 +313,7 @@ function getPokestops() {
       resolve(response);
     });
   }).then(function(data) {
-    addPokestopsToMap(data, map);
+    addPokestopsToMap(data);
   });
 }
 
@@ -324,7 +323,7 @@ function getScanAreaCoords() {
       resolve(response);
     });
   }).then(function(data) {
-    addScanAreaToMap(data, map);
+    addScanAreaToMap(data);
   });
 }
 
@@ -337,7 +336,7 @@ function getWorkers() {
       resolve(response);
     });
   }).then(function(data) {
-    addWorkersToMap(data, map);
+    addWorkersToMap(data);
   });
 }
 
