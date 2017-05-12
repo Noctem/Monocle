@@ -84,7 +84,10 @@ def pokemon_data(
             db.Sighting, db.Session, conf.SPAWN_ID_INT
         ),
         _resp=make_response):
-    compress = 'gzip' in request.headers.get('Accept-Encoding', '').lower()
+    try:
+        compress = 'gzip' in request.headers['Accept-Encoding'].lower()
+    except KeyError:
+        compress = False
     try:
         last_id = int(request.args['last_id'])
     except KeyError:

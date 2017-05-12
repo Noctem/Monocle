@@ -34,7 +34,6 @@ _valid_types = {
     'CAPTCHA_KEY': str,
     'COMPLETE_TUTORIAL': bool,
     'COROUTINES_LIMIT': int,
-    'DB': dict,
     'DB_ENGINE': str,
     'DIRECTORY': path,
     'DISCORD_INVITE_ID': str,

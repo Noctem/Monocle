@@ -61,7 +61,7 @@ function getPopupContent(item) {
   var seconds = Math.floor(diff % 60);
   var expire = minutes + 'm ' + seconds + 's';
   var content = '<b>' + item.name + '</b> - <a href="https://pokemongo.gamepress.gg/pokemon/' +
-      item.pokemon_id + '">#' + item.pokemon_id + '</a>';
+      item.pid + '">#' + item.pid + '</a>';
   if (item.atk != undefined) {
     var totaliv = 100 * (item.atk + item.def + item.sta) / 45;
     content += ' - <b>' + totaliv.toFixed(2) + '%</b><br>';
