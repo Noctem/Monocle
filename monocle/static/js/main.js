@@ -225,16 +225,13 @@ function addGymsToMap(data) {
 function addSpawnsToMap(data) {
   data.forEach(function(item) {
     var circle = L.circle([item.lat, item.lon], 5, {weight: 2});
-    var time = '??';
-    if (item.despawn_time != null) {
-      time = '' + Math.floor(item.despawn_time / 60) + 'min ' + (item.despawn_time % 60) + 'sec';
-    } else {
+    if (item.despawn_time === "?") {
       circle.setStyle({color: '#f03'});
     }
     circle.bindPopup(
         '<b>Spawn ' + item.spawn_id + '</b>' +
-        '<br/>despawn: ' + time +
-        '<br/>duration: ' + (item.duration == null ? '30mn' : item.duration + 'mn') +
+        '<br/>despawn: ' + item.despawn_time +
+        '<br/>duration: ' + item.duration + 'm' +
         '<br>=&gt; <a href=https://www.google.com/maps/?daddr=' + item.lat + ',' + item.lon +
         ' target="_blank" title="See in Google Maps">Get directions</a>');
     circle.addTo(overlays.Spawns);
