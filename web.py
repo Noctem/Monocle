@@ -10,11 +10,11 @@ try:
 except ImportError:
     from json import dumps
 
-from pogeo.webcache import SightingCache, SpawnCache
+from pogeo.monotools.sightingcache import SightingCache
+from pogeo.monotools.spawncache import SpawnCache
 from flask import Flask, jsonify, make_response, Markup, render_template, request
 
-from monocle import bounds, db, sanitized as conf
-from monocle.names import DAMAGE, MOVES, POKEMON
+from monocle import bounds, db, names, sanitized as conf
 from monocle.web_utils import *
 
 
@@ -79,10 +79,7 @@ def fullmap(map_html=render_map()):
 
 @app.route('/data')
 def pokemon_data(
-        cache=SightingCache(
-            conf.TRASH_IDS, POKEMON, MOVES, DAMAGE, conf.MAP_FILTER_IDS,
-            db.Sighting, db.Session, conf.SPAWN_ID_INT
-        ),
+        cache=SightingCache(conf, db, names),
         _resp=make_response):
     try:
         compress = 'gzip' in request.headers['Accept-Encoding'].lower()
@@ -106,7 +103,7 @@ def gym_data():
 
 @app.route('/spawnpoints')
 def spawn_points(
-        cache=SpawnCache(conf.SPAWN_ID_INT, db.Spawnpoint, db.Session),
+        cache=SpawnCache(conf.SPAWN_ID_INT, db),
         _resp=make_response):
     compress = 'gzip' in request.headers.get('Accept-Encoding', '').lower()
     response = _resp(cache.get_json(compress))
@@ -146,7 +143,7 @@ if conf.MAP_WORKERS:
 
 @app.route('/report')
 def report_main(area_name=conf.AREA_NAME,
-                names=POKEMON,
+                names=names.POKEMON,
                 key=conf.GOOGLE_MAPS_KEY if conf.REPORT_MAPS else None):
     with db.session_scope() as session:
         counts = db.get_sightings_per_pokemon(session)
@@ -225,7 +222,7 @@ def report_single(pokemon_id,
             area_name=area_name,
             area_size=bounds.area,
             pokemon_id=pokemon_id,
-            pokemon_name=POKEMON[pokemon_id],
+            pokemon_name=names.POKEMON[pokemon_id],
             total_spawn_count=db.get_total_spawns_count(session, pokemon_id),
             session_start=session_stats['start'],
             session_end=session_stats['end'],
