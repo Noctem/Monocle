@@ -101,11 +101,11 @@ class SightingCache:
     def __contains__(self, raw_sighting):
         try:
             expire_timestamp = self.store[raw_sighting['spawn_id']]
+            return (
+                expire_timestamp > raw_sighting['expire_timestamp'] - 2 and
+                expire_timestamp < raw_sighting['expire_timestamp'] + 2)
         except KeyError:
             return False
-        return (
-            expire_timestamp > raw_sighting['expire_timestamp'] - 2 and
-            expire_timestamp < raw_sighting['expire_timestamp'] + 2)
 
 
 class MysteryCache:
