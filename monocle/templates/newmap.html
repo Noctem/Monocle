@@ -1,70 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Monocle - {{ area_name }}</title>
-    <link rel="stylesheet" href='static/css/leaflet.css'>
-    <link rel="stylesheet" href='static/css/bootstrap.min.css'>
-    <link rel="stylesheet" href='static/css/main.css'>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta charset="UTF-8">
+  <title>Monocle - {{ area_name }}</title>
+  <link rel="stylesheet" href='static/css/leaflet.css'>
+  <link rel="stylesheet" href='static/css/bootstrap.min.css'>
+  <link rel="stylesheet" href='static/css/main.css'>
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
+  <link rel="manifest" href="/static/favicon/manifest.json">
+  <link rel="mask-icon" href="/static/favicon/safari-pinned-tab.svg" color="#772c30">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#772c30">
 </head>
 <body>
-    <h1>Monocle is initializing, please wait.</h1>
-
-    <script>
+  <h1>Monocle is initializing, please wait.</h1>
+  <script>
         var _MapCoords = [{{ map_center[0] }}, {{ map_center[1] }}];
         var _MapProviderUrl = '{{ map_provider_url }}';
         var _MapProviderAttribution = '{{ map_provider_attribution|safe }}';
         _defaultSettings = {};
         _updateTimeInterval = null;
-    </script>
-
-    <div id="main-map" class="map"></div>
-    <a class="map_btn my-location"></a>
-    <a class="map_btn my-settings"></a>
-    {{ social_links }}
-
-    <div id="settings" class="container text-center">
-        <button type="button" class="close scroll-up glyphicon glyphicon glyphicon-circle-arrow-up"></button>
-        <div class="page-header">
-            <h2>Monocle Settings<button id="settings_close_btn" type="button" class="close">&times;</button></h2>
-        </div>
-        <ul class="nav nav-pills nav-justified nav-settings">
-            <li class="active"><a href="#" data-panel="filters">Filters</a></li>
-            <li><a href="#" data-panel="more">More</a></li>
-        </ul>
-        <div class="panel panel-default settings-panel active" data-panel="filters">
-            <div class="panel-heading">Filters Settings</div>
-            <div class="panel-body">Panel Content</div>
-        </div>
-        <div class="panel panel-default settings-panel" data-panel="more">
-            <div class="panel-heading">More Settings</div>
-            <div class="panel-body">
-                <h5>Fixed markers opacity</h5>
-                <div class="btn-group" role="group" data-group="FIXED_OPACITY">
-                  <button type="button" class="btn btn-default" data-value="1">Yes</button>
-                  <button type="button" class="btn btn-default" data-value="0">No</button>
-                </div>
-                <hr />
-                <h5>Show timer under markers</h5>
-                <div class="btn-group" role="group" data-group="SHOW_TIMER">
-                  <button type="button" class="btn btn-default" data-value="1">Yes</button>
-                  <button type="button" class="btn btn-default" data-value="0">No</button>
-                </div>
-                <hr />
-                <h5>Reset all preferences</h5>
-                <button id="reset_btn" type="button" class="btn btn-danger">Reset</button>
-            </div>
-        </div>
+  </script>
+  <div id="main-map" class="map"></div>
+  <a class="map_btn my-location"></a>
+  <a class="map_btn my-settings"></a>
+  {{ social_links }}
+  <div id="settings" class="container text-center">
+    <div class="page-header">
+      <h2>Monocle Settings<button id="settings_close_btn" type="button" class="close">×</button></h2>
     </div>
-
-    <script>{{ init_js_vars }}</script>
-
-    <script src='static/js/jquery-3.2.1.min.js'></script>
-    <script src='static/js/leaflet.js'></script>
-    <script src='static/js/bootstrap.min.js'></script>
-    <script src='static/js/main.js'></script>
-
-    {{ extra_css_js }}
+    <ul class="nav nav-pills nav-justified nav-settings">
+      <li class="active">
+        <a href="#" data-panel="filters">Filters</a>
+      </li>
+      <li>
+        <a href="#" data-panel="more">More</a>
+      </li>
+    </ul>
+    <div class="panel panel-default settings-panel active" data-panel="filters">
+      <div class="panel-heading">
+        Filters Settings
+      </div>
+      <div class="panel-body">
+        Panel Content
+      </div>
+    </div>
+    <div class="panel panel-default settings-panel" data-panel="more">
+      <div class="panel-heading">
+        More Settings
+      </div>
+      <div class="panel-body">
+        <h5>Fixed markers opacity</h5>
+        <div class="btn-group" role="group" data-group="FIXED_OPACITY">
+          <button type="button" class="btn btn-default" data-value="1">Yes</button>
+          <button type="button" class="btn btn-default" data-value="0">No</button>
+        </div>
+        <hr>
+        <h5>Show timer under markers</h5>
+        <div class="btn-group" role="group" data-group="SHOW_TIMER">
+          <button type="button" class="btn btn-default" data-value="1">Yes</button>
+          <button type="button" class="btn btn-default" data-value="0">No</button>
+        </div>
+        <hr>
+        <h5>Reset all preferences</h5>
+        <button id="reset_btn" type="button" class="btn btn-danger">Reset</button>
+      </div>
+    </div>
+  </div>
+  <script>{{ init_js_vars }}</script>
+  <script src='static/js/jquery-3.2.1.min.js'></script>
+  <script src='static/js/leaflet.js'></script>
+  <script src='static/js/bootstrap.min.js'></script>
+  <script src='static/js/main.js'></script>
+  {{ extra_css_js }}
 </body>
 </html>

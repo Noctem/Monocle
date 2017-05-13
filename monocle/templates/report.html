@@ -1,19 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Monocle Report - {{ area_name }}</title>
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
-
-    <style>
+  <meta charset="UTF-8">
+  <title>Monocle Report - {{ area_name }}</title>
+  <link rel="stylesheet" href="static/css/bootstrap.min.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
+  <link rel="manifest" href="/static/favicon/manifest.json">
+  <link rel="mask-icon" href="/static/favicon/safari-pinned-tab.svg" color="#772c30">
+  <meta name="theme-color" content="#772c30">
+  <style>
         .map {
             height: 1000px;
         }
-    </style>
-
-    <script type="text/javascript" src='/static/js/jquery-3.2.1.min.js'></script>
-    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-    <script defer type="text/javascript">
+  </style>
+  <script type="text/javascript" src='/static/js/jquery-3.2.1.min.js'></script>
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <script defer type="text/javascript">
         google.charts.load('current', {'packages':['corechart']});
         google.charts.setOnLoadCallback(drawCharts);
 
@@ -96,100 +100,81 @@
             });
         });
         {% endif %}
-    </script>
+  </script>
 </head>
 <body>
-    <div class="container">
-        <h1>Monocle Report</h1>
-        <h4>Generated on {{ current_date.strftime('%Y-%m-%d %H:%M:%S') }}</h4>
-
-        <p><b>Disclaimer:</b> data may be incomplete due to various issues that might have happened (bugs, unstable servers, bugs on the servers etc.). If there is data about a sighting of a Pokemon, that spawn almost certainly happened. On the other hand, there is no guarantee that the database contains <i>all</i> spawns, so there may be Pokemon missing from this report. Your mileage may vary.</p>
-
-        <p>This report contains statistics about data gathered from scanning {{ area_name }}.</p>
-
-        <p>During that session, <b> {{ total_spawn_count }}</b> Pokemon have been seen on an area of about <b>{{ area_size }} square km</b>. Data gathering started on <b>{{ session_start.strftime('%Y-%m-%d %H:%M:%S') }}</b> and ended on <b>{{ session_end.strftime('%Y-%m-%d %H:%M:%S') }}</b>, lasting <b>{{ session_length_hours }} hours</b>. There were {{ spawns_per_hour }} spawns per hour on average.</p>
-
-        <p>Below chart shows number of spawns seen per 5 minutes blocks:</p>
-
-        <div id="hourspunchardchart"></div>
-        {% if google_maps_key %}
-        <h3>Heatmap</h3>
-
-        <p>All noticed spawn locations. The redder the point is, more Pokemon spawn there.</p>
-
-        <p><button id="displayHeatmap">Display heatmap</button> (will slow down browser!)</p>
-
-        <div id="heatmap" class="map"></div>
+  <div class="container">
+    <h1>Monocle Report</h1>
+    <h4>Generated on {{ current_date.strftime('%Y-%m-%d %H:%M:%S') }}</h4>
+    <p><b>Disclaimer:</b> data may be incomplete due to various issues that might have happened (bugs, unstable
+    servers, bugs on the servers etc.). If there is data about a sighting of a Pokemon, that spawn almost certainly
+    happened. On the other hand, there is no guarantee that the database contains <i>all</i> spawns, so there may be
+    Pokemon missing from this report. Your mileage may vary.</p>
+    <p>This report contains statistics about data gathered from scanning {{ area_name }}.</p>
+    <p>During that session, <b>{{ total_spawn_count }}</b> Pokemon have been seen on an area of about <b>{{ area_size
+    }} square km</b>. Data gathering started on <b>{{ session_start.strftime('%Y-%m-%d %H:%M:%S') }}</b> and ended on
+    <b>{{ session_end.strftime('%Y-%m-%d %H:%M:%S') }}</b>, lasting <b>{{ session_length_hours }} hours</b>. There were
+    {{ spawns_per_hour }} spawns per hour on average.</p>
+    <p>Below chart shows number of spawns seen per 5 minutes blocks:</p>
+    <div id="hourspunchardchart"></div>{% if google_maps_key %}
+    <h3>Heatmap</h3>
+    <p>All noticed spawn locations. The redder the point is, more Pokemon spawn there.</p>
+    <p><button id="displayHeatmap">Display heatmap</button> (will slow down browser!)</p>
+    <div id="heatmap" class="map"></div>{% endif %}
+    <h3>Most & least frequently spawning species</h3>
+    <p><b>Top 30</b> that spawned the most number of times during above period:</p>
+    <div class="text-center">
+      {% for icon in icons.top30 %}
+        <a href="/report/{{ icon[0] }}"><img src="/static/monocle-icons/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
+        {% if loop.index > 0 and loop.index % 10 == 0 %}
+          <br>
         {% endif %}
-        <h3>Most &amp; least frequently spawning species</h2>
-
-        <p><b>Top 30</b> that spawned the most number of times during above period:</p>
-
-        <div class="text-center">
-            {% for icon in icons.top30 %}
-                <a href="/report/{{ icon[0] }}"><img src="/static/monocle-icons/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
-                {% if loop.index > 0 and loop.index % 10 == 0 %}
-                    <br>
-                {% endif %}
-            {% endfor %}
-        </div>
-
-        <div id="top30chart"></div>
-
-        <p><b>Bottom 30</b> that spawned the least number of times during above period, and all of their spawning places:</p>
-
-        <div class="text-center">
-            {% for icon in icons.bottom30 %}
-                <a href="/report/{{ icon[0] }}"><img src="/static/monocle-icons/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
-                {% if loop.index > 0 and loop.index % 10 == 0 %}
-                    <br>
-                {% endif %}
-            {% endfor %}
-        </div>
-
-        <div id="bottom30chart"></div>
-
-        <h3>Evolutions and rare Pokemon</h3>
-
-        <p><b>Stage 2 evolutions</b> and Pokemon subjectively considered "rare" by author of this report, together with their spawning places:</p>
-
-        <div class="text-center">
-            {% for icon in icons.rare %}
-                <a href="/report/{{ icon[0] }}"><img src="/static/monocle-icons/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
-                {% if loop.index > 0 and loop.index % 10 == 0 %}
-                    <br>
-                {% endif %}
-            {% endfor %}
-        </div>
-
-        <div id="rarechart"></div>
-        {% if google_maps_key %}
-        <div id="raremap" class="map"></div>
-        {% endif %}
-
-        <h3>Nonexistent species</h3>
-
-        <p>Those Pokemon didn't spawn during data gathering period:</p>
-
-        <div class="text-center">
-            {% for icon in icons.nonexistent %}
-                <a href="/report/{{ icon[0] }}"><img src="/static/monocle-icons/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
-                {% if loop.index > 0 and loop.index % 10 == 0 %}
-                    <br>
-                {% endif %}
-            {% endfor %}
-        </div>
-
-        <h2>Footnotes</h2>
-
-        <p>This report was generated using Monocle, a tool for gathering data about Pokemon Go.</p>
-
-        <p>Check out <a href="https://github.com/Noctem/Monocle">Monocle on GitHub</a> for more info.</p>
-
-        <p>This report is available under Creative Commons CC-BY-4.0 license: <a href="https://creativecommons.org/licenses/by/4.0/">https://creativecommons.org/licenses/by/4.0/</a>.</p>
+      {% endfor %}
     </div>
-    <script async defer
-        src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_key }}&amp;libraries=visualization&amp;callback=initMaps">
-    </script>
+    <div id="top30chart"></div>
+    <p><b>Bottom 30</b> that spawned the least number of times during above period, and all of their spawning
+    places:</p>
+    <div class="text-center">
+      {% for icon in icons.bottom30 %}
+        <a href="/report/{{ icon[0] }}"><img src="/static/monocle-icons/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
+        {% if loop.index > 0 and loop.index % 10 == 0 %}
+          <br>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div id="bottom30chart"></div>
+    <h3>Evolutions and rare Pokemon</h3>
+    <p><b>Stage 2 evolutions</b> and Pokemon subjectively considered "rare" by author of this report, together with
+    their spawning places:</p>
+    <div class="text-center">
+      {% for icon in icons.rare %}
+        <a href="/report/{{ icon[0] }}"><img src="/static/monocle-icons/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
+        {% ifloop.index > 0 and loop.index % 10 == 0 %}
+          <br>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div id="rarechart"></div>
+    {% if google_maps_key %}
+    <div id="raremap" class="map"></div>
+    {% endif %}
+    <h3>Nonexistent species</h3>
+    <p>Those Pokemon didn't spawn during data gathering period:</p>
+    <div class="text-center">
+      {% for icon in icons.nonexistent %}
+        <a href="/report/{{ icon[0] }}"><img src="/static/monocle-icons/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
+        {% if loop.index > 0 and loop.index % 10 == 0 %}
+          <br>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <h2>Footnotes</h2>
+    <p>This report was generated using Monocle, a tool for gathering data about Pokemon Go.</p>
+    <p>Check out <a href="https://github.com/Noctem/Monocle">Monocle on GitHub</a> for more info.</p>
+    <p>This report is available under Creative Commons CC-BY-4.0 license: <a href=
+    "https://creativecommons.org/licenses/by/4.0/">https://creativecommons.org/licenses/by/4.0/</a>.</p>
+  </div>
+  <script async defer src=
+  "https://maps.googleapis.com/maps/api/js?key={{ google_maps_key }}&amp;libraries=visualization&amp;callback=initMaps"></script>
 </body>
 </html>
