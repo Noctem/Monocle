@@ -1,11 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Monocle Report: {{ pokemon_name }} in {{ area_name }}</title>
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
-
-    <style>
+  <meta charset="UTF-8">
+  <title>Monocle Report: {{ pokemon_name }} in {{ area_name }}</title>
+  <link rel="stylesheet" href="static/css/bootstrap.min.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
+  <link rel="manifest" href="/static/favicon/manifest.json">
+  <link rel="mask-icon" href="/static/favicon/safari-pinned-tab.svg" color="#772c30">
+  <meta name="theme-color" content="#772c30">
+  <style>
         .map {
             height: 1000px;
         }
@@ -17,11 +22,10 @@
             max-width: 100%;
             max-height: 100%;
         }
-    </style>
-
-    <script type="text/javascript" src='/static/js/jquery-3.2.1.min.js'></script>
-    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-    <script type="text/javascript">
+  </style>
+  <script type="text/javascript" src='/static/js/jquery-3.2.1.min.js'></script>
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <script type="text/javascript">
         google.charts.load('current', {'packages':['corechart']});
         google.charts.setOnLoadCallback(drawCharts);
 
@@ -81,49 +85,41 @@
             });
         });
         {% endif %}
-    </script>
+  </script>
 </head>
 <body>
-    <div class="container">
-        <h1>Monocle Report: #{{ pokemon_id }} {{ pokemon_name }}</h1>
-        <h4>Generated on {{ current_date.strftime('%Y-%m-%d %H:%M:%S') }}</h4>
-
-        <p><b>Disclaimer:</b> data may be incomplete due to various issues that might have happened (bugs, unstable servers, bugs on the servers etc.). If there is data about a sighting of a Pokemon, that spawn almost certainly happened. On the other hand, there is no guarantee that the database contains <i>all</i> spawns, so there may be Pokemon missing from this report. Your mileage may vary.</p>
-
-        <p>This report contains statistics about data gathered from scanning {{ area_name }} for single species - {{ pokemon_name }}.</p>
-
-        <div class="pokemon-image">
-            <img src="/static/monocle-icons/original-icons/{{ pokemon_id }}.png" alt="{{ pokemon_name }}">
-        </div>
-
-        <p>During that session, <b> {{ total_spawn_count }}</b> sightings of {{ pokemon_name }} have been seen on an area of about <b>{{ area_size }} square km</b>. Data gathering started on <b>{{ session_start.strftime('%Y-%m-%d %H:%M:%S') }}</b> and ended on <b>{{ session_end.strftime('%Y-%m-%d %H:%M:%S') }}</b>, lasting <b>{{ session_length_hours }} hours</b>.</p>
-
-        {% if google_maps_key %}
-        <h3>Heatmap</h3>
-
-        <p>All noticed spawn locations of {{ pokemon_name }}. The redder the point is, {{ pokemon_name }} spawned more often there.</p>
-
-        <p><button id="displayHeatmap">Display heatmap</button> (will slow down browser!)</p>
-
-        <div id="heatmap" class="map"></div>
-        {% endif %}
-
-        <h3>Spawning hours</h3>
-
-        <p>At what time of the day has {{ pokemon_name }} been seen most number of times?</p>
-
-        <div id="hourschart"></div>
-
-        <h2>Footnotes</h2>
-
-        <p>This report was generated using Monocle, a tool for gathering data about Pokemon Go.</p>
-
-        <p>Check out <a href="https://github.com/Noctem/Monocle">Monocle on GitHub</a> for more info.</p>
-
-        <p>This report is available under Creative Commons CC-BY-4.0 license: <a href="https://creativecommons.org/licenses/by/4.0/">https://creativecommons.org/licenses/by/4.0/</a>.</p>
-    </div>
-    <script async defer
-        src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_key }}&amp;libraries=visualization&amp;callback=initMaps">
-    </script>
+  <div class="container">
+    <h1>Monocle Report: #{{ pokemon_id }} {{ pokemon_name }}</h1>
+    <h4>Generated on {{ current_date.strftime('%Y-%m-%d %H:%M:%S') }}</h4>
+    <p><b>Disclaimer:</b> data may be incomplete due to various issues that might have happened (bugs, unstable
+    servers, bugs on the servers etc.). If there is data about a sighting of a Pokemon, that spawn almost certainly
+    happened. On the other hand, there is no guarantee that the database contains <i>all</i> spawns, so there may be
+    Pokemon missing from this report. Your mileage may vary.</p>
+    <p>This report contains statistics about data gathered from scanning {{ area_name }} for single species - {{
+    pokemon_name }}.</p>
+    <div class="pokemon-image"><img src="/static/monocle-icons/original-icons/{{ pokemon_id }}.png" alt=
+    "{{ pokemon_name }}"></div>
+    <p>During that session, <b>{{ total_spawn_count }}</b> sightings of {{ pokemon_name }} have been seen on an area of
+    about <b>{{ area_size }} square km</b>. Data gathering started on <b>{{ session_start.strftime('%Y-%m-%d %H:%M:%S')
+    }}</b> and ended on <b>{{ session_end.strftime('%Y-%m-%d %H:%M:%S') }}</b>, lasting <b>{{ session_length_hours }}
+    hours</b>.</p>
+    {% if google_maps_key %}
+    <h3>Heatmap</h3>
+    <p>All noticed spawn locations of {{ pokemon_name }}. The redder the point is, {{ pokemon_name }} spawned more
+    often there.</p>
+    <p><button id="displayHeatmap">Display heatmap</button> (will slow down browser!)</p>
+    <div id="heatmap" class="map"></div>
+    {% endif %}
+    <h3>Spawning hours</h3>
+    <p>At what time of the day has {{ pokemon_name }} been seen most number of times?</p>
+    <div id="hourschart"></div>
+    <h2>Footnotes</h2>
+    <p>This report was generated using Monocle, a tool for gathering data about Pokemon Go.</p>
+    <p>Check out <a href="https://github.com/Noctem/Monocle">Monocle on GitHub</a> for more info.</p>
+    <p>This report is available under Creative Commons CC-BY-4.0 license: <a href=
+    "https://creativecommons.org/licenses/by/4.0/">https://creativecommons.org/licenses/by/4.0/</a>.</p>
+  </div>
+  <script async defer src=
+  "https://maps.googleapis.com/maps/api/js?key={{ google_maps_key }}&amp;libraries=visualization&amp;callback=initMaps"></script>
 </body>
 </html>

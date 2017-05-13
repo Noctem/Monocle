@@ -1,25 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Monocle - {{ area_name }}</title>
-    <link rel="stylesheet" href='static/css/leaflet.css'>
-    <link rel="stylesheet" href='static/css/bootstrap.min.css'>
-    <link rel="stylesheet" href='static/css/main.css'>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta charset="UTF-8">
+  <title>Monocle - {{ area_name }}</title>
+  <link rel="stylesheet" href='static/css/leaflet.css'>
+  <link rel="stylesheet" href='static/css/bootstrap.min.css'>
+  <link rel="stylesheet" href='static/css/main.css'>
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
+  <link rel="manifest" href="/static/favicon/manifest.json">
+  <link rel="mask-icon" href="/static/favicon/safari-pinned-tab.svg" color="#772c30">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#772c30">
 </head>
 <body>
-    <h1>Monocle is initializing, please wait.</h1>
+  <h1>Monocle is initializing, please wait.</h1>
+  <div id="main-map" class="map"></div>
+  <a class="map_btn my-location"></a>
+  {{ social_links }}
+  <script src='static/js/jquery-3.2.1.min.js'></script>
+  <script src='static/js/leaflet.js'></script>
+  <script>
 
-    <div id="main-map" class="map"></div>
-    <a class="map_btn my-location"></a>
-    {{ social_links }}
-
-    <a class="my-location"></a>
-
-    <script src='static/js/jquery-3.2.1.min.js'></script>
-    <script src='static/js/leaflet.js'></script>
-    <script>
         var _MapCoords = [{{ map_center[0] }}, {{ map_center[1] }}];
         var _MapProviderUrl = '{{ map_provider_url }}';
         var _MapProviderAttribution = '{{ map_provider_attribution|safe }}';
@@ -46,7 +49,7 @@
             var marker = L.marker([raw.lat, raw.lon], {icon: icon});
             var circle = L.circle([raw.lat, raw.lon], 70, {weight: 2});
             var group = L.featureGroup([marker, circle])
-                .bindPopup('<b>Worker ' + raw.worker_no + '</b><br>time: ' + raw.time + '<br>speed: ' + raw.speed + '<br>total seen: ' + raw.total_seen + '<br>visits: ' + raw.visits + '<br>seen here: ' + raw.seen_here);
+                .bindPopup('<b>Worker ' + raw.worker_no + '<\/b><br>time: ' + raw.time + '<br>speed: ' + raw.speed + '<br>total seen: ' + raw.total_seen + '<br>visits: ' + raw.visits + '<br>seen here: ' + raw.seen_here);
             return group;
         }
 
@@ -81,6 +84,6 @@
 
             setInterval(getWorkers, 7000);
         });
-    </script>
+  </script>
 </body>
 </html>
