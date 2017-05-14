@@ -179,7 +179,7 @@ class Worker:
             raise err
 
         self.error_code = '°'
-        version = 6100
+        version = 6301
         async with self.sim_semaphore:
             self.error_code = 'APP SIMULATION'
             if conf.APP_SIMULATION:
@@ -559,7 +559,7 @@ class Worker:
                             and conf.FORCED_KILL
                             and dl_settings['settings']['minimum_client_version'] != '0.61.0'):
                         forced_version = StrictVersion(dl_settings['settings']['minimum_client_version'])
-                        if forced_version > StrictVersion('0.61.0'):
+                        if forced_version > StrictVersion('0.63.1'):
                             err = '{} is being forced, exiting.'.format(forced_version)
                             self.log.error(err)
                             print(err)
