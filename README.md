@@ -67,7 +67,7 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
   * Optionally run the live map interface and reporting system: `python3 web.py`
 
 
-**Note**: Monocle works with Python 3.5 or later only. Python 2.7 is **not supported** and is not compatible at all since I moved from threads to coroutines. Seriously, it's 2016, Python 2.7 hasn't been developed for 6 years, why don't you upgrade already?
+**Note**: Monocle works with Python 3.5 or later only. Python 2.7 is **not supported** and is not compatible at all since I moved from threads to coroutines. Seriously, it's 2017, Python 2.7 hasn't been developed for 6 years, why don't you upgrade already?
 
 Note that if you want more than 10 workers simultaneously running, SQLite is likely not the best choice. I personally use and recommend PostgreSQL, but MySQL and SQLite should also work.
 
