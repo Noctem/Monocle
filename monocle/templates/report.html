@@ -149,7 +149,7 @@
     <div class="text-center">
       {% for icon in icons.rare %}
         <a href="/report/{{ icon[0] }}"><img src="/static/monocle-icons/larger-icons/{{ icon[0] }}.png" title="#{{ icon[0] }} {{ icon[1] }}"></a>
-        {% ifloop.index > 0 and loop.index % 10 == 0 %}
+        {% if loop.index > 0 and loop.index % 10 == 0 %}
           <br>
         {% endif %}
       {% endfor %}
