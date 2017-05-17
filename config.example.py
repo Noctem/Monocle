@@ -5,7 +5,7 @@ DB_ENGINE = 'sqlite:///db.sqlite'
 #DB_ENGINE = 'postgresql://user:pass@localhost/monocle
 
 AREA_NAME = 'SLC'     # the city or region you are scanning
-LANGUAGE = 'EN'       # ISO 639-1 codes EN, DE, ES, FR, IT, JA, KO, or ZH for Pokémon/move names
+LANGUAGE = 'EN'       # ISO 639-1 codes EN, DE, ES, FR, IT, JA, KO, PT, or ZH for Pokémon/move names
 MAX_CAPTCHAS = 100    # stop launching new visits if this many CAPTCHAs are pending
 SCAN_DELAY = 10       # wait at least this many seconds before scanning with the same account
 SPEED_UNIT = 'miles'  # valid options are 'miles', 'kilometers', 'meters'
