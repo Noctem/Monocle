@@ -46,7 +46,7 @@ del _unit
 class Worker:
     """Single worker walking on the map"""
 
-    download_hash = "7b9c5056799a2c5c7d48a62c497736cbcf8c4acb"
+    download_hash = ''
     scan_delay = conf.SCAN_DELAY if conf.SCAN_DELAY >= 10 else 10
     g = {'seen': 0, 'captchas': 0}
 
@@ -96,7 +96,7 @@ class Worker:
         except KeyError:
             self.location = get_start_coords(worker_no)
         self.altitude = None
-        self.inventory_timestamp = self.account.get('inventory_timestamp')
+        self.inventory_timestamp = self.account.get('inventory_timestamp', 0)
         # last time of any request
         self.last_request = self.account.get('time', 0)
         # last time of a request that requires user interaction in the game
@@ -223,7 +223,14 @@ class Worker:
             if player_stats:
                 self.player_level = player_stats.get('level') or self.player_level
                 break
-        await self.random_sleep(.78, .95)
+        await self.random_sleep(.78, 1.05)
+        try:
+            remote_config = responses['DOWNLOAD_REMOTE_CONFIG_VERSION']
+            return (
+                remote_config['asset_digest_timestamp_ms'] / 1000000,
+                remote_config['item_templates_timestamp_ms'] / 1000)
+        except KeyError:
+            return 0.0, 0.0
 
     async def set_avatar(self, tutorial=False):
         plater_avatar = avatar.new()
@@ -263,44 +270,83 @@ class Worker:
 
         # request 1: get_player
         tutorial_state = await self.get_player()
-
-        await self.random_sleep(.53, 1)
+        await self.random_sleep(.53, 1.1)
 
         # request 2: download_remote_config_version
-        await self.download_remote_config(version)
+        asset_time, template_time = await self.download_remote_config(version)
 
-        # request 3: get_asset_digest
-        request = self.api.create_request()
-        request.get_asset_digest(platform=1, app_version=version)
-        responses = await self.call(request, buddy=False, settings=True)
+        if asset_time > self.account.get('asset_time', 0.0):
+            # request 3: get_asset_digest
+            i = randint(0, 3)
+            result = 2
+            page_offset = 0
+            page_timestamp = 0
+            while result == 2:
+                request = self.api.create_request()
+                request.get_asset_digest(
+                    platform=1,
+                    app_version=version,
+                    paginate=True,
+                    page_offset=page_offset,
+                    page_timestamp=page_timestamp)
+                responses = await self.call(request, buddy=False, settings=True)
+                if i > 2:
+                    await sleep(1.45)
+                    i = 0
+                else:
+                    i += 1
+                    await sleep(.2)
+                try:
+                    response = responses['GET_ASSET_DIGEST']
+                    result = response['result']
+                    page_offset = response['page_offset']
+                    page_timestamp = response['timestamp_ms']
+                except KeyError:
+                    break
+            self.account['asset_time'] = asset_time
 
-        await self.random_sleep(.87, 2)
+        if template_time > self.account.get('template_time', 0.0):
+            # request 4: download_item_templates
+            i = randint(0, 3)
+            result = 2
+            page_offset = 0
+            page_timestamp = 0
+            while result == 2:
+                request = self.api.create_request()
+                request.download_item_templates(
+                    paginate=True,
+                    page_offset=page_offset,
+                    page_timestamp=page_timestamp)
+                responses = await self.call(request, buddy=False, settings=True)
+                if i > 2:
+                    await sleep(1.5)
+                    i = 0
+                else:
+                    i += 1
+                    await sleep(.25)
+                try:
+                    response = responses['DOWNLOAD_ITEM_TEMPLATES']
+                    result = response['result']
+                    page_offset = response['page_offset']
+                    page_timestamp = response['timestamp_ms']
+                except KeyError:
+                    break
+            self.account['template_time'] = template_time
 
         if (conf.COMPLETE_TUTORIAL and
                 tutorial_state is not None and
                 not all(x in tutorial_state for x in (0, 1, 3, 4, 7))):
-            try:
-                asset_ids = []
-                for asset in responses['GET_ASSET_DIGEST']['digest']:
-                    if asset['bundle_name'] in ('pm0001', 'pm0004', 'pm0007'):
-                        asset_ids.append(asset['asset_id'])
-                        if len(asset_ids) == 3:
-                            break
-            except (KeyError, TypeError):
-                asset_ids = ('1a3c2816-65fa-4b97-90eb-0b301c064b7a/1487275569649000',
-                             'aa8f7687-a022-4773-b900-3a8c170e9aea/1487275581132582',
-                             'e89109b0-9a54-40fe-8431-12f7826c8194/1487275593635524')
             self.log.warning('{} is starting tutorial', self.username)
-            await self.complete_tutorial(tutorial_state, asset_ids)
+            await self.complete_tutorial(tutorial_state)
         else:
-            # request 4: get_player_profile
+            # request 5: get_player_profile
             request = self.api.create_request()
             request.get_player_profile()
             await self.call(request, settings=True)
-            await self.random_sleep(.2, .4)
+            await self.random_sleep(.2, .3)
 
             if self.player_level:
-                # request 5: level_up_rewards
+                # request 6: level_up_rewards
                 request = self.api.create_request()
                 request.level_up_rewards(level=self.player_level)
                 await self.call(request, settings=True)
@@ -308,7 +354,7 @@ class Worker:
             else:
                 self.log.warning('No player level')
 
-            # request 6: register_background_device
+            # request 7: register_background_device
             request = self.api.create_request()
             request.register_background_device(device_type='apple_watch')
             await self.call(request, action=0.1)
@@ -318,7 +364,7 @@ class Worker:
         self.error_code = None
         return True
 
-    async def complete_tutorial(self, tutorial_state, asset_ids):
+    async def complete_tutorial(self, tutorial_state):
         self.error_code = 'TUTORIAL'
         if 0 not in tutorial_state:
             # legal screen
@@ -342,7 +388,10 @@ class Worker:
             # encounter tutorial
             await self.random_sleep(.7, .9)
             request = self.api.create_request()
-            request.get_download_urls(asset_id=asset_ids)
+            request.get_download_urls(asset_id=
+                ('1a3c2816-65fa-4b97-90eb-0b301c064b7a/1487275569649000',
+                'aa8f7687-a022-4773-b900-3a8c170e9aea/1487275581132582',
+                'e89109b0-9a54-40fe-8431-12f7826c8194/1487275593635524'))
             await self.call(request)
 
             await self.random_sleep(7, 10.3)
@@ -427,10 +476,7 @@ class Worker:
         if chain:
             request.check_challenge()
             request.get_hatched_eggs()
-            if stamp and self.inventory_timestamp:
-                request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
-            else:
-                request.get_inventory()
+            request.get_inventory(last_timestamp_ms=self.inventory_timestamp)
             request.check_awarded_badges()
             if settings:
                 if dl_hash:
@@ -557,7 +603,7 @@ class Worker:
                 try:
                     if (not dl_hash
                             and conf.FORCED_KILL
-                            and dl_settings['settings']['minimum_client_version'] != '0.61.0'):
+                            and dl_settings['settings']['minimum_client_version'] != '0.63.1'):
                         forced_version = StrictVersion(dl_settings['settings']['minimum_client_version'])
                         if forced_version > StrictVersion('0.63.1'):
                             err = '{} is being forced, exiting.'.format(forced_version)
@@ -1081,13 +1127,10 @@ class Worker:
         self.altitude = uniform(self.altitude - 1, self.altitude + 1)
         self.api.set_position(*self.location, self.altitude)
 
-    def update_accounts_dict(self, captcha=False, banned=False):
-        self.account['captcha'] = captcha
-        self.account['banned'] = banned
+    def update_accounts_dict(self):
         self.account['location'] = self.location
         self.account['time'] = self.last_request
         self.account['inventory_timestamp'] = self.inventory_timestamp
-        self.account['items'] = self.items
         if self.player_level:
             self.account['level'] = self.player_level
 
@@ -1102,13 +1145,15 @@ class Worker:
     async def remove_account(self):
         self.error_code = 'REMOVING'
         self.log.warning('Removing {} due to ban.', self.username)
-        self.update_accounts_dict(banned=True)
+        self.account['banned'] = True
+        self.update_accounts_dict()
         await self.new_account()
 
     async def bench_account(self):
         self.error_code = 'BENCHING'
         self.log.warning('Swapping {} due to CAPTCHA.', self.username)
-        self.update_accounts_dict(captcha=True)
+        self.account['captcha'] = True
+        self.update_accounts_dict()
         self.captcha_queue.put(self.account)
         await self.new_account()
 
@@ -1147,12 +1192,16 @@ class Worker:
             self.location = self.account['location'][:2]
         except KeyError:
             self.location = get_start_coords(self.worker_no)
-        self.inventory_timestamp = self.account.get('inventory_timestamp')
+        self.inventory_timestamp = self.account.get('inventory_timestamp', 0)
         self.player_level = self.account.get('level')
         self.last_request = self.account.get('time', 0)
         self.last_action = self.last_request
         self.last_gmo = self.last_request
-        self.items = self.account.get('items', {})
+        try:
+            self.items = self.account['items']
+        except KeyError:
+            self.account['items'] = {}
+            self.items = self.account['items']
         self.num_captchas = 0
         self.eggs = {}
         self.unused_incubators = []
