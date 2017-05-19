@@ -787,7 +787,7 @@ class Worker:
                             or (encounter_conf == 'some'
                             and normalized['pokemon_id'] in conf.ENCOUNTER_IDS)):
                         try:
-                            await self.encounter(normalized, pokemon['spawn_point_id'])
+                            await self.encounter(normalized, pokemon.spawn_point_id)
                         except CancelledError:
                             db_proc.add(normalized)
                             raise
@@ -1037,7 +1037,7 @@ class Worker:
                 responses = await self.call(request, action=4.5)
 
                 try:
-                    result = responses['USE_ITEM_EGG_INCUBATOR'].result
+                    ret = responses['USE_ITEM_EGG_INCUBATOR'].result
                     if ret == 4:
                         self.log.warning("Failed to use incubator because it was already in use.")
                     elif ret != 1:
