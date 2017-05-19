@@ -3,11 +3,12 @@
 from pkg_resources import resource_filename
 from time import time
 
+from asyncpg import create_pool
+from jinja2 import Environment, PackageLoader, Markup
 from sanic import Sanic
 from sanic.response import html, HTTPResponse, json
-from jinja2 import Environment, PackageLoader, Markup
-from asyncpg import create_pool
 from pogeo.monotools.aiosightingcache import AioSightingCache
+from pogeo.monotools.aiospawncache import AioSpawnCache
 
 from monocle import bounds, names, sanitized as conf
 from monocle.web_utils import get_worker_markers, Workers, get_args
@@ -16,7 +17,8 @@ from monocle.web_utils import get_worker_markers, Workers, get_args
 env = Environment(loader=PackageLoader('monocle', 'templates'))
 app = Sanic(__name__)
 app.static('/static', resource_filename('monocle', 'static'))
-_CACHE = AioSightingCache(conf, names)
+_SIGHTINGS = AioSightingCache(conf, names)
+_SPAWNS = AioSpawnCache(conf.SPAWN_ID_INT)
 
 
 def social_links():
@@ -93,7 +95,7 @@ del env
 
 
 @app.get('/data')
-async def pokemon_data(request, _cache=_CACHE):
+async def pokemon_data(request, _cache=_SIGHTINGS):
     try:
         compress = 'gzip' in request.headers['Accept-Encoding'].lower()
     except KeyError:
@@ -140,10 +142,16 @@ async def gym_data(request, names=names.POKEMON, _str=str):
 
 
 @app.get('/spawnpoints')
-async def spawn_points(request, _dict=dict):
-    async with app.pool.acquire() as conn:
-         results = await conn.fetch('SELECT spawn_id, despawn_time, lat, lon, duration FROM spawnpoints')
-    return json([_dict(x) for x in results])
+async def spawn_points(request, _cache=_SPAWNS):
+    try:
+        compress = 'gzip' in request.headers['Accept-Encoding'].lower()
+    except KeyError:
+        compress = False
+    body = await _cache.get_json(compress)
+    return HTTPResponse(
+        body_bytes=body,
+        content_type='application/json',
+        headers={'Content-Encoding': 'gzip'} if compress else None)
 
 
 @app.get('/pokestops')
@@ -161,7 +169,8 @@ async def scan_coords(request, _response=HTTPResponse(body_bytes=bounds.json, co
 @app.listener('before_server_start')
 async def register_db(app, loop):
     app.pool = await create_pool(dsn=conf.DB_ENGINE, loop=loop)
-    _CACHE.initialize(loop, app.pool)
+    _SIGHTINGS.initialize(loop, app.pool)
+    _SPAWNS.initialize(loop, app.pool)
 
 
 def main():

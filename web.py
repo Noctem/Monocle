@@ -10,9 +10,9 @@ try:
 except ImportError:
     from json import dumps
 
+from flask import Flask, jsonify, make_response, Markup, render_template, request
 from pogeo.monotools.sightingcache import SightingCache
 from pogeo.monotools.spawncache import SpawnCache
-from flask import Flask, jsonify, make_response, Markup, render_template, request
 
 from monocle import bounds, db, names, sanitized as conf
 from monocle.web_utils import *
