@@ -232,14 +232,6 @@ def accounts_from_csv(new_accounts, pickled_accounts):
     return accounts
 
 
-if conf.SPAWN_ID_INT:
-    def get_spawn_id(pokemon, _int=int):
-        return _int(pokemon['spawn_point_id'], 16)
-else:
-    def get_spawn_id(pokemon):
-        return pokemon['spawn_point_id']
-
-
 def get_current_hour(now=None, _time=time):
     now = now or _time()
     return round(now - (now % 3600))
