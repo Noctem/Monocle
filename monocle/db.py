@@ -8,8 +8,6 @@ from hashlib import sha256
 from sqlalchemy import Column, Integer, String, Float, SmallInteger, BigInteger, ForeignKey, UniqueConstraint, create_engine, cast, func, desc, asc, and_, exists
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.types import TypeDecorator, Numeric, Text
-from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT, DOUBLE
-from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION
 from sqlalchemy.ext.declarative import declarative_base
 
 from . import bounds, db_proc, spawns, spawnid_to_coords, spawnid_to_loc, sanitized as conf
@@ -26,11 +24,15 @@ except AssertionError:
 log = get_logger(__name__)
 
 if conf.DB_ENGINE.startswith('mysql'):
+    from sqlalchemy.dialects.mysql import TINYINT, MEDIUMINT, BIGINT, DOUBLE
+
     TINY_TYPE = TINYINT(unsigned=True)          # 0 to 255
     MEDIUM_TYPE = MEDIUMINT(unsigned=True)      # 0 to 4294967295
     HUGE_TYPE = BIGINT(unsigned=True)           # 0 to 18446744073709551615
     FLOAT_TYPE = DOUBLE(precision=17, scale=14, asdecimal=False)
 elif conf.DB_ENGINE.startswith('postgres'):
+    from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION
+
     class NumInt(TypeDecorator):
         '''Modify Numeric type for integers'''
         impl = Numeric

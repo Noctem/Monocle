@@ -3309,7 +3309,8 @@ elif language == 'KO':
         281: '잠재파워'
     })
 elif language == 'PT':
-    # Pokémon names are the same as English
+    POKEMON[205] = 'Forrestress'
+
     MOVES = defaultdict(lambda: '?', {
         1: 'Trovoada de Choques',
         2: 'Ataque Rápido',

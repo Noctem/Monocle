@@ -52,6 +52,7 @@ Since it uses [Leaflet](http://leafletjs.com/) for mapping, the appearance and d
   * Optionally `pip3 install` additional packages listed in optional-requirements
     * *asyncpushbullet* is required for PushBullet notifications
     * *peony-twitter* is required for Twitter notifications
+    * *gpsoauth* is required for logging in to Google accounts
     * *shapely* is required for landmarks or boundary polygons
     * *selenium* (and [ChromeDriver](https://sites.google.com/a/chromium.org/chromedriver/)) are required for manually solving CAPTCHAs
     * *uvloop* provides better event loop performance

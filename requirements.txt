@@ -1,6 +1,6 @@
 protobuf>=3.0.0
 sqlalchemy>=1.1.0
-aiopogo>=1.9.1
+aiopogo>=2.0.0
 aiohttp>=2.0.7,<2.1
 https://github.com/Noctem/pogeo/archive/develop.zip
 cyrandom>=0.3.0
