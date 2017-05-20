@@ -797,7 +797,7 @@ class Worker:
                 if notify_conf and self.notifier.eligible(normalized):
                     if encounter_conf and 'move_1' not in normalized:
                         try:
-                            await self.encounter(normalized, pokemon['spawn_point_id'])
+                            await self.encounter(normalized, pokemon.spawn_point_id)
                         except CancelledError:
                             db_proc.add(normalized)
                             raise
