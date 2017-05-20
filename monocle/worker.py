@@ -11,7 +11,7 @@ from aiopogo.auth_ptc import AuthPtc
 from cyrandom import choice, randint, uniform
 from pogeo import get_distance
 
-from .db import SIGHTING_CACHE, MYSTERY_CACHE
+from .db import FORT_CACHE, MYSTERY_CACHE, SIGHTING_CACHE
 from .utils import round_coords, load_pickle, get_device_info, get_start_coords, Units, randomize_point
 from .shared import get_logger, LOOP, SessionManager, run_threaded, ACCOUNTS
 from . import altitudes, avatar, bounds, db_proc, spawns, sanitized as conf
@@ -97,14 +97,19 @@ class Worker:
         except KeyError:
             self.location = get_start_coords(worker_no)
         self.altitude = None
-        self.inventory_timestamp = self.account.get('inventory_timestamp', 0)
         # last time of any request
         self.last_request = self.account.get('time', 0)
         # last time of a request that requires user interaction in the game
         self.last_action = self.last_request
         # last time of a GetMapObjects request
         self.last_gmo = self.last_request
-        self.items = self.account.get('items', {})
+        try:
+            self.items = self.account['items']
+            self.bag_items = sum(self.items.values())
+        except KeyError:
+            self.account['items'] = {}
+            self.items = self.account['items']
+        self.inventory_timestamp = self.account.get('inventory_timestamp', 0) if self.items else 0
         self.player_level = self.account.get('level')
         self.num_captchas = 0
         self.eggs = {}
@@ -461,6 +466,7 @@ class Worker:
             if obj.HasField('item'):
                 item = obj.item
                 self.items[item.item_id] = item.count
+                self.bag_items = sum(self.items.values())
             elif conf.INCUBATE_EGGS:
                 if obj.HasField('pokemon_data') and obj.pokemon_data.is_egg:
                     egg = obj.pokemon_data
@@ -770,7 +776,7 @@ class Worker:
         points_seen = 0
         seen_target = not spawn_id
 
-        if conf.ITEM_LIMITS and self.bag_full():
+        if conf.ITEM_LIMITS and self.bag_items >= self.item_capacity:
             await self.clean_bag()
 
         for map_cell in map_objects.map_cells:
@@ -816,16 +822,18 @@ class Worker:
                         pokemon_seen += 1
                         if norm not in SIGHTING_CACHE:
                             db_proc.add(norm)
-                    pokestop = self.normalize_pokestop(fort)
-                    db_proc.add(pokestop)
-                    if (self.pokestops and not self.bag_full()
+                    if (self.pokestops and
+                            self.bag_items < self.item_capacity
                             and time() > self.next_spin
                             and (not conf.SMART_THROTTLE or
                             self.smart_throttle(2))):
                         cooldown = fort.cooldown_complete_timestamp_ms
                         if not cooldown or time() > cooldown / 1000:
-                            await self.spin_pokestop(pokestop)
-                else:
+                            await self.spin_pokestop(fort)
+                    if fort.id not in FORT_CACHE.pokestops:
+                        pokestop = self.normalize_pokestop(fort)
+                        db_proc.add(pokestop)
+                elif fort not in FORT_CACHE:
                     db_proc.add(self.normalize_gym(fort))
 
             if more_points:
@@ -894,7 +902,7 @@ class Worker:
 
     async def spin_pokestop(self, pokestop):
         self.error_code = '$'
-        pokestop_location = pokestop['lat'], pokestop['lon']
+        pokestop_location = pokestop.latitude, pokestop.longitude
         distance = get_distance(self.location, pokestop_location)
         # permitted interaction distance - 4 (for some jitter leeway)
         # estimation of spinning speed limit
@@ -906,18 +914,18 @@ class Worker:
         self.simulate_jitter(amount=0.00001)
 
         request = self.api.create_request()
-        request.fort_details(fort_id = pokestop['external_id'],
-                             latitude = pokestop['lat'],
-                             longitude = pokestop['lon'])
+        request.fort_details(fort_id = pokestop.id,
+                             latitude = pokestop_location[0],
+                             longitude = pokestop_location[1])
         responses = await self.call(request, action=1.2)
         name = responses['FORT_DETAILS'].name
 
         request = self.api.create_request()
-        request.fort_search(fort_id = pokestop['external_id'],
+        request.fort_search(fort_id = pokestop.id,
                             player_latitude = self.location[0],
                             player_longitude = self.location[1],
-                            fort_latitude = pokestop['lat'],
-                            fort_longitude = pokestop['lon'])
+                            fort_latitude = pokestop_location[0],
+                            fort_longitude = pokestop_location[1])
         responses = await self.call(request, action=2)
 
         try:
@@ -936,7 +944,8 @@ class Worker:
             self.log.warning('{} was in the cooldown period.', name)
         elif result == 4:
             self.log.warning('Could not spin {} because inventory was full. {}',
-                name, sum(self.items.values()))
+                name, self.bag_items)
+            self.inventory_timestamp = 0
         elif result == 5:
             self.log.warning('Could not spin {} because the daily limit was reached.', name)
             self.pokestops = False
@@ -988,9 +997,6 @@ class Worker:
         except KeyError:
             self.log.error('Missing encounter response.')
         self.error_code = '!'
-
-    def bag_full(self):
-        return sum(self.items.values()) >= self.item_capacity
 
     async def clean_bag(self):
         self.error_code = '|'
@@ -1186,19 +1192,20 @@ class Worker:
             self.location = self.account['location'][:2]
         except KeyError:
             self.location = get_start_coords(self.worker_no)
-        self.inventory_timestamp = self.account.get('inventory_timestamp', 0)
+        self.inventory_timestamp = self.account.get('inventory_timestamp', 0) if self.items else 0
         self.player_level = self.account.get('level')
         self.last_request = self.account.get('time', 0)
         self.last_action = self.last_request
         self.last_gmo = self.last_request
         try:
             self.items = self.account['items']
+            self.bag_items = sum(self.items.values())
         except KeyError:
             self.account['items'] = {}
             self.items = self.account['items']
         self.num_captchas = 0
         self.eggs = {}
-        self.unused_incubators = []
+        self.unused_incubators = deque()
         self.initialize_api()
         self.error_code = None
 

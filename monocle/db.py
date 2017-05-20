@@ -171,7 +171,7 @@ class FortCache:
 
     def __contains__(self, sighting):
         try:
-            return self.gyms[sighting['external_id']] == sighting['last_modified']
+            return self.gyms[sighting.id] == sighting.last_modified_timestamp_ms // 1000
         except KeyError:
             return False
 
@@ -460,8 +460,6 @@ def add_mystery(session, pokemon):
 
 
 def add_fort_sighting(session, raw_fort):
-    if raw_fort in FORT_CACHE:
-        return
     # Check if fort exists
     fort = session.query(Fort) \
         .filter(Fort.external_id == raw_fort['external_id']) \
@@ -493,8 +491,6 @@ def add_fort_sighting(session, raw_fort):
 
 def add_pokestop(session, raw_pokestop):
     pokestop_id = raw_pokestop['external_id']
-    if pokestop_id in FORT_CACHE.pokestops:
-        return
     if session.query(exists().where(
             Pokestop.external_id == pokestop_id)).scalar():
         FORT_CACHE.pokestops.add(pokestop_id)

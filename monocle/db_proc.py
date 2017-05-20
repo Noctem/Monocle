@@ -2,6 +2,7 @@ import sys
 
 from queue import Queue
 from threading import Thread
+from time import sleep
 
 from . import db
 from .shared import get_logger, LOOP
@@ -60,6 +61,7 @@ class DatabaseProcessor(Thread):
                     self._commit = False
             except Exception as e:
                 session.rollback()
+                sleep(5.0)
                 self.log.exception('A wild {} appeared in the DB processor!', e.__class__.__name__)
         try:
             session.commit()
