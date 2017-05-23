@@ -1,4 +1,4 @@
-from os import join
+from os.path import join
 
 from pogeo.altitude import AltitudeCache
 
@@ -26,8 +26,8 @@ def load_alts():
 
     if not unpickled:
         try:
-            ALTITUDES.fetch_all()
-        except Exception():
+            ALTITUDES.fetch_all(bounds)
+        except Exception:
             log.exception('Error while fetching altitudes.')
         if ALTITUDES:
             log.warning('{} altitudes fetched.', len(ALTITUDES))

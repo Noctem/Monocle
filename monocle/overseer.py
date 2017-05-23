@@ -56,15 +56,15 @@ BAD_STATUSES = {
 }
 
 _unit = conf.SPEED_UNIT.lower()
-if _unit == "miles":
+if _unit == 'miles':
     # miles/hour to meters/second, default to 19.5mph
     SPEED_LIMIT = conf.SPEED_LIMIT * 0.44704 if conf.SPEED_LIMIT else 8.71728
     GOOD_ENOUGH = conf.GOOD_ENOUGH * 0.44704 if conf.GOOD_ENOUGH else 0.44704
-if _unit == "kilometers":
+elif _unit == 'kilometers':
     # kilometers/hour to meters/second, default to 31.38km/h
     SPEED_LIMIT = conf.SPEED_LIMIT * 1000 / 3600 if conf.SPEED_LIMIT else 8.71728
     GOOD_ENOUGH = conf.GOOD_ENOUGH * 1000 / 3600 if conf.GOOD_ENOUGH else 0.44704
-elif _unit is "meters":
+elif _unit == 'meters':
     # meters/hour to meters/second
     SPEED_LIMIT = conf.SPEED_LIMIT / 3600 if conf.SPEED_LIMIT else 8.71728
     GOOD_ENOUGH = conf.GOOD_ENOUGH / 3600 if conf.GOOD_ENOUGH else 0.44704

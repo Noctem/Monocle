@@ -1,4 +1,4 @@
-### All lines that are commented out (and some that aren't) are optional ###
+### All lines that are commented out (and many that aren't) are optional ###
 
 DB_ENGINE = 'sqlite:///db.sqlite'
 #DB_ENGINE = 'mysql://user:pass@localhost/monocle'
@@ -314,18 +314,8 @@ MINIMUM_SCORE = 0.4  # the required score after FULL_TIME seconds have passed
 
 
 ##### Referencing landmarks in your tweets/notifications
-
-#### It is recommended to store the LANDMARKS object in a pickle to reduce startup
-#### time if you are using queries. An example script for this is in:
-#### scripts/pickle_landmarks.example.py
-#from pickle import load
-#with open('pickles/landmarks.pickle', 'rb') as f:
-#    LANDMARKS = load(f)
-
-### if you do pickle it, just load the pickle and omit everything below this point
-
-#from monocle.landmarks import Landmarks
-#LANDMARKS = Landmarks(query_suffix=AREA_NAME)
+## Appended to OpenStreetMap queries if a query and query_suffix aren't provided
+QUERY_SUFFIX = 'Salt Lake City'
 
 # Landmarks to reference when Pokémon are nearby
 # If no points are specified then it will query OpenStreetMap for the coordinates
@@ -339,20 +329,18 @@ MINIMUM_SCORE = 0.4  # the required score after FULL_TIME seconds have passed
 # When selecting a landmark, non-areas will be chosen first if any are close enough
 # the default phrase is 'in' for areas and 'at' for non-areas, but can be overriden for either.
 
-### replace these with well-known places in your area
-
-## since no points or query is provided, the names provided will be queried and suffixed with AREA_NAME
-#LANDMARKS.add('Rice Eccles Stadium', shortname='Rice Eccles', hashtags={'Utes'})
-#LANDMARKS.add('the Salt Lake Temple', shortname='the temple', hashtags={'TempleSquare'})
-
-## provide two corner points to create a square for this area
-#LANDMARKS.add('City Creek Center', points=((40.769210, -111.893901), (40.767231, -111.888275)), hashtags={'CityCreek'})
-
-## provide a query that is different from the landmark name so that OpenStreetMap finds the correct one
-#LANDMARKS.add('the State Capitol', shortname='the Capitol', query='Utah State Capitol Building')
-
-### area examples ###
-## query using name, override the default area phrase so that it says 'at (name)' instead of 'in'
-#LANDMARKS.add('the University of Utah', shortname='the U of U', hashtags={'Utes'}, phrase='at', is_area=True)
-## provide corner points to create a polygon of the area since OpenStreetMap does not have a shape for it
-#LANDMARKS.add('Yalecrest', points=((40.750263, -111.836502), (40.750377, -111.851108), (40.751515, -111.853833), (40.741212, -111.853909), (40.741188, -111.836519)), is_area=True)
+''' # these triple quotes are block comments, remove them to fill in your own landmarks
+LANDMARKS = (
+    # since no points or query is provided, the names provided will be queried and suffixed with QUERY_SUFFIX
+    {'name': 'Rice Eccles Stadium', 'shortname': 'Rice Eccles', 'hashtags': ['Utes']},
+    {'name': 'the Salt Lake Temple', 'shortname': 'the temple', 'hashtags': ['TempleSquare']},
+    # provide two corner points to create a square for this area
+    {'name': 'City Creek Center', 'points': ((40.769210, -111.893901), (40.767231, -111.888275)), 'hashtags': ['CityCreek']},
+    # provide a query that is different from the landmark name so that OpenStreetMap finds the correct one
+    {'name': 'the State Capitol', 'shortname': 'the Capitol', 'query': 'Utah State Capitol Building'},
+    # query using name, override the default area phrase so that it says 'at (name)' instead of 'in'
+    {'name': 'the University of Utah', 'shortname': 'the U of U', 'hashtags': ['Utes'], 'phrase': 'at', 'is_area': True},
+    # provide corner points to create a polygon of the area since OpenStreetMap does not have a shape for it
+    {'name': 'Yalecrest', 'points': ((40.7502, -111.8365), (40.7503, -111.8511), (40.7515, -111.8538), (40.7412, -111.8539), (40.7411, -111.8365)), 'is_area': True}
+)
+'''
