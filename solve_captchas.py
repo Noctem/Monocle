@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 
-from multiprocessing.managers import BaseManager
 from asyncio import get_event_loop, sleep
+from multiprocessing.managers import BaseManager
 from time import time
 
-from selenium import webdriver
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
 from aiopogo import PGoApi, close_sessions, activate_hash_server, exceptions as ex
 from aiopogo.auth_ptc import AuthPtc
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 from monocle import altitudes, sanitized as conf
 from monocle.utils import get_device_info, get_address, randomize_point
@@ -31,20 +31,14 @@ async def solve_captcha(url, api, driver, timestamp):
 
     for attempt in range(-1, conf.MAX_RETRIES):
         try:
-            response = await request.call()
-            return response['responses']['VERIFY_CHALLENGE']['success']
+            responses = await request.call()
+            return responses['VERIFY_CHALLENGE'].success
         except (ex.HashServerException, ex.MalformedResponseException, ex.ServerBusyOrOfflineException) as e:
             if attempt == conf.MAX_RETRIES - 1:
                 raise
             else:
                 print('{}, trying again soon.'.format(e))
                 await sleep(4)
-        except ex.NianticThrottlingException:
-            if attempt == conf.MAX_RETRIES - 1:
-                raise
-            else:
-                print('Throttled, trying again in 11 seconds.')
-                await sleep(11)
         except (KeyError, TypeError):
             return False
 
@@ -109,16 +103,15 @@ async def main():
                 request.download_remote_config_version(platform=1, app_version=6301)
                 request.check_challenge()
                 request.get_hatched_eggs()
-                request.get_inventory()
+                request.get_inventory(last_timestamp_ms=account.get('inventory_timestamp', 0))
                 request.check_awarded_badges()
                 request.download_settings()
-                response = await request.call()
+                responses = await request.call()
                 account['time'] = time()
 
-                responses = response['responses']
-                challenge_url = responses['CHECK_CHALLENGE']['challenge_url']
-                timestamp = responses.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('new_timestamp_ms')
-                account['location'] = lat, lon, alt
+                challenge_url = responses['CHECK_CHALLENGE'].challenge_url
+                timestamp = responses['GET_INVENTORY'].inventory_delta.new_timestamp_ms
+                account['location'] = lat, lon
                 account['inventory_timestamp'] = timestamp
                 if challenge_url == ' ':
                     account['captcha'] = False
