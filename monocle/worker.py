@@ -9,6 +9,7 @@ from distutils.version import StrictVersion
 from aiopogo import PGoApi, HashServer, json_loads, exceptions as ex
 from aiopogo.auth_ptc import AuthPtc
 from cyrandom import choice, randint, uniform
+from pogeo import Location
 from pogeo.utils import location_to_cellid, location_to_token
 
 from .altitudes import load_alts, set_altitude
@@ -100,7 +101,7 @@ class Worker:
         self.empty_visits = 0
 
         self.api = PGoApi(device_info=device_info)
-        self.api.location = self.location
+        self.api.position = self.location
         if self.proxies:
             self.api.proxy = next(self.proxies)
         try:
@@ -587,7 +588,7 @@ class Worker:
 
     async def bootstrap_visit(self, point):
         for _ in range(3):
-            if await self.visit(point, bootstrap=True):
+            if await self.visit_point(point, bootstrap=True):
                 return True
             self.error_code = '∞'
             self.location.jitter(0.00005, 0.00005, 0.5)
@@ -599,16 +600,16 @@ class Worker:
         try:
             set_altitude(point)
             self.location = point
-            self.api.location = self.location
+            self.api.position = self.location
             if not self.authenticated:
                 await self.login()
-            return await self.visit(point, spawn_id, bootstrap)
+            return await self.visit(spawn_id, bootstrap)
         except ex.NotLoggedInException:
             self.error_code = 'NOT AUTHENTICATED'
             await sleep(1, loop=LOOP)
             if not await self.login(reauth=True):
                 await self.swap_account(reason='reauth failed')
-            return await self.visit(self.location, spawn_id, bootstrap)
+            return await self.visit(spawn_id, bootstrap)
         except ex.AuthException as e:
             self.log.warning('Auth error on {}: {}', self.username, e)
             self.error_code = 'NOT AUTHENTICATED'
@@ -810,12 +811,12 @@ class Worker:
         self.visits += 1
 
         if conf.MAP_WORKERS:
-            self.worker_dict[self.worker_no] = (point, self.location.time,
-                self.speed, self.total_seen, self.visits, pokemon_seen)
+            self.worker_dict[self.worker_no] = (
+                self.location, self.location.time,self.speed, self.total_seen,
+                self.visits, pokemon_seen)
         self.log.info(
             'Point processed, {} Pokemon and {} forts seen!',
-            pokemon_seen,
-            forts_seen)
+            pokemon_seen, forts_seen)
 
         self.update_accounts_dict()
         self.handle = LOOP.call_later(60, self.unset_code)
@@ -835,7 +836,7 @@ class Worker:
 
     async def spin_pokestop(self, pokestop):
         self.error_code = '$'
-        distance = self.location.distance_meters(Location(pokestop['lat'], pokestop['lon']))
+        distance = self.location.distance(Location(pokestop['lat'], pokestop['lon']))
         # permitted interaction distance - 2 (for some jitter/calculation leeway)
         # estimation of spinning speed limit
         if distance > 38.0 or self.speed > 8.611:
@@ -870,8 +871,8 @@ class Worker:
         if result == 1:
             self.log.info('Spun {}.', name)
         elif result == 2:
-            self.log.info('The server said {} was out of spinning range. {:.1f}m {:.1f}{}',
-                name, distance, self.speed, UNIT_STRING)
+            self.log.info('The server said {} was out of spinning range. {:.1f}m {:.1f}m/s',
+                name, distance, self.speed)
         elif result == 3:
             self.log.warning('{} was in the cooldown period.', name)
         elif result == 4:
@@ -887,7 +888,7 @@ class Worker:
         self.error_code = '!'
 
     async def encounter(self, pokemon, spawn_id):
-        distance_to_pokemon = self.location.distance_meters(Location(pokemon['lat'], pokemon['lon']))
+        distance_to_pokemon = self.location.distance(Location(pokemon['lat'], pokemon['lon']))
 
         self.error_code = '~'
 
@@ -1146,6 +1147,8 @@ class Worker:
             'type': 'pokemon',
             'encounter_id': raw.encounter_id,
             'pokemon_id': raw.pokemon_data.pokemon_id,
+            'lat': raw.latitude,
+            'lon': raw.longitude,
             'spawn_id': int(raw.spawn_point_id, 16) if spawn_int else raw.spawn_point_id,
             'seen': tss
         }
@@ -1166,7 +1169,7 @@ class Worker:
     @staticmethod
     def normalize_lured(raw, now, sid=location_to_cellid if conf.SPAWN_ID_INT else location_to_token):
         lure = raw.lure_info
-        loc = Location(raw['latitude'], raw['longitude'])
+        loc = Location(raw.latitude, raw.longitude)
         return {
             'type': 'pokemon',
             'encounter_id': lure.encounter_id,

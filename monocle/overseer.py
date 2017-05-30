@@ -454,7 +454,7 @@ class Overseer:
         async with self.coroutine_semaphore:
             worker = await self.best_worker(point, False)
             async with worker.busy:
-                if await worker.visit(point):
+                if await worker.visit_point(point):
                     self.visits += 1
 
     async def bootstrap(self):
@@ -533,7 +533,7 @@ class Overseer:
                 if spawn_time:
                     worker.after_spawn = time() - spawn_time
 
-                if await worker.visit(point, spawn_id):
+                if await worker.visit_point(location, spawn_id):
                     self.visits += 1
         except CancelledError:
             raise

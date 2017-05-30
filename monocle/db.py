@@ -415,10 +415,10 @@ def add_mystery_spawnpoint(session, pokemon):
     ))
 
     if spawnid_to_loc(spawn_id) in bounds:
-        spawns.unknowns.add(spawn_id)
+        spawns.unknown.add(spawn_id)
 
 
-def add_mystery(session, pokemon, _cache=SIGHTING_CACHE, _encounter=conf.ENCOUNTER):
+def add_mystery(session, pokemon, _cache=MYSTERY_CACHE, _encounter=conf.ENCOUNTER):
     if pokemon in _cache:
         return
     add_mystery_spawnpoint(session, pokemon)

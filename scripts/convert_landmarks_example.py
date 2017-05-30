@@ -27,11 +27,11 @@ class Landmarks:
 ### replace example below with your own old-style landmarks config ###
 LANDMARKS = Landmarks(query_suffix='Salt Lake City')
 
-LANDMARKS.add('Rice Eccles Stadium', hashtags={'Utes'})
-LANDMARKS.add('the Salt Lake Temple', hashtags={'TempleSquare'})
-LANDMARKS.add('City Creek Center', points=((40.769210, -111.893901), (40.767231, -111.888275)), hashtags={'CityCreek'})
+LANDMARKS.add('Rice Eccles Stadium', hashtags=['Utes'])
+LANDMARKS.add('the Salt Lake Temple', hashtags=['TempleSquare'])
+LANDMARKS.add('City Creek Center', points=((40.769210, -111.893901), (40.767231, -111.888275)), hashtags=['CityCreek'])
 LANDMARKS.add('the State Capitol', query='Utah State Capitol Building')
-LANDMARKS.add('the University of Utah', hashtags={'Utes'}, phrase='at', is_area=True)
+LANDMARKS.add('the University of Utah', hashtags=['Utes'], phrase='at', is_area=True)
 LANDMARKS.add('Yalecrest', points=((40.750263, -111.836502), (40.750377, -111.851108), (40.751515, -111.853833), (40.741212, -111.853909), (40.741188, -111.836519)), is_area=True)
 ### replace example above with your own old-style landmarks config ###
 

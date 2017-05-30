@@ -289,7 +289,6 @@ class Notification:
                     now + max_delta).strftime('%I:%M %p').lstrip('0')
 
         self.map_link = 'https://maps.google.com/maps?q={0[0]:.5f},{0[1]:.5f}'.format(self.coordinates)
-        self.place = None
 
     async def notify(self):
         if self.landmarks:
@@ -297,11 +296,12 @@ class Notification:
             self.place = self.landmark.generate_string(self.coordinates)
             if TWITTER:
                 self.hashtags = conf.HASHTAGS.copy() if conf.HASHTAGS else set()
-                self.hashtags.update(self.landmark.hashtags)
+                if self.landmark.hashtags:
+                    self.hashtags.update(self.landmark.hashtags)
         else:
             self.place = self.generic_place_string()
             if TWITTER:
-                self.hashtags = conf.HASHTAGS.copy() if conf.HASHTAGS else None
+                self.hashtags = conf.HASHTAGS.copy() if conf.HASHTAGS else set()
 
         if PUSHBULLET or TELEGRAM:
             try:

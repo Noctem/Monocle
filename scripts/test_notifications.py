@@ -53,7 +53,7 @@ if args.id is not None:
     if args.id == 0:
         names.POKEMON[0] = 'Test'
 else:
-    pokemon_id = randint(1, 252)
+    pokemon_id = randint(1, 251)
 
 if not args.unmodified:
     conf.ALWAYS_NOTIFY_IDS = {pokemon_id}

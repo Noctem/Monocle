@@ -103,7 +103,7 @@ class Landmarks:
             self.pickle(sha)
 
     def __bool__(self):
-        return self.points_of_interest or self.areas
+        return bool(self.points_of_interest or self.areas)
 
     def pickle(self, sha):
         dump_pickle('landmarks', {

@@ -45,9 +45,9 @@ class Spawns:
         self.unknown.discard(spawn_id)
 
     def update(self, _migration=conf.LAST_MIGRATION, _contains=contains_spawn):
+        known = {}
         with db.session_scope() as session:
             query = session.query(db.Spawnpoint.spawn_id, db.Spawnpoint.despawn_time, db.Spawnpoint.duration, db.Spawnpoint.updated)
-            known = {}
             for spawn_id, despawn_time, duration, updated in query:
                 # skip if point is not within boundaries (if applicable)
                 if not _contains(spawn_id):
@@ -57,9 +57,9 @@ class Spawns:
                     self.unknown.add(spawn_id)
                     continue
 
-                self.despawn_times[spawn_id] = despawn_time if duration == 60 else (despawn_time + 1800) % 3600
+                self.despawn_times[spawn_id] = despawn_time
 
-                known[spawn_id] = spawn_time
+                known[spawn_id] = despawn_time if duration == 60 else (despawn_time + 1800) % 3600
         if known:
             self.known = OrderedDict(sorted(known.items(), key=lambda k: k[1]))
 
