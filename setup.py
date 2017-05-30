@@ -15,9 +15,9 @@ setup(
     install_requires=[
         'protobuf>=3.0.0',
         'sqlalchemy>=1.1.0',
-        'aiopogo>=2.0.0',
-        'aiohttp>=2.0.7,<2.1',
-        'pogeo>=0.4',
+        'aiopogo>=2.1.0b0',
+        'aiohttp>=2.0.7',
+        'pogeo>=0.4b0',
         'cyrandom>=0.3.0',
         'flask>=0.11.1'
     ],

@@ -1,6 +1,6 @@
 # Monocle
 
-[![Build Status](https://travis-ci.org/Noctem/Monocle.svg?branch=develop)](https://travis-ci.org/Noctem/Monocle)
+[![Build Status](https://travis-ci.org/Noctem/Monocle.svg)](https://travis-ci.org/Noctem/Monocle)
 
 Monocle is the distinguished Pokémon Go scanner capable of scanning large areas for spawns. Features spawnpoint scanning, Twitter and PushBullet notifications, accurate expiration times and estimates based on historical data, pokestop and gym collection, a CAPTCHA solving script, and more.
 
