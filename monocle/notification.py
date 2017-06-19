@@ -719,7 +719,7 @@ class Notifier:
 
         if 'time_till_hidden' not in pokemon:
             seen = pokemon['seen'] % 3600
-            self.cache.store.add(pokemon['encounter_id'])
+            cache_handle = self.cache.store.add(pokemon['encounter_id'])
             try:
                 with session_scope() as session:
                     tth = await run_threaded(estimate_remaining_time, session, pokemon['spawn_id'], seen)
