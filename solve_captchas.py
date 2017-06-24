@@ -100,7 +100,7 @@ async def main():
 
                 await sleep(.6)
 
-                request.download_remote_config_version(platform=1, app_version=6304)
+                request.download_remote_config_version(platform=1, app_version=6701)
                 request.check_challenge()
                 request.get_hatched_eggs()
                 request.get_inventory(last_timestamp_ms=account.get('inventory_timestamp', 0))

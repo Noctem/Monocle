@@ -185,7 +185,7 @@ class Worker:
             raise err
 
         self.error_code = '°'
-        version = 6304
+        version = 6701
         async with self.sim_semaphore:
             self.error_code = 'APP SIMULATION'
             if conf.APP_SIMULATION:
@@ -360,15 +360,10 @@ class Worker:
                 # request 6: level_up_rewards
                 request = self.api.create_request()
                 request.level_up_rewards(level=self.player_level)
-                await self.call(request, settings=True)
+                await self.call(request, settings=True, get_inbox=True)
                 await self.random_sleep(.45, .7)
             else:
                 self.log.warning('No player level')
-
-            # request 7: register_background_device
-            request = self.api.create_request()
-            request.register_background_device(device_type='apple_watch')
-            await self.call(request, action=0.1)
 
             self.log.info('Finished RPC login sequence (iOS app simulation)')
             await self.random_sleep(.5, 1.3)
@@ -481,7 +476,7 @@ class Worker:
                         else:
                             self.unused_incubators.appendleft(item)
 
-    async def call(self, request, chain=True, stamp=True, buddy=True, settings=False, dl_hash=True, action=None):
+    async def call(self, request, chain=True, stamp=True, buddy=True, settings=False, get_inbox=False, dl_hash=True, action=None):
         if chain:
             request.check_challenge()
             request.get_hatched_eggs()
@@ -494,6 +489,8 @@ class Worker:
                     request.download_settings()
             if buddy:
                 request.get_buddy_walked()
+            if get_inbox:
+                request.get_inbox(is_history=True)
 
         if action:
             now = time()
@@ -599,9 +596,9 @@ class Worker:
             else:
                 if (not dl_hash
                         and conf.FORCED_KILL
-                        and dl_settings.settings.minimum_client_version != '0.63.1'):
+                        and dl_settings.settings.minimum_client_version != '0.67.1'):
                     forced_version = StrictVersion(dl_settings.settings.minimum_client_version)
-                    if forced_version > StrictVersion('0.63.4'):
+                    if forced_version > StrictVersion('0.67.1'):
                         err = '{} is being forced, exiting.'.format(forced_version)
                         self.log.error(err)
                         print(err)
@@ -753,7 +750,7 @@ class Worker:
         diff = self.last_gmo + self.scan_delay - time()
         if diff > 0:
             await sleep(diff, loop=LOOP)
-        responses = await self.call(request)
+        responses = await self.call(request, get_inbox=True)
         self.last_gmo = self.last_request
 
         try:
@@ -917,7 +914,7 @@ class Worker:
         request.fort_details(fort_id = pokestop.id,
                              latitude = pokestop_location[0],
                              longitude = pokestop_location[1])
-        responses = await self.call(request, action=1.2)
+        responses = await self.call(request, action=1.2, get_inbox=True)
         name = responses['FORT_DETAILS'].name
 
         request = self.api.create_request()
@@ -926,7 +923,7 @@ class Worker:
                             player_longitude = self.location[1],
                             fort_latitude = pokestop_location[0],
                             fort_longitude = pokestop_location[1])
-        responses = await self.call(request, action=2)
+        responses = await self.call(request, action=2, get_inbox=True)
 
         try:
             result = responses['FORT_SEARCH'].result
@@ -982,7 +979,7 @@ class Worker:
                                     player_latitude=self.location[0],
                                     player_longitude=self.location[1])
 
-        responses = await self.call(request, action=2.25)
+        responses = await self.call(request, action=2.25, get_inbox=True)
 
         try:
             pdata = responses['ENCOUNTER'].wild_pokemon.pokemon_data
@@ -1014,7 +1011,7 @@ class Worker:
         for item, count in rec_items.items():
             request = self.api.create_request()
             request.recycle_inventory_item(item_id=item, count=count)
-            responses = await self.call(request, action=2)
+            responses = await self.call(request, action=2, get_inbox=True)
 
             try:
                 if responses['RECYCLE_INVENTORY_ITEM'].result != 1:
@@ -1040,7 +1037,7 @@ class Worker:
             if inc.item_id == 901 or egg.egg_km_walked_target > 9:
                 request = self.api.create_request()
                 request.use_item_egg_incubator(item_id=inc.id, pokemon_id=egg.id)
-                responses = await self.call(request, action=4.5)
+                responses = await self.call(request, action=4.5, get_inbox=True)
 
                 try:
                     ret = responses['USE_ITEM_EGG_INCUBATOR'].result
@@ -1117,7 +1114,7 @@ class Worker:
 
         request = self.api.create_request()
         request.verify_challenge(token=token)
-        await self.call(request, action=4)
+        await self.call(request, action=4, get_inbox=True)
         self.update_accounts_dict()
         self.log.warning("Successfully solved CAPTCHA")
 
