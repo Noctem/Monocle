@@ -20,12 +20,10 @@ setup(
         'geopy>=1.11.0',
         'protobuf>=3.0.0',
         'flask>=0.11.1',
-        'gpsoauth>=0.4.0',
-        'werkzeug>=0.11.15',
         'sqlalchemy>=1.1.0',
-        'aiopogo>=1.8.0',
+        'aiopogo>=2.0.2,<2.1',
         'polyline>=1.3.1',
-        'aiohttp>=2.0.7,<2.1',
+        'aiohttp>=2.1,<2.3',
         'pogeo==0.3.*',
         'cyrandom>=0.1.2'
     ],
@@ -39,7 +37,8 @@ setup(
         'mysql': ['mysqlclient>=1.3'],
         'postgres': ['psycopg2>=2.6'],
         'images': ['pycairo>=1.10.0'],
-        'socks': ['aiosocks>=0.2.2'],
-        'sanic': ['sanic>=0.4', 'asyncpg>=0.8', 'ujson>=1.35']
+        'socks': ['aiosocks>=0.2.3'],
+        'sanic': ['sanic>=0.4', 'asyncpg>=0.8', 'ujson>=1.35'],
+        'google': ['gpsoauth>=0.4.0'],
     }
 )
