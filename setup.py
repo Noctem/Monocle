@@ -28,7 +28,7 @@ setup(
         'cyrandom>=0.1.2'
     ],
     extras_require={
-        'twitter': ['peony-twitter>=0.9.3'],
+        'twitter': ['peony-twitter>=1.0.0'],
         'pushbullet': ['asyncpushbullet>=0.12'],
         'landmarks': ['shapely>=1.3.0'],
         'boundaries': ['shapely>=1.3.0'],
