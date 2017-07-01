@@ -1,12 +1,13 @@
 asyncpushbullet>=0.12
-peony-twitter>=0.9.3
+peony-twitter>=1.0.0
+gpsoauth>=0.4.0
 selenium>=3.0
 uvloop>=0.7.0
 gpsoauth>=0.4.0
 psycopg2>=2.6
 cchardet>=2.1.0
 aiodns>=1.1.0
-aiosocks>=0.2.2
+aiosocks>=0.2.3
 ujson>=1.35
 sanic>=0.5
 asyncpg>=0.8
