@@ -25,10 +25,6 @@ if conf.NOTIFY:
     if all((conf.TWITTER_CONSUMER_KEY, conf.TWITTER_CONSUMER_SECRET,
             conf.TWITTER_ACCESS_KEY, conf.TWITTER_ACCESS_SECRET)):
         try:
-            import peony.utils
-            def _get_image_metadata(file_):
-                return 'image/png', 'tweet_image', True, file_
-            peony.utils.get_image_metadata = _get_image_metadata
             from peony import PeonyClient
         except ImportError as e:
             raise ImportError("You specified a TWITTER_ACCESS_KEY but you don't have peony-twitter installed.") from e
@@ -514,7 +510,8 @@ class Notification:
                 try:
                     media = await client.upload_media(image,
                         media_type='image/png',
-                        media_category='tweet_image')
+                        media_category='tweet_image',
+                        chunked=True)
                     media_id = media['media_id']
                 except Exception:
                     self.log.exception('Failed to upload Tweet image.')
